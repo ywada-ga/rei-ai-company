@@ -12,7 +12,7 @@
 - 10分間の接続コードによる端末登録と、コードの再利用拒否
 - Windows向けのOpenClaw CLI起動とログイン時の自動起動を実装。Windows・macOS・LinuxのCIでREI本体を検証し、Windowsでは引用符や改行を含む指示文が模擬CLIにそのまま届くことを確認
 - ローカルWeb画面の初期登録表示、ブラウザのエラーログなし
-- MCP連携の登録・対象PCへの配信・認証待ち状態・解除を一時DBと模擬OpenClawで確認
+- MCP連携の登録・対象PCへの配信・認証待ち状態・解除を一時DBと模擬OpenClawで確認。Notion、Linear、Atlassian、Googleカレンダー・Gmail・ドライブの公式URLを選べる画面も確認
 - このPCのOpenClaw CLIで実際にMCPを登録し、状態を読み、解除する操作を確認。実アカウントへのOAuth接続は未実施
 
 ## 実機で接続するために必要な情報

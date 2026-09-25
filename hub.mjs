@@ -134,7 +134,7 @@ async function api(req,res,route) {
   if(route==='chatwork/poll'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'権限がありません');return send(res,200,await pollChatwork(db,root));}
   return error(res,404,'APIが見つかりません');
 }
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css'};
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
   try {

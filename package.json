@@ -7,8 +7,8 @@
   "scripts": {
     "start": "node hub.mjs",
     "connector": "node connector.mjs",
-    "test": "node tests/integration.mjs && node tests/chatwork.mjs && node tests/openclaw-process.mjs && node tests/mcp-sync.mjs && node tests/windows-installer.mjs",
+    "test": "node tests/integration.mjs && node tests/chatwork.mjs && node tests/openclaw-process.mjs && node tests/mcp-sync.mjs && node tests/mcp-presets.mjs && node tests/windows-installer.mjs",
     "test:live": "node tests/live-openclaw.mjs",
-    "check": "node --check hub.mjs && node --check connector.mjs && node --check openclaw-process.mjs && node --check mcp-sync.mjs && node --check storage.mjs && node --check security.mjs && node --check workflow.mjs && node --check chatwork.mjs && node --check install-macos.mjs && node --check install-windows.mjs && node --check public/app.js"
+    "check": "node --check hub.mjs && node --check connector.mjs && node --check openclaw-process.mjs && node --check mcp-sync.mjs && node --check storage.mjs && node --check security.mjs && node --check workflow.mjs && node --check chatwork.mjs && node --check install-macos.mjs && node --check install-windows.mjs && node --check public/app.js && node --check public/mcp-presets.js"
   }
 }

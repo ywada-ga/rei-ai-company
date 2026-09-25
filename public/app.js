@@ -1,3 +1,4 @@
+import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
@@ -191,7 +192,19 @@ $('settings-open').onclick=async()=>{$('settings-screen').classList.remove('hidd
 $('settings-close').onclick=()=>{$('settings-screen').classList.add('hidden');};
 $('pairing-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{const hub=new URL($('pairing-url').value.trim());if(hub.protocol!=='https:'&&!['127.0.0.1','localhost'].includes(hub.hostname))throw new Error('遠隔接続にはTailscale Serveが表示したHTTPSのURLを入力してください');const data=await request('/api/devices/pairing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('pairing-label').value.trim()})});$('pairing-result').classList.remove('hidden');$('pairing-result').textContent=`Macでは次の1行、Windows PowerShellでは3行を実行してください（Node.jsとOpenClaw CLIは事前に必要です）:\nMac: git clone https://github.com/ywada-ga/rei-ai-company.git && cd rei-ai-company && node connector.mjs join\nWindows: git clone https://github.com/ywada-ga/rei-ai-company.git\ncd rei-ai-company\nnode connector.mjs join\n\n質問されたら入力:\n接続URL: ${hub.origin}\n接続コード（10分間有効）: ${data.code}\n\nTailscaleはこのPCと追加するPCの両方で同じネットワークにログインしてください。`;await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}};
 $('enroll-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{const data=await request('/api/devices/enroll',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('device-label').value.trim(),isPlanner:$('device-planner').checked})});$('enroll-result').classList.remove('hidden');$('enroll-result').textContent=`${data.device.label} の接続トークン（この画面で一度だけ表示）: ${data.token}\n接続先: http://127.0.0.1:4178\n各Macで node connector.mjs setup を実行して入力してください。`;$('device-label').value='';await refreshSettings();await refresh();}catch(e){$('settings-feedback').textContent=e.message;}};
-$('mcp-preset').onchange=()=>{const preset={calendar:['Googleカレンダー','https://calendarmcp.googleapis.com/mcp/v1'],gmail:['Gmail','https://gmailmcp.googleapis.com/mcp/v1']}[$('mcp-preset').value];$('mcp-label').value=preset?.[0]||'';$('mcp-url').value=preset?.[1]||'';};
+$('mcp-preset').innerHTML=MCP_PRESETS.map(preset=>`<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.title)}</option>`).join('');
+function selectMcpPreset() {
+  const preset=MCP_PRESETS.find(item=>item.id===$('mcp-preset').value);
+  if(!preset)return;
+  $('mcp-label').value=preset.label;
+  $('mcp-url').value=preset.url;
+  $('mcp-auth').value=preset.auth;
+  const help=$('mcp-preset-help');
+  help.textContent=preset.note;
+  if(preset.docs){const link=document.createElement('a');link.href=preset.docs;link.target='_blank';link.rel='noopener noreferrer';link.textContent='公式の設定手順 ↗';help.append(' ',link);}
+}
+$('mcp-preset').onchange=selectMcpPreset;
+selectMcpPreset();
 $('mcp-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{await request('/api/mcp/add',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('mcp-label').value.trim(),url:$('mcp-url').value.trim(),deviceId:$('mcp-device').value,auth:$('mcp-auth').value})});$('settings-feedback').textContent='追加しました。対象PCに反映されるまで少し待ってから状態を更新してください。OAuthの場合は表示されたコマンドで認証します。';await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}};
 $('chatwork-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{await request('/api/chatwork/configure',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({roomId:$('chatwork-room').value,token:$('chatwork-token').value})});$('chatwork-token').value='';await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}};
 $('invite-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{const data=await request('/api/users/invite',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({role:$('invite-role').value})});$('invite-result').classList.remove('hidden');$('invite-result').textContent=`招待リンク（7日間有効）: ${location.origin}/?setup=${data.token}`;}catch(e){$('settings-feedback').textContent=e.message;}};

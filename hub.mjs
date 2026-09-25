@@ -228,7 +228,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api')return await api(req,res,url.searchParams.get('route')||'');
     const file=files[url.pathname];if(!file||req.method!=='GET')return error(res,404,'見つかりません');
     const bytes=readFileSync(path.join(root,'public',file));
-    res.writeHead(200,{'content-type':`${mime[path.extname(file)]}; charset=utf-8`,'x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(bytes);
+    res.writeHead(200,{'content-type':`${mime[path.extname(file)]}; charset=utf-8`,'cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(bytes);
   } catch(e) {console.error('REI:',e.message);return error(res,e.status||500,e.status?e.message:'処理に失敗しました');}
 });
 server.listen(port,host,()=>console.log(`REI Hub: http://${host}:${port}`));

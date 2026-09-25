@@ -1,19 +1,25 @@
 import crypto from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, lstatSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 import { one, all, run, transaction } from './storage.mjs';
 import { event, finishRoot } from './workflow.mjs';
 
-function key(root) {
+function key(root,create=false) {
   const file=path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'chatwork.key');
-  if(!existsSync(file)) writeFileSync(file,crypto.randomBytes(32),{mode:0o600,flag:'wx'});
+  const stat=lstatSync(file,{throwIfNoEntry:false});
+  if(!stat) {
+    if(!create)throw new Error('Chatworkの暗号鍵がありません。バックアップから復元するか、設定し直してください');
+    writeFileSync(file,crypto.randomBytes(32),{mode:0o600,flag:'wx'});
+  } else if(!stat.isFile())throw new Error('Chatworkの暗号鍵が通常のファイルではありません');
   try{chmodSync(file,0o600);}catch{}
-  return readFileSync(file);
+  const bytes=readFileSync(file);
+  if(bytes.length!==32)throw new Error('Chatworkの暗号鍵が壊れています。バックアップから復元してください');
+  return bytes;
 }
-function encrypt(root,value) {const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(root),iv),body=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),body]).toString('base64');}
+function encrypt(root,value) {const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(root,true),iv),body=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),body]).toString('base64');}
 function decrypt(root,value) {const bytes=Buffer.from(value,'base64'),cipher=crypto.createDecipheriv('aes-256-gcm',key(root),bytes.subarray(0,12));cipher.setAuthTag(bytes.subarray(12,28));return Buffer.concat([cipher.update(bytes.subarray(28)),cipher.final()]).toString('utf8');}
 function config(db,root) {const room=one(db,"SELECT value FROM settings WHERE key='chatwork_room'")?.value,encoded=one(db,"SELECT value FROM settings WHERE key='chatwork_token'")?.value,accountId=one(db,"SELECT value FROM settings WHERE key='chatwork_account_id'")?.value;return room&&encoded?{room,token:decrypt(root,encoded),accountId}:null;}
-export function chatworkStatus(db) {const room=one(db,"SELECT value FROM settings WHERE key='chatwork_room'")?.value;return {configured:!!room,roomId:room||null,pending:one(db,"SELECT count(*) AS n FROM tasks WHERE kind='human' AND status='waiting_human'")?.n||0};}
+export function chatworkStatus(db,root) {const room=one(db,"SELECT value FROM settings WHERE key='chatwork_room'")?.value,pending=one(db,"SELECT count(*) AS n FROM tasks WHERE kind='human' AND status='waiting_human'")?.n||0;if(!room)return {configured:false,roomId:null,pending};try{return {configured:true,roomId:room,pending,needsAttention:!config(db,root)};}catch{return {configured:true,roomId:room,pending,needsAttention:true};}}
 export function configureChatwork(db,root,roomId,token,accountId=null) {if(!/^\d+$/.test(roomId))throw Object.assign(new Error('ChatworkのルームIDは数字です'),{status:400});if(accountId!==null&&!/^\d+$/.test(String(accountId)))throw Object.assign(new Error('ChatworkのアカウントIDが正しくありません'),{status:400});const encoded=encrypt(root,token);transaction(db,()=>{run(db,"INSERT INTO settings(key,value) VALUES('chatwork_room',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",roomId);run(db,"INSERT INTO settings(key,value) VALUES('chatwork_token',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",encoded);if(accountId!==null)run(db,"INSERT INTO settings(key,value) VALUES('chatwork_account_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(accountId));else run(db,"DELETE FROM settings WHERE key='chatwork_account_id'");});return {configured:true,roomId};}
 async function ownAccountId(db,cfg) {
   if(cfg.accountId)return cfg.accountId;

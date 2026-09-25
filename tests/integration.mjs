@@ -20,7 +20,12 @@ try {
   const saved=await api('backup/create',{});
   assert.ok(saved.folder.startsWith(data));
   const firstPairing=await api('devices/pairing',{label:'first-paired'});
+  assert.equal((await api('connector/pair/check',{code:firstPairing.code})).ok,true);
+  const badPairCheck=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair%2Fcheck',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:'INVALIDCODE12345'})});
+  assert.equal(badPairCheck.status,403);
   const firstPaired=await api('connector/pair',{code:firstPairing.code});
+  const usedPairCheck=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair%2Fcheck',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:firstPairing.code})});
+  assert.equal(usedPairCheck.status,403);
   assert.equal((await api('devices')).devices.find(device=>device.id===firstPaired.device.id).planner,1);
   await api('devices/revoke',{deviceId:firstPaired.device.id});
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});

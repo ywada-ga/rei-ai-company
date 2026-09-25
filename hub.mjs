@@ -70,6 +70,11 @@ async function api(req,res,route) {
     return send(res,200,{user:{id:user.id,username:user.username,role:user.role}});
   }
   if(route==='auth/logout'&&req.method==='POST') {const raw=cookies(req).rei_session;if(raw)run(db,'DELETE FROM sessions WHERE hash=?',hash(raw));setCookie(res,'',0,isSecure(req));return send(res,200,{ok:true});}
+  if(route==='connector/pair/check'&&req.method==='POST') {
+    const data=await body(req),code=String(data.code||'').trim();
+    if(!/^[A-Za-z0-9_-]{16}$/.test(code)||!one(db,'SELECT hash FROM pairings WHERE hash=? AND used=0 AND expires_at>?',hash(code),Date.now()))return error(res,403,'接続コードが無効か期限切れです');
+    return send(res,200,{ok:true});
+  }
   if(route==='connector/pair'&&req.method==='POST') {
     const data=await body(req),code=String(data.code||'').trim();
     if(!/^[A-Za-z0-9_-]{16}$/.test(code))return error(res,403,'接続コードが無効です');

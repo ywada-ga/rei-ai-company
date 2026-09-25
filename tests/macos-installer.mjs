@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, statSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, statSync, copyFileSync, existsSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import os from 'node:os';
@@ -38,12 +38,18 @@ else if(['agents set-identity','config set','config validate'].includes(key))con
 else process.exit(2);
 `;
   const openclaw=path.join(bin,'openclaw');writeFileSync(openclaw,fakeOpenClaw);chmodSync(openclaw,0o755);
-  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
+  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{const code=JSON.parse(input).code;if(code!=='TESTCODE12345678'){response.writeHead(403,{'content-type':'application/json'});response.end(JSON.stringify({error:'接続コードが無効です'}));return;}response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {
     const configFile=path.join(temp,'openclaw.json');writeFileSync(configFile,'{}');
+    const invalid=spawn(process.execPath,['connector.mjs','join',`http://127.0.0.1:${server.address().port}`],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:path.join(temp,'joined-agents'),REI_FAKE_AGENT_STATE:path.join(temp,'agent.json'),REI_FAKE_CONFIG_FILE:configFile},stdio:['pipe','pipe','pipe']});
+    let invalidOutput='',invalidAnswered=false;invalid.stdout.on('data',chunk=>{invalidOutput+=chunk;if(!invalidAnswered&&invalidOutput.includes('接続コード')){invalidAnswered=true;invalid.stdin.end('INVALIDCODE12345\n');}});invalid.stderr.on('data',chunk=>invalidOutput+=chunk);
+    const invalidTimer=setTimeout(()=>invalid.kill(),15000);
+    const invalidCode=await new Promise(resolve=>invalid.on('close',resolve));clearTimeout(invalidTimer);
+    assert.notEqual(invalidCode,0);
+    assert.equal(existsSync(path.join(temp,'agent.json')),false);
     const child=spawn(process.execPath,['connector.mjs','join',`http://127.0.0.1:${server.address().port}`],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:path.join(temp,'joined-agents'),REI_FAKE_AGENT_STATE:path.join(temp,'agent.json'),REI_FAKE_CONFIG_FILE:configFile},stdio:['pipe','pipe','pipe']});
-    let output='',answered=false;child.stdout.on('data',chunk=>{output+=chunk;if(!answered&&output.includes('接続コード')){answered=true;child.stdin.end('TESTCODE\n');}});child.stderr.on('data',chunk=>output+=chunk);
+    let output='',answered=false;child.stdout.on('data',chunk=>{output+=chunk;if(!answered&&output.includes('接続コード')){answered=true;child.stdin.end('TESTCODE12345678\n');}});child.stderr.on('data',chunk=>output+=chunk);
     const timer=setTimeout(()=>child.kill(),15000);
     const code=await new Promise(resolve=>child.on('close',resolve));clearTimeout(timer);
     assert.equal(code,0,output);

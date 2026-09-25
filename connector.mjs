@@ -33,8 +33,11 @@ async function join() {
     validateHub(hub);
     const available=checkOpenClaw();
     if(available.status!==0)throw new Error('このPCにOpenClaw CLIがありません。先にOpenClawをセットアップしてください');
-    ensureReiAgent(root);
     const code=(await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
+    if(!/^[A-Za-z0-9_-]{16}$/.test(code))throw new Error('接続コードは16文字です。REI画面で確認してください');
+    const checked=await fetch(new URL('/api?route=connector%2Fpair%2Fcheck',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
+    if(!checked.ok) {const detail=await checked.json();throw new Error(detail.error||`接続コードを確認できません (HTTP ${checked.status})`);}
+    ensureReiAgent(root);
     const response=await fetch(new URL('/api?route=connector%2Fpair',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||`接続に失敗しました (HTTP ${response.status})`);

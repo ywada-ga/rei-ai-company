@@ -2,11 +2,18 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
+export const SCHEMA_VERSION=1;
+
 export function openStorage(root) {
   const dir=process.env.REI_DATA_DIR||path.join(root,'data');
   mkdirSync(dir,{recursive:true,mode:0o700});
   try { chmodSync(dir,0o700); } catch {}
   const db=new DatabaseSync(path.join(dir,'rei.sqlite'));
+  const currentVersion=db.prepare('PRAGMA user_version').get().user_version;
+  if(currentVersion>SCHEMA_VERSION) {
+    db.close();
+    throw new Error(`このデータは新しいREI用です（データ形式 ${currentVersion}、対応版 ${SCHEMA_VERSION}）。以前の版では起動できません`);
+  }
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;
     CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, salt TEXT NOT NULL, digest TEXT NOT NULL, role TEXT NOT NULL, disabled INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL);
@@ -33,6 +40,7 @@ export function openStorage(root) {
   if(!all(db,'PRAGMA table_info(late_result_receipts)').some(column=>column.name==='report'))db.exec("ALTER TABLE late_result_receipts ADD COLUMN report TEXT NOT NULL DEFAULT ''");
   if(!all(db,'PRAGMA table_info(late_result_receipts)').some(column=>column.name==='success'))db.exec('ALTER TABLE late_result_receipts ADD COLUMN success INTEGER NOT NULL DEFAULT 0');
   db.exec('CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id,kind,created_at)');
+  if(currentVersion<SCHEMA_VERSION)db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   try { chmodSync(path.join(dir,'rei.sqlite'),0o600); } catch {}
   return db;
 }

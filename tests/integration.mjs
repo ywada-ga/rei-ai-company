@@ -205,6 +205,11 @@ try {
   const strandedStep=(await api(`tasks/detail/${stranded.id}`)).children.find(step=>step.kind==='execute');
   assert.equal(strandedStep.assignedDeviceId,enrolled.device.id);
   assert.equal((await api('connector/claim',{},paired.token)).job,null);
+  await api('connector/heartbeat',{version:'0.3.0',capabilities:['openclaw','planning','execution']},paired.token);
+  const outdatedReassign=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freassign',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:strandedStep.id,deviceId:paired.device.id})});
+  assert.equal(outdatedReassign.status,400);
+  assert.equal((await api(`tasks/detail/${stranded.id}`)).children.find(step=>step.id===strandedStep.id).assignedDeviceId,enrolled.device.id);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning','execution']},paired.token);
   await api('tasks/reassign',{taskId:strandedStep.id,deviceId:paired.device.id});
   const reassigned=(await api('connector/claim',{},paired.token)).job;
   assert.equal(reassigned.id,strandedStep.id);

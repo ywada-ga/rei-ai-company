@@ -91,6 +91,8 @@ try {
   assert.equal(paused.status,400);
   await api('projects/status',{projectId:project.id,status:'active'});
   const report=await api('report/today');assert.equal(report.completed,2);
+  assert.ok(report.devices.find(device=>device.id===enrolled.device.id).completed>=3);
+  assert.equal(report.people.completed,1);
   const invite=await api('users/invite',{role:'requester'});
   await api('setup/complete',{token:invite.token,username:'requester',password:'requester-password-123'});
   await api('auth/login',{username:'requester',password:'requester-password-123'});

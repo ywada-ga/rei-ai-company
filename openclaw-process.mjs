@@ -29,3 +29,15 @@ export function spawnOpenClaw(agent,key,instruction) {
   if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),'agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   return spawn('openclaw',['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe']});
 }
+
+export function parseOpenClawResult(output) {
+  let payload;
+  try {payload=JSON.parse(output);} catch {throw new Error('OpenClawからJSON形式の結果を受け取れませんでした');}
+  if(payload?.status&&payload.status!=='ok')throw new Error(`OpenClawの処理状態: ${String(payload.status).slice(0,100)}`);
+  if(payload?.result?.meta?.aborted)throw new Error('OpenClawの処理が中断されました');
+  const texts=payload?.result?.payloads?.map(item=>item?.text).filter(item=>typeof item==='string'&&item.trim());
+  const answer=texts?.at(-1)||payload?.response||payload?.result?.text;
+  if(typeof answer!=='string'||!answer.trim())throw new Error('OpenClawから回答を受け取れませんでした');
+  if(/(?:^|\n)\s*⚠️\s*🛠️\s*(?:Bash|Tool) failed:/i.test(answer))throw new Error(`OpenClawの操作結果を確認してください: ${answer.slice(0,500)}`);
+  return answer.trim().slice(0,100000);
+}

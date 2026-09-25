@@ -2,7 +2,13 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { checkOpenClaw, spawnOpenClaw } from '../openclaw-process.mjs';
+import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult } from '../openclaw-process.mjs';
+
+assert.equal(parseOpenClawResult(JSON.stringify({status:'ok',result:{payloads:[{text:'確認済み'}],meta:{aborted:false}}})),'確認済み');
+assert.throws(()=>parseOpenClawResult(JSON.stringify({status:'error',result:{payloads:[{text:'できました'}]}})),/処理状態/);
+assert.throws(()=>parseOpenClawResult(JSON.stringify({status:'ok',result:{payloads:[],meta:{aborted:true}}})),/中断/);
+assert.throws(()=>parseOpenClawResult('not json'),/JSON形式/);
+assert.throws(()=>parseOpenClawResult(JSON.stringify({status:'ok',result:{payloads:[{text:'⚠️ 🛠️ Bash failed: example'}]}})),/操作結果/);
 
 if(process.platform==='win32') {
   const dir=mkdtempSync(path.join(os.tmpdir(),'rei-windows-runner-'));

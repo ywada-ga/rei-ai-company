@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'n
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import { checkOpenClaw, spawnOpenClaw } from './openclaw-process.mjs';
+import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult } from './openclaw-process.mjs';
 import { syncMcp, probeMcp } from './mcp-sync.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
 
@@ -56,16 +56,6 @@ function validateHub(value) {
 }
 function loadPending() {try {const value=JSON.parse(readFileSync(pendingPath,'utf8'));return Array.isArray(value)?value:[];}catch{return [];}}
 function savePending(items) {const temp=`${pendingPath}.tmp`;writeFileSync(temp,JSON.stringify(items),{mode:0o600});renameSync(temp,pendingPath);}
-function extractAnswer(payload) {
-  const found=[];
-  const visit=(value,depth=0)=>{
-    if(depth>8||value==null)return;
-    if(Array.isArray(value))return value.forEach(item=>visit(item,depth+1));
-    if(typeof value==='object') {if(typeof value.text==='string')found.push(value.text);for(const [key,item] of Object.entries(value))if(key!=='text'&&!['usage','metadata','model','session'].includes(key))visit(item,depth+1);}
-  };
-  visit(payload);
-  return found.at(-1)||payload?.response||JSON.stringify(payload);
-}
 function runOpenClaw(agent,job,devices) {
   const list=devices.map(d=>({id:d.id,label:d.label,capabilities:d.capabilities}));
   const projectContext=job.project?`所属プロジェクト: ${job.project.name}。達成目的: ${job.project.objective}。この目的を踏まえて依頼を進めてください。`:'';
@@ -79,7 +69,7 @@ function runOpenClaw(agent,job,devices) {
     child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)child.kill('SIGTERM');});
     child.stderr.on('data',chunk=>{err+=chunk;if(err.length>100_000)child.kill('SIGTERM');});
     child.on('error',e=>{clearTimeout(timer);reject(e);});
-    child.on('close',code=>{clearTimeout(timer);if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(extractAnswer(JSON.parse(out)).slice(0,100000));}catch{resolve(out.trim().slice(0,100000));}});
+    child.on('close',code=>{clearTimeout(timer);if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
   });
 }
 async function main() {

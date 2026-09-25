@@ -42,7 +42,7 @@ Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `n
 1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
 2. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。REIが接続URLを検出して入力欄へ入れます。Tailscale側でHTTPSを有効にする案内が出た場合は、その案内を完了してください。
 3. REIの **端末・設定 → かんたん端末追加** にPCの名前を入力します。10分間だけ使える接続コードが表示されます。
-4. 参加PCでは、画面に表示されたコマンドを実行し、接続URLとコードを入力します。OpenClaw CLIを確認した後、個人用とは別の `rei` エージェントを作り、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。
+4. 参加PCでは、画面に表示されたコマンドを実行し、接続コードを入力します。OpenClaw CLIを確認した後、個人用とは別の `rei` エージェントを作り、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。最初に追加されたPCはREIの計画担当になります。
 
 各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
 

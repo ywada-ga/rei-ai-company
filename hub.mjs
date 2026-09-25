@@ -67,7 +67,8 @@ async function api(req,res,route) {
       const pairing=one(db,'SELECT * FROM pairings WHERE hash=? AND used=0 AND expires_at>?',hash(code),now);
       if(!pairing)return null;
       run(db,'UPDATE pairings SET used=1 WHERE hash=?',pairing.hash);
-      run(db,'INSERT INTO devices(id,label,token_hash,planner) VALUES(?,?,?,0)',id,pairing.label,hash(raw));
+      const planner=!one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0');
+      run(db,'INSERT INTO devices(id,label,token_hash,planner) VALUES(?,?,?,?)',id,pairing.label,hash(raw),planner?1:0);
       return {id,label:pairing.label};
     });
     if(!paired)return error(res,403,'接続コードが無効か期限切れです');

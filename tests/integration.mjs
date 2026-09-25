@@ -19,6 +19,10 @@ try {
   await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
   const saved=await api('backup/create',{});
   assert.ok(saved.folder.startsWith(data));
+  const firstPairing=await api('devices/pairing',{label:'first-paired'});
+  const firstPaired=await api('connector/pair',{code:firstPairing.code});
+  assert.equal((await api('devices')).devices.find(device=>device.id===firstPaired.device.id).planner,1);
+  await api('devices/revoke',{deviceId:firstPaired.device.id});
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
   await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw']},auth);

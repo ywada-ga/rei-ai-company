@@ -35,8 +35,8 @@ try {
 } catch {result(false,'REI本体に接続できません。自動起動または保存先を確認してください');}
 
 if(ownerCount===1) {
+  const folder=path.join(data,'backups');
   try {
-    const folder=path.join(data,'backups');
     const latest=readdirSync(folder,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('rei-')).map(entry=>entry.name).sort().at(-1);
     if(!latest)throw new Error('no backup');
     const verified=verifyBackup(path.join(folder,latest));
@@ -45,6 +45,10 @@ if(ownerCount===1) {
     const ageDays=Math.floor((Date.now()-createdAt)/86400000);
     result(ageDays<7,ageDays<7?'最新のバックアップを検証しました':`最新のバックアップは${ageDays}日前です。新しいバックアップを作成してください`);
   } catch {result(false,'有効なバックアップを確認できません。REI画面でバックアップを作成してください');}
+  if(lstatSync(folder,{throwIfNoEntry:false})?.isDirectory()) {
+    const stale=readdirSync(folder,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('.partial-')).filter(entry=>Date.now()-lstatSync(path.join(folder,entry.name)).mtimeMs>3600000);
+    if(stale.length)result(false,`中断したバックアップが${stale.length}件残っています。内容を確認するまで削除しないでください`);
+  }
 }
 console.log(problems?`中心PCの診断完了: ${problems}件を確認してください`:`中心PCの診断完了: 正常です（REI ${version}）`);
 if(problems)process.exitCode=1;

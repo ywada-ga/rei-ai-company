@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,14 @@ try {
   const healthy=await diagnose();
   assert.equal(healthy.code,0,healthy.output);
   assert.match(healthy.output,/最新のバックアップを検証しました/);
+  const interrupted=path.join(data,'backups','.partial-interrupted');
+  mkdirSync(interrupted);
+  const oldTime=new Date(Date.now()-2*3600000);
+  utimesSync(interrupted,oldTime,oldTime);
+  const incomplete=await diagnose();
+  assert.equal(incomplete.code,1,incomplete.output);
+  assert.match(incomplete.output,/中断したバックアップが1件/);
+  rmSync(interrupted,{recursive:true});
   const manifestFile=path.join(backup,'manifest.json');
   const manifest=JSON.parse(readFileSync(manifestFile,'utf8'));
   manifest.createdAt=new Date(Date.now()-8*86400000).toISOString();

@@ -28,6 +28,7 @@ npm test
 - **Windows:** 自動起動中のHubとConnectorは、実行中の仕事がない状態でWindowsからサインアウトし、再度サインインして起動し直します。手動起動中なら、各ターミナルを終了して `npm start` と `npm run connector` で起動し直します。
 
 最後にREI画面を更新し、接続端末がオンラインになり、以前の仕事と利用者が残っていることを確認します。
+中心PCでは `npm run doctor:hub`、各参加PCでは `npm run doctor` を実行すると、データベース・バックアップと端末接続を確認できます。
 
 ## 更新を戻す
 

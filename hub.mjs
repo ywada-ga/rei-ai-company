@@ -94,7 +94,7 @@ async function api(req,res,route) {
   if(route==='bootstrap'&&req.method==='GET') {
     sweep(db);
     const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,agent_name FROM devices WHERE revoked=0 ORDER BY rowid');
-    const workers=devices.map(d=>({id:d.id,name:d.label,kind:'AI',machine:d.label,agentName:d.agent_name,connected:Date.now()-d.last_seen<30000,planner:!!d.planner}));
+    const workers=devices.map(d=>({id:d.id,name:d.label,kind:'AI',machine:d.label,agentName:d.agent_name,capabilities:JSON.parse(d.capabilities),connected:Date.now()-d.last_seen<30000,planner:!!d.planner}));
     const tasks=all(db,"SELECT * FROM tasks WHERE kind='root' ORDER BY created_at DESC LIMIT 100").map(taskJson);
     const humanPending=all(db,"SELECT DISTINCT parent_id FROM tasks WHERE kind='human' AND status IN ('waiting_human','waiting_reply','sending') AND parent_id IS NOT NULL ORDER BY created_at DESC LIMIT 100").map(item=>item.parent_id);
     return send(res,200,{user,departments,workers,tasks,projects:projects(),humanPending,gateway:{reachable:workers.some(w=>w.connected),version:'REI HUB',agent:'rei'}});

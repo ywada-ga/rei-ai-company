@@ -44,6 +44,8 @@ WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start`
 
 各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
 
+計画担当のPCが30秒以上応答しない場合、計画機能のある接続中の別PCが新しい計画を引き継ぎます。途中で通信が切れた実行作業は二重実行を避けるため自動でやり直さず、画面に「要確認」と表示します。
+
 ## Mac miniをSSHで追加する（手動方式）
 
 中心PCにはmacOSの **リモートログイン** を有効にし、Mac miniからSSH鍵で接続できるようにします。まずMac miniで次を試します。

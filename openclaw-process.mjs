@@ -1,18 +1,26 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
-const powershell=process.env.REI_POWERSHELL||'powershell.exe';
-const encoded=script=>Buffer.from(`$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); ${script}`,'utf16le').toString('base64');
-const winArgs=script=>['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded(script)];
+function windowsEntry() {
+  const override=process.env.REI_OPENCLAW_ENTRY;
+  if(override&&existsSync(override))return override;
+  const bins=String(process.env.PATH||'').split(path.delimiter);
+  for(const bin of bins) {
+    const cmd=path.join(bin,'openclaw.cmd');
+    if(!existsSync(cmd))continue;
+    const entry=path.join(bin,'node_modules','openclaw','openclaw.mjs');
+    if(existsSync(entry))return entry;
+  }
+  throw new Error('OpenClaw CLIの本体が見つかりません。公式のWindows向けCLIをインストールしてください');
+}
 
 export function checkOpenClaw() {
-  if(process.platform==='win32')return spawnSync(powershell,winArgs('& openclaw.cmd --version; exit $LASTEXITCODE'),{encoding:'utf8',windowsHide:true});
+  if(process.platform==='win32')return spawnSync(process.execPath,[windowsEntry(),'--version'],{encoding:'utf8',windowsHide:true});
   return spawnSync('openclaw',['--version'],{encoding:'utf8'});
 }
 
 export function spawnOpenClaw(agent,key,instruction) {
-  if(process.platform==='win32') {
-    const script='& openclaw.cmd agent --agent $env:REI_OC_AGENT --session-key $env:REI_OC_SESSION --message $env:REI_OC_MESSAGE --json --timeout 180; exit $LASTEXITCODE';
-    return spawn(powershell,winArgs(script),{stdio:['ignore','pipe','pipe'],windowsHide:true,env:{...process.env,REI_OC_AGENT:agent,REI_OC_SESSION:key,REI_OC_MESSAGE:instruction}});
-  }
+  if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),'agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   return spawn('openclaw',['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe']});
 }

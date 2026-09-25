@@ -72,7 +72,7 @@ export function sweep(db) {
   const expired=all(db,"SELECT * FROM tasks WHERE status='running' AND lease_until>0 AND lease_until<?",now());
   for(const task of expired) {
     if(task.kind==='plan'&&task.attempts<3) {run(db,"UPDATE tasks SET status='ready',lease_id=NULL,lease_until=0,device_id=NULL WHERE id=?",task.id);event(db,task.id,'system','retry','計画担当との接続が切れたため再試行');}
-    else {run(db,"UPDATE tasks SET status='needs_review',error='担当端末との通信が途切れ、実行結果を確認できません',finished_at=?,lease_id=NULL WHERE id=?",now(),task.id);event(db,task.id,'system','needs_review','実行結果不明');if(task.kind==='execute') finishRoot(db,task.parent_id);if(task.kind==='plan')run(db,"UPDATE tasks SET status='needs_review',error='計画担当との通信が途切れました',finished_at=? WHERE id=?",now(),task.parent_id);}
+    else {run(db,"UPDATE tasks SET status='needs_review',error='担当端末との通信が途切れ、実行結果を確認できません',finished_at=?,lease_id=CASE WHEN kind='execute' THEN lease_id ELSE NULL END WHERE id=?",now(),task.id);event(db,task.id,'system','needs_review','実行結果不明');if(task.kind==='execute') finishRoot(db,task.parent_id);if(task.kind==='plan')run(db,"UPDATE tasks SET status='needs_review',error='計画担当との通信が途切れました',finished_at=? WHERE id=?",now(),task.parent_id);}
   }
 }
 function parsePlan(raw,devices) {
@@ -100,9 +100,24 @@ export function finishRoot(db,rootId) {
   event(db,rootId,'rei',status,'子仕事の結果を集約');
 }
 export function finishJob(db,device,input) {
-  const job=one(db,"SELECT * FROM tasks WHERE id=? AND device_id=? AND lease_id=? AND status='running'",input.taskId,device.id,input.leaseId);
-  if(!job) return {ok:false,duplicate:true};
   const result=String(input.result||'').slice(0,100000);
+  const job=one(db,'SELECT * FROM tasks WHERE id=? AND device_id=? AND lease_id=?',input.taskId,device.id,input.leaseId);
+  if(!job) return {ok:false,duplicate:true};
+  if(job.status==='needs_review'&&job.kind==='execute') {
+    const lateResult=(input.success?result:String(input.error||'').slice(0,4000))||'端末から結果が返りましたが、内容は空でした';
+    const recorded=one(db,"SELECT id FROM events WHERE task_id=? AND type='late_result' LIMIT 1",job.id);
+    if(recorded)return job.result===lateResult?{ok:true,needsReview:true,alreadyRecorded:true}:{ok:false,duplicate:true};
+    transaction(db,()=>{
+      run(db,'UPDATE tasks SET result=? WHERE id=?',lateResult,job.id);
+      event(db,job.id,device.label,'late_result','通信断の後に結果を受信。実施状況の確認が必要');
+    });
+    return {ok:true,needsReview:true};
+  }
+  if(job.status!=='running') {
+    const sameResult=job.result===result;
+    const sameOutcome=job.status==='completed'?!!input.success:job.status==='failed'&&(!!input.success&&job.kind==='plan'||!input.success&&job.error===String(input.error||'').slice(0,4000));
+    return sameResult&&sameOutcome?{ok:true,alreadyRecorded:true}:{ok:false,duplicate:true};
+  }
   const devices=job.kind==='plan'?all(db,'SELECT id,label FROM devices WHERE revoked=0'):[];
   const steps=job.kind==='plan'&&input.success?parsePlan(result,devices):null;
   const success=!!input.success&&(job.kind!=='plan'||!!steps);

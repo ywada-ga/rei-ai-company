@@ -109,7 +109,7 @@ async function main() {
       if(pending.length) {
         const item=pending[0];
         const ack=await api('connector/result',item);
-        console.log(`${item.taskId}: ${ack.ok?'保存済みの結果を再送':'結果の手動照合が必要'}`);
+        console.log(`${item.taskId}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.ok?'保存済みの結果を再送':'結果の手動照合が必要'}`);
         pending.shift();savePending(pending);
         if(process.argv.includes('--once'))break;
         continue;
@@ -124,7 +124,7 @@ async function main() {
       finally {clearInterval(renewal);}
       pending.push({taskId:job.id,leaseId:job.lease_id,success,result,error});savePending(pending);
       const ack=await api('connector/result',pending[0]);
-      console.log(`${job.id}: ${ack.ok?'報告完了':'結果照合が必要'}`);
+      console.log(`${job.id}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.ok?'報告完了':'結果照合が必要'}`);
       pending.shift();savePending(pending);
       if(process.argv.includes('--once'))break;
     } catch(e) {console.error('接続/実行:',e.message);if(process.argv.includes('--once'))process.exitCode=1;else await sleep(5000);if(process.argv.includes('--once'))break;}

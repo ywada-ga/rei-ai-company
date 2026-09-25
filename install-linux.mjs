@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,11 +31,30 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 `;
-writeFileSync(file,unit,{mode:0o600});chmodSync(file,0o600);
+const previous=existsSync(file)?readFileSync(file):null;
+const temporary=`${file}.${process.pid}.tmp`;
+writeFileSync(temporary,unit,{mode:0o600,flag:'wx'});
+renameSync(temporary,file);chmodSync(file,0o600);
+const systemctl=args=>{
+  const result=spawnSync('systemctl',['--user',...args],{encoding:'utf8'});
+  if(result.status!==0)throw new Error(result.error?.message||result.stderr||result.stdout||'systemctlが利用できません');
+};
 if(process.env.REI_NO_START!=='1') {
-  for(const args of [['--user','daemon-reload'],['--user','enable','--now',name]]) {
-    const result=spawnSync('systemctl',args,{encoding:'utf8'});
-    if(result.status!==0)throw new Error(`自動起動を有効にできません: ${result.error?.message||result.stderr||result.stdout||'systemctlが利用できません'}`);
+  try {
+    systemctl(['daemon-reload']);
+    systemctl(['enable','--now',name]);
+    if(previous)systemctl(['restart',name]);
+  } catch(error) {
+    if(previous) {
+      writeFileSync(temporary,previous,{mode:0o600,flag:'wx'});
+      renameSync(temporary,file);chmodSync(file,0o600);
+    } else unlinkSync(file);
+    try {
+      systemctl(['daemon-reload']);
+      if(previous)systemctl(['restart',name]);
+      else systemctl(['disable','--now',name]);
+    } catch(restoreError) {throw new Error(`自動起動の復旧に失敗しました: ${restoreError.message}。元のエラー: ${error.message}`);}
+    throw new Error(`自動起動を有効にできず元の設定に戻しました: ${error.message}`);
   }
 }
 console.log(`REI ${mode} の自動起動設定: ${file}`);

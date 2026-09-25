@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, copyFileSync, writeFileSync, chmodSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, copyFileSync, writeFileSync, chmodSync, mkdirSync, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,7 +35,18 @@ else if(['agents set-identity','config set','config validate'].includes(key))con
 else process.exit(2);
 `;
   writeFileSync(path.join(bin,'openclaw'),fakeOpenClaw);chmodSync(path.join(bin,'openclaw'),0o755);
-  writeFileSync(path.join(bin,'systemctl'),'#!/bin/sh\nprintf "%s\\n" "$*" >> "$REI_SYSTEMCTL_LOG"\n');chmodSync(path.join(bin,'systemctl'),0o755);
+  writeFileSync(path.join(bin,'systemctl'),'#!/bin/sh\nprintf "%s\\n" "$*" >> "$REI_SYSTEMCTL_LOG"\nservice="$3"\nif [ "$2" = enable ]; then service="$4"; fi\nif [ -n "$REI_TEST_FAIL_PORT" ] && [ "$2" = "$REI_TEST_FAIL_ACTION" ] && /usr/bin/grep -Fq "$REI_TEST_FAIL_PORT" "$REI_SYSTEMD_DIR/$service"; then exit 1; fi\n');chmodSync(path.join(bin,'systemctl'),0o755);
+  const serviceEnv={...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_SYSTEMD_DIR:units,REI_SYSTEMCTL_LOG:path.join(project,'systemctl.log'),REI_DATA_DIR:'/tmp/rei-restored-data'};
+  const update=spawnSync(process.execPath,['install-linux.mjs','connector'],{cwd:root,encoding:'utf8',env:{...serviceEnv,REI_PORT:'4189'}});
+  assert.equal(update.status,0,update.stderr);
+  assert.match(readFileSync(path.join(project,'systemctl.log'),'utf8'),/restart rei-connector\.service/);
+  const failedUpdate=spawnSync(process.execPath,['install-linux.mjs','hub'],{cwd:root,encoding:'utf8',env:{...serviceEnv,REI_PORT:'4199',REI_TEST_FAIL_PORT:'4199',REI_TEST_FAIL_ACTION:'restart'}});
+  assert.notEqual(failedUpdate.status,0);
+  assert.match(readFileSync(path.join(units,'rei-hub.service'),'utf8'),/REI_PORT=4188/);
+  const emptyUnits=path.join(project,'failed-new-units');
+  const failedNew=spawnSync(process.execPath,['install-linux.mjs','hub'],{cwd:root,encoding:'utf8',env:{...serviceEnv,REI_SYSTEMD_DIR:emptyUnits,REI_PORT:'4199',REI_TEST_FAIL_PORT:'4199',REI_TEST_FAIL_ACTION:'enable'}});
+  assert.notEqual(failedNew.status,0);
+  assert.equal(existsSync(path.join(emptyUnits,'rei-hub.service')),false);
   const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE12345678');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {

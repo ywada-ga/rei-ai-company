@@ -150,6 +150,15 @@ try {
   assert.ok(detail.events.some(item=>item.type==='planned'));
   assert.equal(detail.events.filter(item=>item.type==='completed'&&item.taskId===execute.job.id).length,1);
   assert.equal(detail.canCancel,false);
+  const eventDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  const insertEvent=eventDb.prepare('INSERT INTO events(id,task_id,actor,type,detail,created_at) VALUES(?,?,?,?,?,?)');
+  for(let index=0;index<305;index++)insertEvent.run(`event-${String(index).padStart(6,'0')}`,created.task.id,'test','history',`履歴 ${index}`,1700000000000+index);
+  eventDb.close();
+  const recentEvents=(await api(`tasks/detail/${created.task.id}`)).events;
+  assert.equal(recentEvents.length,300);
+  assert.ok(recentEvents.some(item=>item.detail==='履歴 304'));
+  assert.ok(!recentEvents.some(item=>item.detail==='履歴 0'));
+  assert.ok(recentEvents.every((item,index)=>index===0||item.createdAt>=recentEvents[index-1].createdAt));
   const stopped=(await api('command',{text:'中止する仕事'})).task;
   assert.equal((await api(`tasks/detail/${stopped.id}`)).canCancel,true);
   await api('tasks/cancel',{taskId:stopped.id});

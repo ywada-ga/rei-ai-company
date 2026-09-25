@@ -145,7 +145,7 @@ async function api(req,res,route) {
     const children=all(db,'SELECT * FROM tasks WHERE parent_id=? ORDER BY created_at,id',id);
     const receipts=all(db,'SELECT r.task_id,r.report,r.success FROM late_result_receipts r JOIN tasks t ON t.id=r.task_id WHERE t.parent_id=?',id);
     const byTask=new Map(receipts.map(receipt=>[receipt.task_id,receipt]));
-    const events=all(db,'SELECT actor,type,detail,created_at,task_id FROM events WHERE task_id=? OR task_id IN (SELECT id FROM tasks WHERE parent_id=?) ORDER BY created_at,id LIMIT 300',id,id).map(item=>({actor:item.actor,type:item.type,detail:item.detail,taskId:item.task_id,createdAt:new Date(item.created_at).toISOString()}));
+    const events=all(db,'SELECT actor,type,detail,created_at,task_id FROM events WHERE task_id=? OR task_id IN (SELECT id FROM tasks WHERE parent_id=?) ORDER BY created_at DESC,id DESC LIMIT 300',id,id).reverse().map(item=>({actor:item.actor,type:item.type,detail:item.detail,taskId:item.task_id,createdAt:new Date(item.created_at).toISOString()}));
     const canCancel=(['owner','admin'].includes(user.role)||user.role==='requester'&&root.created_by===user.id)&&cancellable(db,root);
     const canRetryPlan=['owner','admin'].includes(user.role)&&root.status==='needs_review'&&children.length===1&&children[0].kind==='plan'&&['failed','needs_review'].includes(children[0].status);
     return send(res,200,{task:taskJson(root),children:children.map(task=>({...taskJson(task),lateReport:byTask.get(task.id)?.report||null,lateReportSuccess:!!byTask.get(task.id)?.success})),events,canCancel,canRetryPlan});

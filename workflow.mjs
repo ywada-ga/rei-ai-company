@@ -104,7 +104,7 @@ export function finishRoot(db,rootId) {
   event(db,rootId,'rei',status,'子仕事の結果を集約');
 }
 export function finishJob(db,device,input) {
-  const result=String(input.result||'').slice(0,100000);
+  const result=String(input.result||'');
   const lateResult=(input.success?result:String(input.error||'').slice(0,4000))||'端末から結果が返りましたが、内容は空でした';
   const lateFingerprint=crypto.createHash('sha256').update(JSON.stringify([!!input.success,lateResult])).digest('hex');
   const job=one(db,'SELECT * FROM tasks WHERE id=? AND device_id=? AND lease_id=?',input.taskId,device.id,input.leaseId);

@@ -391,6 +391,16 @@ try {
     api('connector/result',{taskId:secondClaim.job.id,leaseId:secondClaim.job.lease_id,success:true,result:'B完了'},paired.token)
   ]);
   assert.equal((await api(`tasks/detail/${parallel.id}`)).task.status,'completed');
+  const longTask=(await api('command',{text:'長い結果を保存する仕事'})).task;
+  const longPlan=(await api('connector/claim',{},auth)).job;
+  await api('connector/result',{taskId:longPlan.id,leaseId:longPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'長い結果を返す',deviceId:enrolled.device.id}]})},auth);
+  const longStep=(await api('connector/claim',{},auth)).job;
+  const longResult='実行結果'.repeat(50000);
+  await api('connector/result',{taskId:longStep.id,leaseId:longStep.lease_id,success:true,result:longResult},auth);
+  const longDetail=await api(`tasks/detail/${longTask.id}`);
+  assert.equal(longDetail.task.status,'completed');
+  assert.equal(longDetail.children.find(step=>step.id===longStep.id).result.length,longResult.length);
+  assert.ok(longDetail.children.find(step=>step.id===longStep.id).result===longResult);
   const revokeDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   revokeDb.prepare('UPDATE devices SET last_seen=0 WHERE id=?').run(enrolled.device.id);
   revokeDb.close();

@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(root,'data','connector.json');
+const pendingPath=path.join(path.dirname(configPath),'pending-results.json');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function setup() {
   const rl=createInterface({input:process.stdin,output:process.stdout});
@@ -27,6 +28,8 @@ function validateHub(value) {
   if(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname))return;
   throw new Error('HubはHTTPS、またはSSH転送したローカルURLを指定してください');
 }
+function loadPending() {try {const value=JSON.parse(readFileSync(pendingPath,'utf8'));return Array.isArray(value)?value:[];}catch{return [];}}
+function savePending(items) {const temp=`${pendingPath}.tmp`;writeFileSync(temp,JSON.stringify(items),{mode:0o600});renameSync(temp,pendingPath);}
 function extractAnswer(payload) {
   const found=[];
   const visit=(value,depth=0)=>{
@@ -63,10 +66,19 @@ async function main() {
     const result=await response.json();if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);return result;
   }
   let lastHeartbeat=0;
+  let pending=loadPending();
   console.log(`REI Connector: ${config.hub} / agent=${config.agent}`);
   while(true) {
     try {
       if(Date.now()-lastHeartbeat>15000) {await api('connector/heartbeat',{capabilities:['openclaw','planning','execution']});lastHeartbeat=Date.now();}
+      if(pending.length) {
+        const item=pending[0];
+        const ack=await api('connector/result',item);
+        console.log(`${item.taskId}: ${ack.ok?'保存済みの結果を再送':'結果の手動照合が必要'}`);
+        pending.shift();savePending(pending);
+        if(process.argv.includes('--once'))break;
+        continue;
+      }
       const {job,devices}=await api('connector/claim');
       if(!job) {if(process.argv.includes('--once'))break;await sleep(3000);continue;}
       console.log(`${job.kind} ${job.id}: ${job.text.slice(0,80)}`);
@@ -75,8 +87,10 @@ async function main() {
       try {result=await runOpenClaw(config.agent,job,devices);success=true;}
       catch(e) {error=e.message;}
       finally {clearInterval(renewal);}
-      const ack=await api('connector/result',{taskId:job.id,leaseId:job.lease_id,success,result,error});
+      pending.push({taskId:job.id,leaseId:job.lease_id,success,result,error});savePending(pending);
+      const ack=await api('connector/result',pending[0]);
       console.log(`${job.id}: ${ack.ok?'報告完了':'結果照合が必要'}`);
+      pending.shift();savePending(pending);
       if(process.argv.includes('--once'))break;
     } catch(e) {console.error('接続/実行:',e.message);if(process.argv.includes('--once'))process.exitCode=1;else await sleep(5000);if(process.argv.includes('--once'))break;}
   }

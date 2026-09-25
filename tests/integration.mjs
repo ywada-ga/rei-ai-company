@@ -26,5 +26,14 @@ try {
   await api('connector/result',{taskId:execute.job.id,leaseId:execute.job.lease_id,success:true,result:'一つ目が完了'},auth);
   const bootstrap=await api('bootstrap');assert.equal(bootstrap.tasks[0].status,'completed');
   const report=await api('report/today');assert.equal(report.completed,1);
+  const invite=await api('users/invite',{role:'requester'});
+  await api('setup/complete',{token:invite.token,username:'requester',password:'requester-password-123'});
+  await api('auth/login',{username:'requester',password:'requester-password-123'});
+  const gated=await api('command',{text:'承認が必要な依頼',department:'operations'});
+  assert.equal(gated.task.status,'approval_pending');
+  await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
+  await api('tasks/approve',{taskId:gated.task.id});
+  const approved=(await api('bootstrap')).tasks.find(t=>t.id===gated.task.id);
+  assert.equal(approved.status,'planning');
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
 } finally {child.kill('SIGTERM');}

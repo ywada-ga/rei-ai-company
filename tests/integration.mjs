@@ -28,8 +28,11 @@ try {
   assert.equal(usedPairCheck.status,403);
   assert.equal((await api('devices')).devices.find(device=>device.id===firstPaired.device.id).planner,1);
   await api('devices/revoke',{deviceId:firstPaired.device.id});
+  const revokedStatus=await fetch('http://127.0.0.1:4181/api?route=connector%2Fstatus',{headers:{authorization:`Bearer ${firstPaired.token}`}});
+  assert.equal(revokedStatus.status,401);
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
+  assert.equal((await api('connector/status',undefined,auth)).deviceId,enrolled.device.id);
   assert.equal((await api('devices')).localConnector.status,'not_configured');
   writeFileSync(path.join(data,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:'invalid',agent:'rei'}));
   assert.equal((await api('devices')).localConnector.status,'needs_attention');

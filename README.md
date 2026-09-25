@@ -30,6 +30,8 @@ npm run connector -- setup
 
 `connector.mjs setup` と `connector.mjs join` は既存の `data/connector.json` を上書きしません。再設定が必要な場合は、先に接続中の仕事と保存済みトークンを確認してください。
 
+接続に困ったときは参加PCのREIフォルダで `npm run doctor` を実行してください。Node.js、OpenClaw、接続設定、中心PCへの到達、端末トークン、送信待ち結果をまとめて確認します。診断結果には端末トークンを表示しません。エラーが出ても設定や仕事の記録は変更しません。
+
 macOSのログイン時に自動起動したい場合:
 
 ```bash

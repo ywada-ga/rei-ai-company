@@ -86,8 +86,8 @@ async function main() {
   }
   let lastHeartbeat=0;
   let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
-  const heartbeatPayload=()=>({agentName:config.agent,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
   let pending=loadPending();
+  const heartbeatPayload=()=>({agentName:config.agent,pendingResults:pending.length,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
   async function submitPending() {
     const item=pending[0];
     const ack=await api('connector/result',item);

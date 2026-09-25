@@ -12,14 +12,16 @@ const pendingPath=path.join(dir,'pending-results.json');
 const result={taskId:'task-1',leaseId:'lease-1',success:true,result:'実行済み',error:''};
 writeFileSync(pendingPath,JSON.stringify([result]));
 let accepted=false,claims=0,received=0;
-const server=createServer((request,response)=>{
+const pendingCounts=[];
+const server=createServer(async(request,response)=>{
   const route=new URL(request.url,'http://localhost').searchParams.get('route');
+  let body='';for await(const chunk of request)body+=chunk;
   let payload;
-  if(route==='connector/heartbeat')payload={integrations:[],checks:[]};
+  if(route==='connector/heartbeat') {pendingCounts.push(JSON.parse(body).pendingResults);payload={integrations:[],checks:[]};}
   else if(route==='connector/result') {received++;payload=accepted?{ok:true,alreadyRecorded:true}:{ok:false,duplicate:true};}
   else if(route==='connector/claim') {claims++;payload={job:null,devices:[]};}
   else payload={error:'unexpected route'};
-  request.resume();response.writeHead(payload.error?404:200,{'content-type':'application/json'});response.end(JSON.stringify(payload));
+  response.writeHead(payload.error?404:200,{'content-type':'application/json'});response.end(JSON.stringify(payload));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 try {
@@ -42,5 +44,6 @@ try {
   assert.equal(retried.code,0,retried.output);
   assert.deepEqual(JSON.parse(readFileSync(pendingPath,'utf8')),[]);
   assert.equal(received,2);
+  assert.deepEqual(pendingCounts,[1,1]);
   console.log('PASS rejected results remain queued until Hub acknowledges them');
 } finally {server.close();}

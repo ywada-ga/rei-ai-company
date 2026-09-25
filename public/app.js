@@ -165,13 +165,27 @@ async function loadReport(silent=false) {
   if(state.reportLoading)return;
   const epoch=state.authEpoch;
   state.reportLoading=true;
+  $('report-copy-status').textContent='';
   if(!silent)$('briefing-content').innerHTML = '<div class="glass-panel loading">実行記録を照合しています...</div>';
   try { const report=await request('/api/report/today'); if(epoch!==state.authEpoch)return; state.report=report; state.reportLoadedAt=Date.now(); renderBriefing(); }
   catch (error) { if(epoch!==state.authEpoch)return; state.reportLoadedAt=Date.now(); if(!silent||!state.report)$('briefing-content').innerHTML = `<div class="glass-panel loading">${escapeHtml(error.message)}</div>`; }
   finally {if(epoch===state.authEpoch)state.reportLoading=false;}
 }
+function reportText(report,units) {
+  const backlog=report.attentionBacklog||{total:0,tasks:[]};
+  const lines=[`REI 今日の稼働報告（${report.day}）`,`登録端末 ${units.length}台 / 接続中 ${units.filter(unit=>unit.connected).length}台`,`本日の仕事 ${report.total}件：完了 ${report.completed}件、進行中 ${report.running}件、要確認 ${report.failed+report.interrupted}件`,`前日以前からの要確認 ${backlog.total}件`,'', 'PC・人の稼働'];
+  for(const device of (report.devices||[]).filter(item=>!item.revoked||item.total))lines.push(`・${device.label}: ${device.total}工程、完了${device.completed}、実行中${device.running}、要確認${device.attention}`);
+  if(report.people?.total)lines.push(`・人への依頼: ${report.people.total}件、回答${report.people.completed}、待機${report.people.waiting}、要確認${report.people.attention}`);
+  if(backlog.total){lines.push('','前日以前から残る要確認');for(const task of backlog.tasks)lines.push(`・${task.text}${task.summary?` — ${task.summary}`:''}`);if(backlog.total>backlog.tasks.length)lines.push(`・ほか${backlog.total-backlog.tasks.length}件はREIの画面で確認`);}
+  lines.push('','本日の仕事');
+  if(!report.tasks.length)lines.push('・記録なし');
+  for(const task of report.tasks)lines.push(`・[${labels[task.status]||task.status}] ${task.text}${task.summary?` — ${task.summary}`:''}`);
+  lines.push('','※ このREI Hubに登録された仕事のみを集計。端末の他用途の活動は含みません。');
+  return lines.join('\n');
+}
 function renderBriefing() {
   if (!state.report) return;
+  $('report-copy').disabled=false;
   const report = state.report;
   const units=state.data?.workers||[];
   const connected=units.filter(unit=>unit.connected).length;
@@ -185,6 +199,7 @@ function renderBriefing() {
 document.querySelectorAll('.rail-btn').forEach(button => button.onclick = () => setView(button.dataset.view));
 $('refresh').onclick = refresh;
 $('report-refresh').onclick = loadReport;
+$('report-copy').onclick=async()=>{if(!state.report)return;try{await navigator.clipboard.writeText(reportText(state.report,state.data?.workers||[]));$('report-copy-status').textContent='コピーしました';}catch{$('report-copy-status').textContent='コピーできませんでした。ブラウザのクリップボード許可を確認してください。';}};
 $('project-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type="submit"]');button.disabled=true;$('project-feedback').textContent='';try{const result=await request('/api/projects/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('project-name').value.trim(),objective:$('project-objective').value.trim()})});$('project-name').value='';$('project-objective').value='';state.selectedProject=result.project.id;await refresh();$('command-project').value=result.project.id;$('project-feedback').textContent='プロジェクトを作成しました';}catch(error){$('project-feedback').textContent=error.message;}finally{button.disabled=false;}};
 $('core-button').onclick = () => $('command-input').focus();
 $('command-form').onsubmit = async event => {
@@ -247,6 +262,8 @@ function showAuth() {
   state.report=null;
   state.reportLoadedAt=0;
   state.reportLoading=false;
+  $('report-copy').disabled=true;
+  $('report-copy-status').textContent='';
   state.mcpIntegrations=[];
   for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
   for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');

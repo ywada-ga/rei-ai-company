@@ -1,6 +1,6 @@
 # REI — ローカルで動くAI会社の司令室
 
-REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOSまたはWindowsを使えます。Web画面は中心PC上で動きます。クラウドやVercel、外部データベースは不要です。
+REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOS、Windows、Linuxを使えます。Web画面は中心PC上で動きます。クラウドやVercel、外部データベースは不要です。
 
 ## 必要なもの
 
@@ -35,9 +35,9 @@ node install-macos.mjs connector
 
 WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start` と `node connector.mjs join` を使えます。Windowsのログイン時にREI本体を自動起動する場合は `node install-windows.mjs hub` を実行します。Windowsの参加端末では `join` がConnectorを自動起動に登録します。OpenClaw CLIは[公式Windows手順](https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md)で用意してください。
 
-Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `node install-linux.mjs hub`、参加PCでは接続設定後に `node install-linux.mjs connector` を実行します。設定は `~/.config/systemd/user/` に保存され、ユーザーのログイン中に自動再起動します。ログアウト中も常駐させたい場合はOS側でユーザーサービスのlinger設定が必要です。
+Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `node install-linux.mjs hub` を実行します。参加PCで「かんたん端末追加」を使う場合、接続情報の保存と一緒にConnectorの自動起動を登録します。手動で接続設定した場合は `node install-linux.mjs connector` を実行します。設定は `~/.config/systemd/user/` に保存され、ユーザーのログイン中に自動再起動します。ログアウト中も常駐させたい場合はOS側でユーザーサービスのlinger設定が必要です。
 
-## Mac mini・Windows PCをかんたんに追加する（遠隔も可）
+## Mac mini・Windows・Linux PCをかんたんに追加する（遠隔も可）
 
 1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
 2. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。REIが接続URLを検出して入力欄へ入れます。Tailscale側でHTTPSを有効にする案内が出た場合は、その案内を完了してください。

@@ -40,8 +40,8 @@ async function join() {
     mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
     writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'rei'},null,2),{mode:0o600});
     chmodSync(configPath,0o600);
-    if(process.platform==='darwin'||process.platform==='win32') {
-      const installer=process.platform==='darwin'?'install-macos.mjs':'install-windows.mjs';
+    if(['darwin','win32','linux'].includes(process.platform)) {
+      const installer={darwin:'install-macos.mjs',win32:'install-windows.mjs',linux:'install-linux.mjs'}[process.platform];
       const installed=spawnSync(process.execPath,[path.join(root,installer),'connector'],{cwd:root,encoding:'utf8'});
       if(installed.status!==0)throw new Error(`端末は登録されましたが自動起動に失敗しました: ${installed.stderr||installed.stdout}`);
       console.log('接続完了。このPCのOpenClawがREIの仕事を受け取れます。');

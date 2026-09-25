@@ -46,5 +46,5 @@ export function parseOpenClawResult(output) {
   const answer=texts?.at(-1)||payload?.response||payload?.result?.text;
   if(typeof answer!=='string'||!answer.trim())throw new Error('OpenClawから回答を受け取れませんでした');
   if(/(?:^|\n)\s*⚠️\s*🛠️\s*(?:Bash|Tool) failed:/i.test(answer))throw new Error(`OpenClawの操作結果を確認してください: ${answer.slice(0,500)}`);
-  return answer.trim().slice(0,100000);
+  return answer.trim();
 }

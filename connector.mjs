@@ -84,6 +84,8 @@ function runOpenClaw(agent,job,devices) {
   return new Promise((resolve,reject)=>{
     const key=`agent:${agent}:rei-${job.kind}-${job.id}`;
     const child=spawnOpenClaw(agent,key,instruction,jobTimeout);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     let out='',err='',timedOut=false,killTimer;
     const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},jobTimeout*1000+15000);
     child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)child.kill('SIGTERM');});

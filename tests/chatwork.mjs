@@ -21,4 +21,11 @@ assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',child).status,'waiting
 const result=await pollChatwork(db,dir);
 assert.equal(result.received,1);
 assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',root).status,'completed');
+const nextRoot='00000000-0000-4000-8000-000000000003',nextChild='00000000-0000-4000-8000-000000000004';
+run(db,"INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)",nextRoot,'root','次の人に確認','running',Date.now());
+run(db,"INSERT INTO tasks(id,parent_id,kind,text,status,created_at) VALUES(?,?,?,?,?,?)",nextChild,nextRoot,'human','次の状況を教えてください','waiting_human',Date.now());
+let sent=0;
+globalThis.fetch=async()=>{sent++;await new Promise(resolve=>setTimeout(resolve,10));return {ok:true,json:async()=>({message_id:'sent-2'})};};
+await Promise.all([sendPendingHuman(db,dir),sendPendingHuman(db,dir)]);
+assert.equal(sent,1);
 console.log('PASS Chatwork send/reply correlation');

@@ -37,8 +37,8 @@ WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start`
 ## Mac mini・Windows PCをかんたんに追加する（遠隔も可）
 
 1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
-2. 中心PCで `tailscale serve --bg 4178` を一度実行します。表示された `https://...ts.net` のURLは同じTailscaleネットワーク内だけで開けます。初回はTailscale側でHTTPSを有効にする案内が出る場合があります。
-3. REIの **端末・設定 → かんたん端末追加** にPCの名前とそのURLを入力します。10分間だけ使える接続コードが表示されます。
+2. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。REIが接続URLを検出して入力欄へ入れます。Tailscale側でHTTPSを有効にする案内が出た場合は、その案内を完了してください。
+3. REIの **端末・設定 → かんたん端末追加** にPCの名前を入力します。10分間だけ使える接続コードが表示されます。
 4. 参加PCでは、画面に表示されたコマンドを実行し、接続URLとコードを入力します。OpenClaw CLIがあることを確認してから、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。
 
 各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
@@ -81,6 +81,8 @@ Google Workspaceの公式MCPは開発者向けプレビューです。Google Wor
 ## Chatworkで人に依頼する
 
 所有者が **端末・設定** からルームIDとAPIトークンを登録します。REIが人の担当と判断した子仕事は、そのルームへ `[REI:仕事ID]` 付きで投稿します。担当者は同じタグを含めて返信します。Hubが約30秒ごとに返信を照合し、元の仕事へ記録します。トークンはこのPC内で暗号化して保存します。接続設定がない場合、人への仕事は待機し、送信しません。
+
+Chatworkの設定前でも、所有者または管理者は **ミッション → 担当と進行状況** から人への回答を入力できます。回答は仕事の履歴に記録され、親仕事の完了判定にも反映されます。Chatworkへ送信済みの依頼も画面から回答を記録できます。
 
 ## 権限
 

@@ -67,6 +67,8 @@ try {
   const created=await api('command',{text:'テスト用の仕事をして',department:'operations',projectId:project.id});
   assert.equal(created.task.projectId,project.id);
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
+  assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
+  assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);
   assert.equal(plan.job.project.objective,'最初の成果を作る');
   await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);
   const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');

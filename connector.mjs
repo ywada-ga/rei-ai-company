@@ -58,10 +58,10 @@ function validateHub(value) {
 function loadPending() {try {const value=JSON.parse(readFileSync(pendingPath,'utf8'));return Array.isArray(value)?value:[];}catch{return [];}}
 function savePending(items) {const temp=`${pendingPath}.tmp`;writeFileSync(temp,JSON.stringify(items),{mode:0o600});renameSync(temp,pendingPath);}
 function runOpenClaw(agent,job,devices) {
-  const list=devices.map(d=>({id:d.id,label:d.label,capabilities:d.capabilities}));
+  const list=devices.map(d=>({id:d.id,label:d.label,agentName:d.agentName,online:d.online,capabilities:d.capabilities}));
   const projectContext=job.project?`所属プロジェクト: ${job.project.name}。達成目的: ${job.project.objective}。この目的を踏まえて依頼を進めてください。`:'';
   const instruction=job.kind==='plan'
-    ? `あなたはREIというAI秘書の計画担当です。実行はしないでください。次の依頼を1〜12個の仕事に分け、JSONだけで返してください。各工程は他の工程を待たずに着手できる独立した仕事にしてください。順序が必要な作業は同じ工程にまとめてください。形式: {"steps":[{"title":"短い仕事名","prompt":"担当AIへ渡す具体的な指示","department":"operations|research|production|sales|support|people","deviceId":"指定する場合は登録端末ID","human":false}]}。利用可能な端末: ${JSON.stringify(list)}。人への依頼が必要ならhuman:true。端末指定が不要ならdeviceIdを省略。実行できない部分は正直に記述。${projectContext}依頼: ${job.text}`
+    ? `あなたはREIというAI秘書の計画担当です。実行はしないでください。次の依頼を1〜12個の仕事に分け、JSONだけで返してください。各工程は他の工程を待たずに着手できる独立した仕事にしてください。順序が必要な作業は同じ工程にまとめてください。形式: {"steps":[{"title":"短い仕事名","prompt":"担当AIへ渡す具体的な指示","department":"operations|research|production|sales|support|people","deviceId":"指定する場合は登録端末ID","human":false}]}。登録端末（agentNameは担当AI名、onlineは現在の接続状態）: ${JSON.stringify(list)}。PCを指定する場合は現在接続中の端末を優先し、停止中の端末を選ぶときは待機が必要な理由を工程に書いてください。人への依頼が必要ならhuman:true。端末指定が不要ならdeviceIdを省略。実行できない部分は正直に記述。${projectContext}依頼: ${job.text}`
     : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。${projectContext}依頼: ${job.text}`;
   return new Promise((resolve,reject)=>{
     const key=`agent:${agent}:rei-${job.kind}-${job.id}`;

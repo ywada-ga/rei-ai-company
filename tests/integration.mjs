@@ -85,6 +85,9 @@ try {
   assert.equal((await api('bootstrap')).projects[0].name,'新規事業');
   const created=await api('command',{text:'テスト用の仕事をして',department:'operations',projectId:project.id});
   assert.equal(created.task.projectId,project.id);
+  const unknownClaim=await api('connector/claim',{},auth);
+  assert.equal(unknownClaim.job,null);
+  assert.equal(unknownClaim.updateRequired,true);
   await api('connector/heartbeat',{version:'0.3.0',capabilities:['openclaw','planning']},auth);
   const outdatedClaim=await api('connector/claim',{},auth);
   assert.equal(outdatedClaim.job,null);
@@ -178,7 +181,7 @@ try {
   await api('auth/logout',{});
   await api('auth/login',{username:'owner',password:'new-smoke-password-123'});
   assert.equal((await api('auth/me')).user.username,'owner');
-  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw','planning']},paired.token);
+  await api('connector/heartbeat',{agentName:'rei',version:currentVersion,capabilities:['openclaw','planning']},paired.token);
   assert.equal((await api('connector/claim',{},paired.token)).job,null);
   const testDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   testDb.prepare('UPDATE devices SET last_seen=0 WHERE id=?').run(enrolled.device.id);
@@ -268,7 +271,7 @@ try {
   assert.ok(reconciled.events.some(item=>item.type==='reconciled'));
   const secondReconcile=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freconcile',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:uncertainStep.id,resolution:'completed',note:'重複'})});
   assert.equal(secondReconcile.status,409);
-  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw','planning','execution']},auth);
+  await api('connector/heartbeat',{agentName:'rei',version:currentVersion,capabilities:['openclaw','planning','execution']},auth);
   const parallel=(await api('command',{text:'独立した二つの仕事'})).task;
   const parallelPlan=(await api('connector/claim',{},auth)).job;
   await api('connector/result',{taskId:parallelPlan.id,leaseId:parallelPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'独立した仕事A'},{prompt:'独立した仕事B'}]})},auth);
@@ -291,7 +294,7 @@ try {
   const planAfterRevoke=(await api(`tasks/detail/${interruptedPlanRoot.id}`));
   assert.equal(planAfterRevoke.task.status,'planning');
   assert.equal(planAfterRevoke.children[0].status,'ready');
-  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw','planning','execution']},auth);
+  await api('connector/heartbeat',{agentName:'rei',version:currentVersion,capabilities:['openclaw','planning','execution']},auth);
   const replacementPlan=(await api('connector/claim',{},auth)).job;
   assert.equal(replacementPlan.id,interruptedPlan.id);
   await api('connector/result',{taskId:replacementPlan.id,leaseId:replacementPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'解除後に実行する仕事',deviceId:enrolled.device.id}]})},auth);

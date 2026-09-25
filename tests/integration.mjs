@@ -93,6 +93,7 @@ try {
   const invite=await api('users/invite',{role:'requester'});
   await api('setup/complete',{token:invite.token,username:'requester',password:'requester-password-123'});
   await api('auth/login',{username:'requester',password:'requester-password-123'});
+  const requesterCookie=cookie;
   const forbiddenUsers=await fetch('http://127.0.0.1:4181/api?route=users%2Flist',{headers:{cookie}});
   assert.equal(forbiddenUsers.status,403);
   const blockedBackup=await fetch('http://127.0.0.1:4181/api?route=backup%2Fcreate',{method:'POST',headers:{cookie,'content-type':'application/json'},body:'{}'});
@@ -106,8 +107,12 @@ try {
   assert.equal(member.role,'requester');
   await api('users/role',{userId:member.id,role:'viewer'});
   assert.equal((await api('users/list')).users.find(user=>user.id===member.id).role,'viewer');
+  const viewerCommand=await fetch('http://127.0.0.1:4181/api?route=command',{method:'POST',headers:{cookie:requesterCookie,'content-type':'application/json'},body:JSON.stringify({text:'実行できない指示'})});
+  assert.equal(viewerCommand.status,403);
   await api('users/disable',{userId:member.id,disabled:true});
   assert.equal((await api('users/list')).users.find(user=>user.id===member.id).disabled,1);
+  const stoppedSession=await fetch('http://127.0.0.1:4181/api?route=auth%2Fme',{headers:{cookie:requesterCookie}});
+  assert.equal(stoppedSession.status,401);
   const disabledLogin=await fetch('http://127.0.0.1:4181/api?route=auth%2Flogin',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'requester',password:'requester-password-123'})});
   assert.equal(disabledLogin.status,401);
   await api('users/disable',{userId:member.id,disabled:false});

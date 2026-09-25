@@ -151,6 +151,6 @@ GitHubから更新するときは、実行中の仕事の確認・バックア�
 
 ## 実装と現状
 
-Web司令室、ログイン、役割、端末登録・解除、複数PC用Connector、OpenClaw計画・実行、結果集約、PC・人別の日次報告、Chatwork送受信、PCごとのMCP設定配信、macOS自動起動を実装しています。このPCのOpenClawとの通し確認は完了しています。**Mac mini 3台とChatworkは、接続先や資格情報をまだ受け取っていないため実機接続は未完了**です。ChatGPTデスクトップアプリの会話を直接操作する機能はありません。
+Web司令室、ログイン、役割、端末登録・解除、複数PC用Connector、OpenClaw計画・実行、結果集約、PC・人別の日次報告、Chatwork送受信、PCごとのMCP設定配信、macOS自動起動を実装しています。稼働報告では今日の件数と、前日以前から残る未解決の仕事を分けて表示します。このPCのOpenClawとの通し確認は完了しています。**Mac mini 3台とChatworkは、接続先や資格情報をまだ受け取っていないため実機接続は未完了**です。ChatGPTデスクトップアプリの会話を直接操作する機能はありません。
 
 開発・配布前の残課題は [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) に記録します。

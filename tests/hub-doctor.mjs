@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,13 @@ try {
   const healthy=await diagnose();
   assert.equal(healthy.code,0,healthy.output);
   assert.match(healthy.output,/最新のバックアップを検証しました/);
+  const manifestFile=path.join(backup,'manifest.json');
+  const manifest=JSON.parse(readFileSync(manifestFile,'utf8'));
+  manifest.createdAt=new Date(Date.now()-8*86400000).toISOString();
+  writeFileSync(manifestFile,JSON.stringify(manifest));
+  const old=await diagnose();
+  assert.equal(old.code,1,old.output);
+  assert.match(old.output,/8日前です/);
   writeFileSync(path.join(backup,'manifest.json'),'broken');
   const damaged=await diagnose();
   assert.equal(damaged.code,1);

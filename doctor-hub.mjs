@@ -39,8 +39,11 @@ if(ownerCount===1) {
     const folder=path.join(data,'backups');
     const latest=readdirSync(folder,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('rei-')).map(entry=>entry.name).sort().at(-1);
     if(!latest)throw new Error('no backup');
-    verifyBackup(path.join(folder,latest));
-    result(true,'最新のバックアップを検証しました');
+    const verified=verifyBackup(path.join(folder,latest));
+    const createdAt=Date.parse(verified.createdAt);
+    if(!Number.isFinite(createdAt)||createdAt>Date.now()+300000)throw new Error('invalid backup time');
+    const ageDays=Math.floor((Date.now()-createdAt)/86400000);
+    result(ageDays<7,ageDays<7?'最新のバックアップを検証しました':`最新のバックアップは${ageDays}日前です。新しいバックアップを作成してください`);
   } catch {result(false,'有効なバックアップを確認できません。REI画面でバックアップを作成してください');}
 }
 console.log(problems?`中心PCの診断完了: ${problems}件を確認してください`:`中心PCの診断完了: 正常です（REI ${version}）`);

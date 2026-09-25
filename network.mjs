@@ -23,14 +23,14 @@ export function networkStatus(command=runTailscale,port=Number(process.env.REI_P
   if(serve.status!==0)return {state:'error',url:null};
   let config;
   try {config=JSON.parse(serve.stdout);}catch{return {state:'error',url:null};}
-  const hostPort=`${host}:443`,handler=config?.Web?.[hostPort]?.Handlers?.['/'];
+  const hostPort=`${host}:443`,handlers=config?.Web?.[hostPort]?.Handlers,handler=handlers?.['/'];
   let active=false;
   try {
     const target=new URL(handler?.Proxy);
     active=target.protocol==='http:'&&['127.0.0.1','localhost'].includes(target.hostname)&&Number(target.port)===port&&target.pathname==='/'&&config?.TCP?.['443']?.HTTPS===true;
   } catch {}
   if(config?.AllowFunnel?.[hostPort]===true)return {state:'public',url:null};
-  if(handler&&!active)return {state:'conflict',url:null};
+  if((handlers&&Object.keys(handlers).some(route=>route!=='/'))||(config?.TCP?.['443']&&!active)||handler&&!active)return {state:'conflict',url:null};
   return {state:active?'connected':'ready',url:active?`https://${host}`:null};
 }
 export function enableServe(command=runTailscale,port=Number(process.env.REI_PORT||4178)) {

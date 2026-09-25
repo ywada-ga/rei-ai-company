@@ -17,7 +17,8 @@ assert.deepEqual(enableServe(command),{state:'connected',url:'https://hub.exampl
 assert.ok(calls.includes('serve --bg 4178'));
 assert.equal(networkStatus(command).state,'connected');
 servedPath='/other';
-assert.equal(networkStatus(command).state,'ready','REI以外のパスを案内しない');
+assert.equal(networkStatus(command).state,'conflict','REI以外のパスを上書きしない');
+assert.throws(()=>enableServe(command),/別のサービス/);
 servedPath='/';
 publicFunnel=true;
 assert.equal(networkStatus(command).state,'public','Funnel公開を内部接続として扱わない');
@@ -26,6 +27,11 @@ publicFunnel=false;
 servedPort=9999;
 assert.equal(networkStatus(command).state,'conflict');
 assert.throws(()=>enableServe(command),/別のサービス/);
+const tcpOnly=args=>args[0]==='status'
+  ?{status:0,stdout:JSON.stringify({BackendState:'Running',Self:{DNSName:'hub.example.ts.net.'}})}
+  :{status:0,stdout:JSON.stringify({TCP:{'443':{TCPForward:'127.0.0.1:9000'}}})};
+assert.equal(networkStatus(tcpOnly).state,'conflict','443番の別用途を上書きしない');
+assert.throws(()=>enableServe(tcpOnly),/別のサービス/);
 served=false;
 assert.equal(networkStatus(command,4184).state,'ready');
 assert.deepEqual(enableServe(command,4184),{state:'connected',url:'https://hub.example.ts.net'});

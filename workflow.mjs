@@ -75,14 +75,18 @@ export function sweep(db) {
     else {run(db,"UPDATE tasks SET status='needs_review',error='担当端末との通信が途切れ、実行結果を確認できません',finished_at=?,lease_id=NULL WHERE id=?",now(),task.id);event(db,task.id,'system','needs_review','実行結果不明');if(task.kind==='execute') finishRoot(db,task.parent_id);if(task.kind==='plan')run(db,"UPDATE tasks SET status='needs_review',error='計画担当との通信が途切れました',finished_at=? WHERE id=?",now(),task.parent_id);}
   }
 }
-function parsePlan(raw,original,devices) {
+function parsePlan(raw,devices) {
   let parsed;
   try {parsed=JSON.parse(String(raw).trim().replace(/^```(?:json)?\s*|\s*```$/g,''));} catch {}
-  if(!Array.isArray(parsed?.steps)||!parsed.steps.length||parsed.steps.some(step=>!step||typeof step!=='object'||!String(step.prompt||step.title||'').trim()))return null;
-  return parsed.steps.slice(0,12).map(step=>({
-    text:String(step.prompt||step.title||original).slice(0,8000),
+  if(!Array.isArray(parsed?.steps)||!parsed.steps.length||parsed.steps.length>12||parsed.steps.some(step=>{
+    if(!step||typeof step!=='object')return true;
+    const prompt=step.prompt||step.title;
+    return typeof prompt!=='string'||!prompt.trim()||prompt.length>8000||(step.deviceId!=null&&step.deviceId!==''&&!devices.some(device=>device.id===step.deviceId));
+  }))return null;
+  return parsed.steps.map(step=>({
+    text:(step.prompt||step.title).trim(),
     department:departments.some(d=>d.id===step.department)?step.department:'operations',
-    device_id:devices.some(d=>d.id===step.deviceId)?step.deviceId:null,
+    device_id:step.deviceId||null,
     kind:step.human===true?'human':'execute'
   }));
 }
@@ -100,9 +104,9 @@ export function finishJob(db,device,input) {
   if(!job) return {ok:false,duplicate:true};
   const result=String(input.result||'').slice(0,100000);
   const devices=job.kind==='plan'?all(db,'SELECT id,label FROM devices WHERE revoked=0'):[];
-  const steps=job.kind==='plan'&&input.success?parsePlan(result,job.text,devices):null;
+  const steps=job.kind==='plan'&&input.success?parsePlan(result,devices):null;
   const success=!!input.success&&(job.kind!=='plan'||!!steps);
-  const error=success?'':job.kind==='plan'&&input.success&&!steps?'計画の形式を読み取れませんでした。計画だけ再実行してください':String(input.error||'').slice(0,4000);
+  const error=success?'':job.kind==='plan'&&input.success&&!steps?'計画の形式または担当PCを確認できませんでした。計画だけ再実行してください':String(input.error||'').slice(0,4000);
   transaction(db,()=>{
     run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_until=0 WHERE id=?',success?'completed':'failed',result,error,now(),job.id);
     event(db,job.id,device.label,success?'completed':'failed',success?'結果を受信':error);

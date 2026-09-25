@@ -183,6 +183,18 @@ try {
   assert.equal(malformedDetail.children.length,1);
   assert.equal(malformedDetail.canRetryPlan,true);
   assert.equal((await api('connector/claim',{},paired.token)).job,null);
+  const unknownDevice=(await api('command',{text:'存在しないPCへの割当'})).task;
+  const unknownPlan=(await api('connector/claim',{},paired.token)).job;
+  await api('connector/result',{taskId:unknownPlan.id,leaseId:unknownPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'指定PCだけで処理',deviceId:'00000000-0000-4000-8000-000000000000'}]})},paired.token);
+  const unknownDetail=await api(`tasks/detail/${unknownDevice.id}`);
+  assert.equal(unknownDetail.task.status,'needs_review');
+  assert.equal(unknownDetail.children.length,1);
+  assert.match(unknownDetail.task.error,/担当PC/);
+  const tooMany=(await api('command',{text:'工程数の上限確認'})).task;
+  const tooManyPlan=(await api('connector/claim',{},paired.token)).job;
+  await api('connector/result',{taskId:tooManyPlan.id,leaseId:tooManyPlan.lease_id,success:true,result:JSON.stringify({steps:Array.from({length:13},(_,index)=>({prompt:`工程${index+1}`}))})},paired.token);
+  assert.equal((await api(`tasks/detail/${tooMany.id}`)).children.length,1);
+  assert.equal((await api(`tasks/detail/${tooMany.id}`)).task.status,'needs_review');
   const uncertain=(await api('command',{text:'通信切断後の結果確認'})).task;
   const uncertainPlan=(await api('connector/claim',{},paired.token)).job;
   await api('connector/result',{taskId:uncertainPlan.id,leaseId:uncertainPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'結果を確認する作業',deviceId:paired.device.id}]})},paired.token);

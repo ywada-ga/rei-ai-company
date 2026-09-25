@@ -44,6 +44,14 @@ else {
       const found=Array.isArray(list)&&list.some(agent=>agent.id===config.agent);
       result(found,`OpenClawの担当AI「${config.agent}」`);
       if(found) {
+        try {
+          const model=runOpenClawCli(['models','status','--agent',config.agent,'--json']);
+          if(model.status!==0)throw new Error('model status unavailable');
+          const details=JSON.parse(model.stdout);
+          const configured=typeof details.resolvedDefault==='string'&&details.resolvedDefault.length>0&&Array.isArray(details.auth?.missingProvidersInUse);
+          const missing=configured?details.auth.missingProvidersInUse:[];
+          result(configured&&missing.length===0,configured&&missing.length===0?`OpenClawのモデル設定を確認しました（${details.resolvedDefault}）`:'OpenClawのモデル認証を確認してください');
+        } catch {result(false,'OpenClawのモデル設定を確認できません');}
         const settings=runOpenClawCli(['config','get','agents']);
         if(settings.status!==0)throw new Error('agent settings unavailable');
         const configured=JSON.parse(settings.stdout);

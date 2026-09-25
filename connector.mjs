@@ -86,12 +86,13 @@ async function main() {
   }
   let lastHeartbeat=0;
   let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
+  const heartbeatPayload=()=>({agentName:config.agent,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
   let pending=loadPending();
   console.log(`REI Connector: ${config.hub} / agent=${config.agent}`);
   while(true) {
     try {
       if(Date.now()-lastHeartbeat>15000) {
-        const heartbeat=await api('connector/heartbeat',{agentName:config.agent,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
+        const heartbeat=await api('connector/heartbeat',heartbeatPayload());
         lastHeartbeat=Date.now();
         const integrations=heartbeat.integrations||[],signature=JSON.stringify(integrations);
         mcpDefinitions=integrations;
@@ -119,10 +120,11 @@ async function main() {
       if(!job) {if(process.argv.includes('--once'))break;await sleep(3000);continue;}
       console.log(`${job.kind} ${job.id}: ${job.text.slice(0,80)}`);
       const renewal=setInterval(()=>void api('connector/renew',{taskId:job.id,leaseId:job.lease_id}).catch(e=>console.error('リース更新:',e.message)),30000);
+      const keepAlive=setInterval(()=>void api('connector/heartbeat',heartbeatPayload()).then(()=>{lastHeartbeat=Date.now();}).catch(e=>console.error('心拍更新:',e.message)),10000);
       let result='',error='',success=false;
       try {result=await runOpenClaw(config.agent,job,devices);success=true;}
       catch(e) {error=e.message;}
-      finally {clearInterval(renewal);}
+      finally {clearInterval(renewal);clearInterval(keepAlive);}
       pending.push({taskId:job.id,leaseId:job.lease_id,success,result,error});savePending(pending);
       const ack=await api('connector/result',pending[0]);
       console.log(`${job.id}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.ok?'報告完了':'結果照合が必要'}`);

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,5 +19,9 @@ if(process.platform==='win32') {
     assert.match(script,/REI_PORT=4188/);
     assert.match(script,/REI_JOB_TIMEOUT_SECONDS=3600/);
   }
+  const invalidStartup=path.join(startup,'invalid-timeout');
+  const badTimeout=spawnSync(process.execPath,['install-windows.mjs','connector'],{cwd:root,env:{...process.env,REI_STARTUP_DIR:invalidStartup,REI_JOB_TIMEOUT_SECONDS:'0'},encoding:'utf8'});
+  assert.notEqual(badTimeout.status,0);
+  assert.equal(existsSync(invalidStartup),false);
   console.log('PASS Windows startup registration');
 } else console.log('SKIP Windows startup registration on this OS');

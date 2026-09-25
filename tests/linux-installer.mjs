@@ -19,6 +19,10 @@ if(process.platform==='linux') {
     assert.match(unit,/REI_PORT=4188/);
     assert.match(unit,/REI_JOB_TIMEOUT_SECONDS=3600/);
   }
+  const invalidUnits=path.join(units,'invalid-timeout');
+  const badTimeout=spawnSync(process.execPath,['install-linux.mjs','connector'],{cwd:root,encoding:'utf8',env:{...process.env,REI_SYSTEMD_DIR:invalidUnits,REI_JOB_TIMEOUT_SECONDS:'0'}});
+  assert.notEqual(badTimeout.status,0);
+  assert.equal(existsSync(invalidUnits),false);
   const project=mkdtempSync(path.join(os.tmpdir(),'rei-linux-join-'));
   const bin=path.join(project,'bin');mkdirSync(bin);
   writeFileSync(path.join(bin,'package.json'),'{"type":"commonjs"}');

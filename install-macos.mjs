@@ -4,6 +4,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
+import { jobTimeoutSeconds } from './openclaw-process.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const data=process.env.REI_DATA_DIR||path.join(root,'data');
@@ -51,7 +52,7 @@ const rl=createInterface({input:process.stdin,output:process.stdout});
 try {
   const mode=process.argv[2];
   if(mode==='hub') await install('ai.rei.hub',process.execPath,['hub.mjs'],path.join(data,'hub.log'));
-  else if(mode==='connector') await install('ai.rei.connector',process.execPath,['connector.mjs'],path.join(data,'connector.log'));
+  else if(mode==='connector') {jobTimeoutSeconds();await install('ai.rei.connector',process.execPath,['connector.mjs'],path.join(data,'connector.log'));}
   else if(mode==='tunnel') {
     const target=(await rl.question('中心PCのSSH接続先（例: user@192.168.1.10 またはTailscale名）: ')).trim();
     if(!/^[A-Za-z0-9_.@:-]+$/.test(target))throw new Error('SSH接続先の形式が正しくありません');

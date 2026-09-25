@@ -24,6 +24,9 @@ if(process.platform==='darwin') {
     assert.match(plist,/<key>REI_JOB_TIMEOUT_SECONDS<\/key><string>3600<\/string>/);
     assert.equal(statSync(path.join(agents,`ai.rei.${mode}.plist`)).mode&0o777,0o600);
   }
+  const badTimeout=spawnSync(process.execPath,['install-macos.mjs','connector'],{cwd:root,encoding:'utf8',env:{...process.env,REI_LAUNCH_AGENTS_DIR:path.join(temp,'invalid-timeout-agents'),REI_JOB_TIMEOUT_SECONDS:'0'}});
+  assert.notEqual(badTimeout.status,0);
+  assert.equal(existsSync(path.join(temp,'invalid-timeout-agents')),false);
   const failedUpdate=spawnSync(process.execPath,['install-macos.mjs','hub'],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:agents,REI_DATA_DIR:data,REI_PORT:'4199',REI_TEST_FAIL_PORT:'<string>4199</string>'}});
   assert.notEqual(failedUpdate.status,0);
   assert.match(readFileSync(path.join(agents,'ai.rei.hub.plist'),'utf8'),/<key>REI_PORT<\/key><string>4188<\/string>/);

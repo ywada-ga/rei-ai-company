@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkOpenClaw, runOpenClawCli } from './openclaw-process.mjs';
+import { checkOpenClaw, runOpenClawCli, jobTimeoutSeconds } from './openclaw-process.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
@@ -10,6 +10,8 @@ let problems=0;
 function result(ok,message) {console.log(`${ok?'OK':'要確認'}  ${message}`);if(!ok)problems++;}
 
 result(Number(process.versions.node.split('.')[0])>=24,`Node.js ${process.versions.node}（24以降が必要）`);
+try {result(true,`OpenClawの1工程の実行期限は${jobTimeoutSeconds()}秒です`);}
+catch {result(false,'OpenClawの実行期限の設定を確認してください（60〜7200秒）');}
 try {
   const openclaw=checkOpenClaw();
   const ready=!openclaw.error&&openclaw.status===0;

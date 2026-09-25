@@ -2,10 +2,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { jobTimeoutSeconds } from './openclaw-process.mjs';
 
 if(process.platform!=='win32')throw new Error('このインストーラーはWindows用です');
 const mode=process.argv[2];
 if(!['hub','connector'].includes(mode))throw new Error('使い方: node install-windows.mjs hub | connector');
+if(mode==='connector')jobTimeoutSeconds();
 const appData=process.env.APPDATA;
 if(!appData)throw new Error('WindowsのAPPDATAが見つかりません');
 const root=path.dirname(fileURLToPath(import.meta.url));

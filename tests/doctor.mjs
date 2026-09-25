@@ -31,7 +31,13 @@ try {
   assert.match(healthy.output,/端末トークンは中心PCで有効です/);
   assert.match(healthy.output,/REIの版は一致しています/);
   assert.match(healthy.output,/直接送信・管理操作は制限されています/);
+  assert.match(healthy.output,/実行期限は1800秒/);
   assert.doesNotMatch(healthy.output,/secret-do-not-print/);
+  env.REI_JOB_TIMEOUT_SECONDS='0';
+  const invalidTimeout=await doctor();
+  assert.equal(invalidTimeout.code,1);
+  assert.match(invalidTimeout.output,/実行期限の設定を確認してください/);
+  delete env.REI_JOB_TIMEOUT_SECONDS;
   env.REI_TEST_UNSAFE='1';
   const unsafe=await doctor();
   assert.equal(unsafe.code,1);

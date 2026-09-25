@@ -3,10 +3,12 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { jobTimeoutSeconds } from './openclaw-process.mjs';
 
 if(process.platform!=='linux')throw new Error('このインストーラーはLinux用です');
 const mode=process.argv[2];
 if(!['hub','connector'].includes(mode))throw new Error('使い方: node install-linux.mjs hub | connector');
+if(mode==='connector')jobTimeoutSeconds();
 const root=path.dirname(fileURLToPath(import.meta.url));
 const units=process.env.REI_SYSTEMD_DIR||path.join(os.homedir(),'.config','systemd','user');
 const name=mode==='hub'?'rei-hub.service':'rei-connector.service';

@@ -32,6 +32,10 @@ function restrictAgent(command,id) {
   const target=Array.isArray(config.list)?config.list.findIndex(agent=>agent.id===id):-1;
   const entry=target>=0?config.list[target]:config.entries?.[id];
   if(!entry)throw new Error(`${id} エージェントの設定を確認できません`);
+  if(!entry.tools?.profile) {
+    const key=target>=0?`agents.list[${target}].tools.profile`:`agents.entries.${id}.tools.profile`;
+    checked(command,['config','set',key,'coding']);
+  }
   const required=['message','sessions_send','gateway'];
   const deny=[...new Set([...(entry.tools?.deny||[]),...required])];
   if(deny.length!==(entry.tools?.deny||[]).length) {

@@ -88,6 +88,13 @@ async function main() {
   let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
   const heartbeatPayload=()=>({agentName:config.agent,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
   let pending=loadPending();
+  async function submitPending() {
+    const item=pending[0];
+    const ack=await api('connector/result',item);
+    if(!ack.ok)throw new Error(`${item.taskId}: Hubが結果を受理できませんでした。送信待ち記録を保持しています`);
+    console.log(`${item.taskId}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.alreadyRecorded?'保存済みの結果を再送':'報告完了'}`);
+    pending.shift();savePending(pending);
+  }
   console.log(`REI Connector: ${config.hub} / agent=${config.agent}`);
   while(true) {
     try {
@@ -109,10 +116,7 @@ async function main() {
         }
       }
       if(pending.length) {
-        const item=pending[0];
-        const ack=await api('connector/result',item);
-        console.log(`${item.taskId}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.ok?'保存済みの結果を再送':'結果の手動照合が必要'}`);
-        pending.shift();savePending(pending);
+        await submitPending();
         if(process.argv.includes('--once'))break;
         continue;
       }
@@ -126,9 +130,7 @@ async function main() {
       catch(e) {error=e.message;}
       finally {clearInterval(renewal);clearInterval(keepAlive);}
       pending.push({taskId:job.id,leaseId:job.lease_id,success,result,error});savePending(pending);
-      const ack=await api('connector/result',pending[0]);
-      console.log(`${job.id}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.ok?'報告完了':'結果照合が必要'}`);
-      pending.shift();savePending(pending);
+      await submitPending();
       if(process.argv.includes('--once'))break;
     } catch(e) {console.error('接続/実行:',e.message);if(process.argv.includes('--once'))process.exitCode=1;else await sleep(5000);if(process.argv.includes('--once'))break;}
   }

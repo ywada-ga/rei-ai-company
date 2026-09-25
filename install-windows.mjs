@@ -12,9 +12,10 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const entry=path.join(root,mode==='hub'?'hub.mjs':'connector.mjs');
 const startup=process.env.REI_STARTUP_DIR||path.join(appData,'Microsoft','Windows','Start Menu','Programs','Startup');
 const safe=value=>{if(/["%\r\n]/.test(value))throw new Error('インストール先のパスに使用できない文字が含まれます');return `"${value}"`;};
+const environment=['REI_DATA_DIR','REI_CONNECTOR_CONFIG','REI_PORT'].filter(key=>process.env[key]).map(key=>`set ${safe(`${key}=${process.env[key]}`)}\r\n`).join('');
 mkdirSync(startup,{recursive:true});
 const file=path.join(startup,mode==='hub'?'REI Hub.cmd':'REI Connector.cmd');
-writeFileSync(file,`@echo off\r\ncd /d ${safe(root)}\r\nstart "" /min ${safe(process.execPath)} ${safe(entry)}\r\n`);
+writeFileSync(file,`@echo off\r\ncd /d ${safe(root)}\r\n${environment}start "" /min ${safe(process.execPath)} ${safe(entry)}\r\n`);
 if(process.env.REI_NO_START!=='1') {
   const child=spawn(process.execPath,[entry],{cwd:root,detached:true,stdio:'ignore',windowsHide:true});
   child.unref();

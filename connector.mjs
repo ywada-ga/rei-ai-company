@@ -8,7 +8,7 @@ import { syncMcp, probeMcp } from './mcp-sync.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(root,'data','connector.json');
+const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
 const pendingPath=path.join(path.dirname(configPath),'pending-results.json');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function setup() {

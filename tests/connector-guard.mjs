@@ -13,4 +13,9 @@ const result=spawnSync(process.execPath,['connector.mjs','join','http://127.0.0.
 assert.notEqual(result.status,0);
 assert.match(result.stderr,/既にREIの接続設定/);
 assert.equal(readFileSync(config,'utf8'),original);
+const restoredData=mkdtempSync(path.join(os.tmpdir(),'rei-restored-'));
+writeFileSync(path.join(restoredData,'connector.json'),JSON.stringify({hub:'http://example.com',token:'restored-token',agent:'rei'}));
+const restored=spawnSync(process.execPath,['connector.mjs','--once'],{cwd:root,env:{...process.env,REI_CONNECTOR_CONFIG:'',REI_DATA_DIR:restoredData},encoding:'utf8',timeout:10000});
+assert.notEqual(restored.status,0);
+assert.match(restored.stderr,/HubはHTTPS/);
 console.log('PASS existing connector configuration is preserved');

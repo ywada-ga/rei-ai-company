@@ -6,10 +6,11 @@ import { createInterface } from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const data=path.join(root,'data');
+const data=process.env.REI_DATA_DIR||path.join(root,'data');
 const agents=path.join(os.homedir(),'Library','LaunchAgents');
 const escapeXml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const string=value=>`<string>${escapeXml(value)}</string>`;
+const environment=Object.fromEntries(['PATH','REI_DATA_DIR','REI_CONNECTOR_CONFIG','REI_PORT'].filter(key=>process.env[key]).map(key=>[key,process.env[key]]));
 async function install(label,program,args,log) {
   mkdirSync(agents,{recursive:true});mkdirSync(data,{recursive:true,mode:0o700});
   const file=path.join(agents,`${label}.plist`);
@@ -21,7 +22,7 @@ async function install(label,program,args,log) {
 <key>WorkingDirectory</key>${string(root)}
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>StandardOutPath</key>${string(log)}<key>StandardErrorPath</key>${string(log)}
-<key>EnvironmentVariables</key><dict><key>PATH</key>${string(process.env.PATH||'/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin')}</dict>
+<key>EnvironmentVariables</key><dict>${Object.entries({PATH:'/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',...environment}).map(([key,value])=>`<key>${key}</key>${string(value)}`).join('')}</dict>
 </dict></plist>`;
   writeFileSync(file,plist,{mode:0o600});chmodSync(file,0o600);
   const target=`gui/${process.getuid()}/${label}`;

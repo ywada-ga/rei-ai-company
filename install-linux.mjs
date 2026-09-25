@@ -12,6 +12,7 @@ const units=process.env.REI_SYSTEMD_DIR||path.join(os.homedir(),'.config','syste
 const name=mode==='hub'?'rei-hub.service':'rei-connector.service';
 const entry=path.join(root,mode==='hub'?'hub.mjs':'connector.mjs');
 const quote=value=>{if(/["%\\\r\n]/.test(value))throw new Error('インストール先のパスに使用できない文字が含まれます');return `"${value}"`;};
+const environment=['REI_DATA_DIR','REI_CONNECTOR_CONFIG','REI_PORT'].filter(key=>process.env[key]).map(key=>`Environment=${quote(`${key}=${process.env[key]}`)}`).join('\n');
 mkdirSync(units,{recursive:true,mode:0o700});
 const file=path.join(units,name);
 const unit=`[Unit]
@@ -23,6 +24,7 @@ Type=simple
 WorkingDirectory=${quote(root)}
 ExecStart=${quote(process.execPath)} ${quote(entry)}
 Environment=${quote(`PATH=${process.env.PATH||'/usr/local/bin:/usr/bin:/bin'}`)}
+${environment}
 Restart=always
 RestartSec=5
 

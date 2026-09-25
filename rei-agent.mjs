@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,8 +13,31 @@ const instructions={
 
 function checked(command,args) {
   const result=command(args);
-  if(result.error||result.status!==0)throw new Error(`OpenClawのREI専用エージェントを設定できません: ${String(result.stderr||result.error?.message||result.stdout||'').slice(-350)}`);
+  if(result.error||result.status!==0)throw new Error(`OpenClawをREI用に設定できません: ${String(result.stderr||result.error?.message||result.stdout||'').slice(-350)}`);
   return String(result.stdout||'');
+}
+function backupConfig(root,command,name) {
+  const configFile=checked(command,['config','file']).trim().replace(/^~(?=\/)/,os.homedir());
+  const backupDir=path.join(root,'data','private-backups');
+  mkdirSync(backupDir,{recursive:true,mode:0o700});
+  if(existsSync(configFile)) {const backup=path.join(backupDir,name);if(!existsSync(backup)){copyFileSync(configFile,backup);chmodSync(backup,0o600);}}
+}
+function writeInstructions(workspace,overwrite) {
+  mkdirSync(workspace,{recursive:true,mode:0o700});
+  for(const [name,content] of Object.entries(instructions)) {const file=path.join(workspace,name);if(overwrite||!existsSync(file))writeFileSync(file,content,{mode:0o600});}
+  rmSync(path.join(workspace,'BOOTSTRAP.md'),{force:true});
+}
+function restrictAgent(command,id) {
+  const config=JSON.parse(checked(command,['config','get','agents']));
+  const target=Array.isArray(config.list)?config.list.findIndex(agent=>agent.id===id):-1;
+  const entry=target>=0?config.list[target]:config.entries?.[id];
+  if(!entry)throw new Error(`${id} エージェントの設定を確認できません`);
+  const required=['message','sessions_send','gateway'];
+  const deny=[...new Set([...(entry.tools?.deny||[]),...required])];
+  if(deny.length!==(entry.tools?.deny||[]).length) {
+    const key=target>=0?`agents.list[${target}].tools.deny`:`agents.entries.${id}.tools.deny`;
+    checked(command,['config','set',key,JSON.stringify(deny),'--strict-json']);
+  }
 }
 export function ensureReiAgent(root,command=runOpenClawCli) {
   const workspace=path.join(root,'data','openclaw-workspace');
@@ -22,31 +45,34 @@ export function ensureReiAgent(root,command=runOpenClawCli) {
   const existing=agents.find(agent=>agent.id==='rei');
   if(existing&&path.resolve(existing.workspace||'')!==path.resolve(workspace))throw new Error('既存のreiエージェントは別の用途で使われています。REI用の名前を変更してから再試行してください');
   if(!existing) {
-    const configFile=checked(command,['config','file']).trim().replace(/^~(?=\/)/,os.homedir());
-    const backupDir=path.join(root,'data','private-backups');
-    mkdirSync(backupDir,{recursive:true,mode:0o700});
-    if(existsSync(configFile)) {const backup=path.join(backupDir,'openclaw-before-rei.json');if(!existsSync(backup)){copyFileSync(configFile,backup);chmodSync(backup,0o600);}}
+    backupConfig(root,command,'openclaw-before-rei.json');
     checked(command,['agents','add','rei','--workspace',workspace,'--non-interactive','--json']);
-    mkdirSync(workspace,{recursive:true,mode:0o700});
-    for(const [name,content] of Object.entries(instructions))writeFileSync(path.join(workspace,name),content,{mode:0o600});
-    rmSync(path.join(workspace,'BOOTSTRAP.md'),{force:true});
+    writeInstructions(workspace,true);
     checked(command,['agents','set-identity','--agent','rei','--identity-file',path.join(workspace,'IDENTITY.md'),'--json']);
   }
-  const config=JSON.parse(checked(command,['config','get','agents']));
-  const target=Array.isArray(config.list)?config.list.findIndex(agent=>agent.id==='rei'):-1;
-  const entry=target>=0?config.list[target]:config.entries?.rei;
-  if(!entry)throw new Error('REI専用エージェントの設定を確認できません');
-  const required=['message','sessions_send','gateway'];
-  const deny=[...new Set([...(entry.tools?.deny||[]),...required])];
-  if(deny.length!==(entry.tools?.deny||[]).length) {
-    const key=target>=0?`agents.list[${target}].tools.deny`:'agents.entries.rei.tools.deny';
-    checked(command,['config','set',key,JSON.stringify(deny),'--strict-json']);
-  }
+  restrictAgent(command,'rei');
   checked(command,['config','validate']);
   return {agent:'rei',workspace,created:!existing};
 }
+export function reuseMainAgent(root,command=runOpenClawCli) {
+  const workspace=path.join(root,'data','openclaw-main-workspace');
+  const agents=JSON.parse(checked(command,['agents','list','--json']));
+  if(!agents.some(agent=>agent.id==='main'))throw new Error('既存のOpenClaw mainが見つかりません');
+  backupConfig(root,command,'openclaw-before-main-repurpose.json');
+  writeInstructions(workspace,false);
+  const config=JSON.parse(checked(command,['config','get','agents']));
+  const target=Array.isArray(config.list)?config.list.findIndex(agent=>agent.id==='main'):-1;
+  if(target>=0)checked(command,['config','set',`agents.list[${target}].workspace`,workspace]);
+  else if(config.entries?.main)checked(command,['config','set','agents.entries.main.workspace',workspace]);
+  else throw new Error('mainの設定形式が未対応です。既存設定は変更していません');
+  checked(command,['agents','set-identity','--agent','main','--identity-file',path.join(workspace,'IDENTITY.md'),'--json']);
+  restrictAgent(command,'main');
+  checked(command,['config','validate']);
+  return {agent:'main',workspace};
+}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
-  if(process.argv[2]!=='setup')throw new Error('使い方: node rei-agent.mjs setup');
-  const result=ensureReiAgent(path.dirname(fileURLToPath(import.meta.url)));
-  console.log(result.created?'REI専用エージェントを作成しました':'REI専用エージェントは準備済みです');
+  const root=path.dirname(fileURLToPath(import.meta.url));
+  if(process.argv[2]==='setup') {const result=ensureReiAgent(root);console.log(result.created?'REI専用エージェントを作成しました':'REI専用エージェントは準備済みです');}
+  else if(process.argv[2]==='reuse-main') {reuseMainAgent(root);console.log('既存のOpenClaw mainをREI用に設定しました');}
+  else throw new Error('使い方: node rei-agent.mjs setup | reuse-main');
 }

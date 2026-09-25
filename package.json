@@ -8,6 +8,7 @@
     "start": "node hub.mjs",
     "connector": "node connector.mjs",
     "agent:setup": "node rei-agent.mjs setup",
+    "agent:reuse-main": "node rei-agent.mjs reuse-main",
     "test": "node tests/integration.mjs && node tests/backup.mjs && node tests/network.mjs && node tests/chatwork.mjs && node tests/rei-agent.mjs && node tests/openclaw-process.mjs && node tests/mcp-sync.mjs && node tests/mcp-presets.mjs && node tests/windows-installer.mjs",
     "test:live": "node tests/live-openclaw.mjs",
     "check": "node --check hub.mjs && node --check connector.mjs && node --check rei-agent.mjs && node --check openclaw-process.mjs && node --check mcp-sync.mjs && node --check storage.mjs && node --check security.mjs && node --check workflow.mjs && node --check backup.mjs && node --check network.mjs && node --check chatwork.mjs && node --check install-macos.mjs && node --check install-windows.mjs && node --check public/app.js && node --check public/mcp-presets.js"

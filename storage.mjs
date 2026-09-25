@@ -12,6 +12,7 @@ export function openStorage(root) {
     CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS invites(hash TEXT PRIMARY KEY, role TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, label TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, planner INTEGER NOT NULL DEFAULT 0, capabilities TEXT NOT NULL DEFAULT '[]', last_seen INTEGER NOT NULL DEFAULT 0, revoked INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS pairings(hash TEXT PRIMARY KEY, label TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, parent_id TEXT REFERENCES tasks(id), kind TEXT NOT NULL, text TEXT NOT NULL, department TEXT NOT NULL DEFAULT 'operations', status TEXT NOT NULL, device_id TEXT REFERENCES devices(id), result TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', lease_id TEXT, lease_until INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, created_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, started_at INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS tasks_queue ON tasks(status,kind,created_at);
     CREATE INDEX IF NOT EXISTS tasks_parent ON tasks(parent_id);

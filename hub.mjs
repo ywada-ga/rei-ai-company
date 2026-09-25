@@ -53,6 +53,21 @@ async function api(req,res,route) {
     return send(res,200,{user:{id:user.id,username:user.username,role:user.role}});
   }
   if(route==='auth/logout'&&req.method==='POST') {const raw=cookies(req).rei_session;if(raw)run(db,'DELETE FROM sessions WHERE hash=?',hash(raw));setCookie(res,'',0,isSecure(req));return send(res,200,{ok:true});}
+  if(route==='connector/pair'&&req.method==='POST') {
+    const data=await body(req),code=String(data.code||'').trim();
+    if(!/^[A-Za-z0-9_-]{16}$/.test(code))return error(res,403,'接続コードが無効です');
+    const raw=random(),id=uid(),now=Date.now();
+    const paired=transaction(db,()=>{
+      const pairing=one(db,'SELECT * FROM pairings WHERE hash=? AND used=0 AND expires_at>?',hash(code),now);
+      if(!pairing)return null;
+      run(db,'UPDATE pairings SET used=1 WHERE hash=?',pairing.hash);
+      run(db,'INSERT INTO devices(id,label,token_hash,planner) VALUES(?,?,?,0)',id,pairing.label,hash(raw));
+      return {id,label:pairing.label};
+    });
+    if(!paired)return error(res,403,'接続コードが無効か期限切れです');
+    event(db,null,paired.label,'device_paired','端末を接続');
+    return send(res,201,{device:paired,token:raw});
+  }
 
   if(route.startsWith('connector/')) {
     const device=connectorDevice(db,req);if(!device)return error(res,401,'端末認証に失敗しました');
@@ -85,6 +100,13 @@ async function api(req,res,route) {
   if(route==='tasks/reject'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'却下する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE id=?",Date.now(),task.id);run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND kind='plan'",Date.now(),task.id);event(db,task.id,user.username,'rejected','実行を却下');});return send(res,200,{ok:true});}
   if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(taskJson);return send(res,200,{tasks});}
   if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices});}
+  if(route==='devices/pairing'&&req.method==='POST') {
+    if(!['owner','admin'].includes(user.role))return error(res,403,'端末を登録する権限がありません');
+    const data=await body(req),label=text(data.label,80),code=crypto.randomBytes(12).toString('base64url');
+    run(db,'DELETE FROM pairings WHERE expires_at<? OR used=1',Date.now());
+    run(db,'INSERT INTO pairings(hash,label,expires_at) VALUES(?,?,?)',hash(code),label,Date.now()+600000);
+    return send(res,201,{label,code,expiresInSeconds:600});
+  }
   if(route==='devices/enroll'&&req.method==='POST') {
     if(!['owner','admin'].includes(user.role))return error(res,403,'端末を登録する権限がありません');
     const data=await body(req),label=text(data.label,80),raw=random(),id=uid(),planner=!!data.isPlanner||!one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0');

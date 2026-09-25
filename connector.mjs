@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,27 @@ async function setup() {
     writeFileSync(configPath,JSON.stringify({hub,token,agent},null,2),{mode:0o600});
     chmodSync(configPath,0o600);
     console.log(`設定を保存しました: ${configPath}`);
+  } finally {rl.close();}
+}
+async function join() {
+  const rl=createInterface({input:process.stdin,output:process.stdout});
+  try {
+    const hub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
+    validateHub(hub);
+    const available=spawnSync('openclaw',['--version'],{encoding:'utf8'});
+    if(available.status!==0)throw new Error('このMacにOpenClawがありません。先にOpenClawをセットアップしてください');
+    const code=(await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
+    const response=await fetch(new URL('/api?route=connector%2Fpair',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||`接続に失敗しました (HTTP ${response.status})`);
+    mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
+    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'main'},null,2),{mode:0o600});
+    chmodSync(configPath,0o600);
+    if(process.platform==='darwin') {
+      const installed=spawnSync(process.execPath,[path.join(root,'install-macos.mjs'),'connector'],{cwd:root,encoding:'utf8'});
+      if(installed.status!==0)throw new Error(`端末は登録されましたが自動起動に失敗しました: ${installed.stderr||installed.stdout}`);
+      console.log('接続完了。このMacのOpenClawがREIの仕事を受け取れます。');
+    } else console.log('接続情報を保存しました。npm run connector で起動してください。');
   } finally {rl.close();}
 }
 function validateHub(value) {
@@ -57,6 +78,7 @@ function runOpenClaw(agent,job,devices) {
 }
 async function main() {
   if(process.argv[2]==='setup')return setup();
+  if(process.argv[2]==='join')return join();
   const config=JSON.parse(readFileSync(configPath,'utf8'));
   validateHub(config.hub);
   const endpoint=new URL('/api',config.hub).toString();

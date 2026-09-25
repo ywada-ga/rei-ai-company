@@ -19,6 +19,12 @@ try {
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
   await api('connector/heartbeat',{capabilities:['openclaw']},auth);
+  const pairing=await api('devices/pairing',{label:'remote-mac'});
+  const paired=await api('connector/pair',{code:pairing.code});
+  assert.equal(paired.device.label,'remote-mac');
+  await api('connector/heartbeat',{capabilities:['openclaw']},paired.token);
+  const replay=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:pairing.code})});
+  assert.equal(replay.status,403);
   const created=await api('command',{text:'テスト用の仕事をして',department:'operations'});
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
   await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);

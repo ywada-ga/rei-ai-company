@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { openStorage, one, run } from '../storage.mjs';
+import { sweep } from '../workflow.mjs';
+
+const dir=mkdtempSync(path.join(os.tmpdir(),'rei-sweep-'));
+const db=openStorage(dir);
+const root='00000000-0000-4000-8000-000000000101';
+const task='00000000-0000-4000-8000-000000000102';
+run(db,'INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)',root,'root','中断確認','running',Date.now()-120000);
+run(db,'INSERT INTO tasks(id,parent_id,kind,text,status,created_at,lease_until,lease_id) VALUES(?,?,?,?,?,?,?,?)',task,root,'execute','実行中','running',Date.now()-120000,Date.now()-1,'lease');
+db.exec("CREATE TRIGGER reject_history BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, 'event failed'); END");
+assert.throws(()=>sweep(db),/event failed/);
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',task).status,'running');
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',root).status,'running');
+db.exec('DROP TRIGGER reject_history');
+sweep(db);
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',task).status,'needs_review');
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',root).status,'needs_review');
+assert.equal(one(db,'SELECT COUNT(*) AS count FROM events WHERE task_id=?',task).count,1);
+db.close();
+console.log('PASS interrupted work and history change together');

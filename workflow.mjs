@@ -63,17 +63,19 @@ export function claim(db,device,hubVersion='') {
   });
 }
 export function sweep(db) {
-  const uncertainHuman=all(db,"SELECT * FROM tasks WHERE kind='human' AND status='sending' AND COALESCE((SELECT MAX(e.created_at) FROM events e WHERE e.task_id=tasks.id AND e.type='sending'),created_at)<?",now()-60000);
-  for(const task of uncertainHuman) {
-    run(db,"UPDATE tasks SET status='needs_review',error='Chatworkへの送信結果が不明です。ルームを確認してください',finished_at=? WHERE id=? AND status='sending'",now(),task.id);
-    event(db,task.id,'system','needs_review','Chatwork送信中に処理が中断');
-    finishRoot(db,task.parent_id);
-  }
-  const expired=all(db,"SELECT * FROM tasks WHERE status='running' AND lease_until>0 AND lease_until<?",now());
-  for(const task of expired) {
-    if(task.kind==='plan'&&task.attempts<3) {run(db,"UPDATE tasks SET status='ready',lease_id=NULL,lease_until=0,device_id=NULL WHERE id=?",task.id);event(db,task.id,'system','retry','計画担当との接続が切れたため再試行');}
-    else {run(db,"UPDATE tasks SET status='needs_review',error='担当端末との通信が途切れ、実行結果を確認できません',finished_at=?,lease_id=CASE WHEN kind='execute' THEN lease_id ELSE NULL END WHERE id=?",now(),task.id);event(db,task.id,'system','needs_review','実行結果不明');if(task.kind==='execute') finishRoot(db,task.parent_id);if(task.kind==='plan')run(db,"UPDATE tasks SET status='needs_review',error='計画担当との通信が途切れました',finished_at=? WHERE id=?",now(),task.parent_id);}
-  }
+  return transaction(db,()=>{
+    const uncertainHuman=all(db,"SELECT * FROM tasks WHERE kind='human' AND status='sending' AND COALESCE((SELECT MAX(e.created_at) FROM events e WHERE e.task_id=tasks.id AND e.type='sending'),created_at)<?",now()-60000);
+    for(const task of uncertainHuman) {
+      run(db,"UPDATE tasks SET status='needs_review',error='Chatworkへの送信結果が不明です。ルームを確認してください',finished_at=? WHERE id=? AND status='sending'",now(),task.id);
+      event(db,task.id,'system','needs_review','Chatwork送信中に処理が中断');
+      finishRoot(db,task.parent_id);
+    }
+    const expired=all(db,"SELECT * FROM tasks WHERE status='running' AND lease_until>0 AND lease_until<?",now());
+    for(const task of expired) {
+      if(task.kind==='plan'&&task.attempts<3) {run(db,"UPDATE tasks SET status='ready',lease_id=NULL,lease_until=0,device_id=NULL WHERE id=?",task.id);event(db,task.id,'system','retry','計画担当との接続が切れたため再試行');}
+      else {run(db,"UPDATE tasks SET status='needs_review',error='担当端末との通信が途切れ、実行結果を確認できません',finished_at=?,lease_id=CASE WHEN kind='execute' THEN lease_id ELSE NULL END WHERE id=?",now(),task.id);event(db,task.id,'system','needs_review','実行結果不明');if(task.kind==='execute') finishRoot(db,task.parent_id);if(task.kind==='plan')run(db,"UPDATE tasks SET status='needs_review',error='計画担当との通信が途切れました',finished_at=? WHERE id=?",now(),task.parent_id);}
+    }
+  });
 }
 function parsePlan(raw,devices) {
   let parsed;

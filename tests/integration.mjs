@@ -92,6 +92,8 @@ try {
   const invite=await api('users/invite',{role:'requester'});
   await api('setup/complete',{token:invite.token,username:'requester',password:'requester-password-123'});
   await api('auth/login',{username:'requester',password:'requester-password-123'});
+  const forbiddenUsers=await fetch('http://127.0.0.1:4181/api?route=users%2Flist',{headers:{cookie}});
+  assert.equal(forbiddenUsers.status,403);
   const blockedBackup=await fetch('http://127.0.0.1:4181/api?route=backup%2Fcreate',{method:'POST',headers:{cookie,'content-type':'application/json'},body:'{}'});
   assert.equal(blockedBackup.status,403);
   const forbidden=await fetch('http://127.0.0.1:4181/api?route=projects%2Fcreate',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({name:'不可',objective:'不可'})});
@@ -99,6 +101,16 @@ try {
   const gated=await api('command',{text:'承認が必要な依頼',department:'operations'});
   assert.equal(gated.task.status,'approval_pending');
   await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
+  const member=(await api('users/list')).users.find(user=>user.username==='requester');
+  assert.equal(member.role,'requester');
+  await api('users/role',{userId:member.id,role:'viewer'});
+  assert.equal((await api('users/list')).users.find(user=>user.id===member.id).role,'viewer');
+  await api('users/disable',{userId:member.id,disabled:true});
+  assert.equal((await api('users/list')).users.find(user=>user.id===member.id).disabled,1);
+  const disabledLogin=await fetch('http://127.0.0.1:4181/api?route=auth%2Flogin',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'requester',password:'requester-password-123'})});
+  assert.equal(disabledLogin.status,401);
+  await api('users/disable',{userId:member.id,disabled:false});
+  await api('users/role',{userId:member.id,role:'requester'});
   await api('tasks/approve',{taskId:gated.task.id});
   const approved=(await api('bootstrap')).tasks.find(t=>t.id===gated.task.id);
   assert.equal(approved.status,'planning');

@@ -213,8 +213,21 @@ function renderMcpPresetGrid() {
 }
 async function refreshSettings() {
   if (!state.data?.user) return;
-  $('signed-in-user').textContent = `${state.data.user.username} / ${state.data.user.role}`;
-  $('backup-create').classList.toggle('hidden',state.data.user.role!=='owner');
+  const role=state.data.user.role;
+  $('signed-in-user').textContent = `${state.data.user.username} / ${{owner:'所有者',admin:'管理者',requester:'依頼者',viewer:'閲覧者'}[role]||role}`;
+  $('backup-create').classList.toggle('hidden',role!=='owner');
+  $('invite-form').classList.toggle('hidden',!['owner','admin'].includes(role));
+  $('invite-role').querySelector('option[value="admin"]').disabled=role!=='owner';
+  if(role!=='owner'&&$('invite-role').value==='admin')$('invite-role').value='requester';
+  if(!$('user-management')){const panel=document.createElement('div');panel.id='user-management';$('invite-form').before(panel);}
+  if(['owner','admin'].includes(role)){
+    try {
+      const {users}=await request('/api/users/list');
+      $('user-management').innerHTML=users.map(member=>`<div class="setting-device"><span><b>${escapeHtml(member.username)}</b><small>${member.disabled?'停止中 · ':''}${{owner:'所有者',admin:'管理者',requester:'依頼者',viewer:'閲覧者'}[member.role]||member.role}</small></span>${role==='owner'&&member.role!=='owner'?`<span class="user-controls"><select data-user-role="${escapeHtml(member.id)}" aria-label="${escapeHtml(member.username)}の権限"><option value="admin" ${member.role==='admin'?'selected':''}>管理者</option><option value="requester" ${member.role==='requester'?'selected':''}>依頼者</option><option value="viewer" ${member.role==='viewer'?'selected':''}>閲覧者</option></select><button data-user-disable="${escapeHtml(member.id)}" data-disabled="${member.disabled?'1':'0'}" class="outline-button">${member.disabled?'再開':'停止'}</button></span>`:''}</div>`).join('');
+      document.querySelectorAll('[data-user-role]').forEach(select=>select.onchange=async()=>{try{await request('/api/users/role',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:select.dataset.userRole,role:select.value})});await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;await refreshSettings();}});
+      document.querySelectorAll('[data-user-disable]').forEach(button=>button.onclick=async()=>{const disabled=button.dataset.disabled!=='1';if(disabled&&!confirm('この利用者を停止し、現在のログインを解除しますか？'))return;try{await request('/api/users/disable',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:button.dataset.userDisable,disabled})});await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
+    }catch(e){$('user-management').textContent=e.message;}
+  }else $('user-management').textContent='利用者の管理は管理者が行います。';
   const pending=state.data.tasks.filter(task=>task.status==='approval_pending');
   $('approval-management').innerHTML=pending.length?pending.map(task=>`<div class="setting-device"><span><b>${escapeHtml(task.text)}</b><small>依頼者の仕事</small></span><span><button data-approve="${escapeHtml(task.id)}" class="outline-button">承認</button><button data-reject="${escapeHtml(task.id)}" class="outline-button">却下</button></span></div>`).join(''):'<p>承認待ちはありません。</p>';
   document.querySelectorAll('[data-approve],[data-reject]').forEach(button=>button.onclick=async()=>{const route=button.dataset.approve?'approve':'reject',taskId=button.dataset.approve||button.dataset.reject;try{await request(`/api/tasks/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId})});await refresh();await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});

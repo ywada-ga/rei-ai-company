@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +17,22 @@ const safe=value=>{if(/["%\r\n]/.test(value))throw new Error('インストール
 const environment=['REI_DATA_DIR','REI_CONNECTOR_CONFIG','REI_PORT','REI_JOB_TIMEOUT_SECONDS'].filter(key=>process.env[key]).map(key=>`set ${safe(`${key}=${process.env[key]}`)}\r\n`).join('');
 mkdirSync(startup,{recursive:true});
 const file=path.join(startup,mode==='hub'?'REI Hub.cmd':'REI Connector.cmd');
-writeFileSync(file,`@echo off\r\ncd /d ${safe(root)}\r\n${environment}start "" /min ${safe(process.execPath)} ${safe(entry)}\r\n`);
+const previous=existsSync(file)?readFileSync(file):null;
+const temporary=`${file}.${process.pid}.tmp`;
+const replace=content=>{
+  try {writeFileSync(temporary,content,{flag:'wx'});renameSync(temporary,file);}
+  catch(error) {if(existsSync(temporary))unlinkSync(temporary);throw error;}
+};
+replace(`@echo off\r\nsetlocal DisableDelayedExpansion\r\ncd /d ${safe(root)}\r\n${environment}start "" /min ${safe(process.execPath)} ${safe(entry)}\r\n`);
 if(process.env.REI_NO_START!=='1') {
-  const child=spawn(process.execPath,[entry],{cwd:root,detached:true,stdio:'ignore',windowsHide:true});
-  child.unref();
+  try {
+    const child=spawn(process.execPath,[entry],{cwd:root,detached:true,stdio:'ignore',windowsHide:true});
+    await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});
+    child.unref();
+  } catch(error) {
+    try {if(previous)replace(previous);else unlinkSync(file);}
+    catch(restoreError) {throw new Error(`自動起動の復旧に失敗しました: ${restoreError.message}。元のエラー: ${error.message}`);}
+    throw new Error(`起動できず自動起動の設定を元に戻しました: ${error.message}`);
+  }
 }
-console.log(`REI ${mode} を今すぐ起動し、Windowsログイン時の自動起動に登録しました。`);
+console.log(process.env.REI_NO_START==='1'?`REI ${mode} をWindowsログイン時の自動起動に登録しました。`:`REI ${mode} を今すぐ起動し、Windowsログイン時の自動起動に登録しました。`);

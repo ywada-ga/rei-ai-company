@@ -251,6 +251,27 @@ try {
     api('connector/result',{taskId:secondClaim.job.id,leaseId:secondClaim.job.lease_id,success:true,result:'B完了'},paired.token)
   ]);
   assert.equal((await api(`tasks/detail/${parallel.id}`)).task.status,'completed');
+  const revokeDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  revokeDb.prepare('UPDATE devices SET last_seen=0 WHERE id=?').run(enrolled.device.id);
+  revokeDb.close();
+  const interruptedPlanRoot=(await api('command',{text:'端末解除中の計画'})).task;
+  const interruptedPlan=(await api('connector/claim',{},paired.token)).job;
+  assert.equal(interruptedPlan.kind,'plan');
+  await api('devices/revoke',{deviceId:paired.device.id});
+  const planAfterRevoke=(await api(`tasks/detail/${interruptedPlanRoot.id}`));
+  assert.equal(planAfterRevoke.task.status,'planning');
+  assert.equal(planAfterRevoke.children[0].status,'ready');
+  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw','planning','execution']},auth);
+  const replacementPlan=(await api('connector/claim',{},auth)).job;
+  assert.equal(replacementPlan.id,interruptedPlan.id);
+  await api('connector/result',{taskId:replacementPlan.id,leaseId:replacementPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'解除後に実行する仕事',deviceId:enrolled.device.id}]})},auth);
+  const interruptedExecution=(await api('connector/claim',{},auth)).job;
+  assert.equal(interruptedExecution.kind,'execute');
+  await api('devices/revoke',{deviceId:enrolled.device.id});
+  const executionAfterRevoke=await api(`tasks/detail/${interruptedPlanRoot.id}`);
+  assert.equal(executionAfterRevoke.task.status,'needs_review');
+  assert.equal(executionAfterRevoke.children.find(step=>step.id===interruptedExecution.id).status,'needs_review');
+  assert.ok(executionAfterRevoke.events.some(item=>item.type==='device_revoked'));
   const historyDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   const inserted=historyDb.prepare("INSERT INTO tasks(id,kind,text,status,result,created_at) VALUES(?,'root',?,'completed',?,?)");
   for(let index=0;index<105;index++)inserted.run(`00000000-0000-4000-8000-${String(index).padStart(12,'0')}`,`履歴${index}`,'x'.repeat(6000),Date.now());

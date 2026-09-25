@@ -61,12 +61,17 @@ export async function pollChatwork(db,root) {
     const taskIds=[...new Set([...body.matchAll(/\[REI:([0-9a-f-]{36})\]/gi)].map(match=>match[1].toLowerCase()))];
     if(taskIds.length!==1)continue;
     const taskId=taskIds[0];
-    const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='human' AND status='waiting_reply'",taskId);
-    if(!task)continue;
-    run(db,'INSERT OR IGNORE INTO external_messages(id,task_id,direction,body,created_at) VALUES(?,?,?,?,?)',externalId,task.id,'in',body,Date.now());
-    run(db,"UPDATE tasks SET status='completed',result=?,finished_at=? WHERE id=?",body.slice(0,100000),Date.now(),task.id);
-    event(db,task.id,'chatwork','reply',externalId);
-    finishRoot(db,task.parent_id);received++;
+    const accepted=transaction(db,()=>{
+      const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='human' AND status='waiting_reply'",taskId);
+      if(!task||one(db,'SELECT id FROM external_messages WHERE id=?',externalId))return false;
+      const receivedAt=Date.now();
+      run(db,'INSERT INTO external_messages(id,task_id,direction,body,created_at) VALUES(?,?,?,?,?)',externalId,task.id,'in',body,receivedAt);
+      run(db,"UPDATE tasks SET status='completed',result=?,finished_at=? WHERE id=?",body.slice(0,100000),receivedAt,task.id);
+      event(db,task.id,'chatwork','reply',externalId);
+      finishRoot(db,task.parent_id);
+      return true;
+    });
+    if(accepted)received++;
   }
   return {configured:true,received};
 }

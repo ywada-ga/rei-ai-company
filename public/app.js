@@ -233,6 +233,7 @@ $('voice-button').onclick = () => {
 function showAuth() {
   const setupToken = new URLSearchParams(location.search).get('setup');
   state.authEpoch++;
+  const epoch=state.authEpoch;
   state.data=null;
   state.taskDetail=null;
   state.taskDetailLoading=null;
@@ -262,6 +263,9 @@ function showAuth() {
   $('auth-help').textContent = setupToken ? '所有者のユーザー名とパスワードを設定してください。' : 'あなたの司令室に入ります。';
   $('auth-form').dataset.mode = setupToken ? 'setup' : 'login';
   $('auth-password').autocomplete = setupToken ? 'new-password' : 'current-password';
+  if(!setupToken)void fetch('/api?route=setup%2Fstatus').then(response=>response.ok?response.json():null).then(status=>{
+    if(epoch===state.authEpoch&&status?.needsSetup)$('auth-help').textContent='初回登録が必要です。REIを起動したターミナルに表示された「REIの初期登録」URLを開いてください。';
+  }).catch(()=>{});
 }
 function renderMcpPresetGrid() {
   const deviceId=$('mcp-batch-device').value;

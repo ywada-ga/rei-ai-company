@@ -17,6 +17,8 @@ function checkDatabase(file) {
 export async function createBackup(source=dataDir(),destination=path.join(source,'backups')) {
   const database=path.join(source,'rei.sqlite');
   if(!regularFile(database))throw new Error('REIのデータベースが見つかりません');
+  const existing=lstatSync(destination,{throwIfNoEntry:false});
+  if(existing&&!existing.isDirectory())throw new Error('バックアップ先には通常のフォルダを指定してください');
   mkdirSync(destination,{recursive:true,mode:0o700});
   chmodSync(destination,0o700);
   const name=`rei-${new Date().toISOString().replace(/[:.]/g,'-')}-${randomBytes(3).toString('hex')}`;
@@ -46,7 +48,9 @@ export function verifyBackup(folder) {
   return {createdAt:manifest.createdAt,files:Object.keys(manifest.files)};
 }
 export function restoreBackup(folder,destination) {
-  if(!destination||existsSync(destination)&&readdirSync(destination).length)throw new Error('復元先には新しい空のフォルダを指定してください');
+  if(!destination)throw new Error('復元先には新しい空のフォルダを指定してください');
+  const existing=lstatSync(destination,{throwIfNoEntry:false});
+  if(existing&&(!existing.isDirectory()||readdirSync(destination).length))throw new Error('復元先には新しい空のフォルダを指定してください');
   const verified=verifyBackup(folder);
   mkdirSync(destination,{recursive:true,mode:0o700});
   chmodSync(destination,0o700);

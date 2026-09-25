@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -26,6 +26,13 @@ assert.equal(readFileSync(path.join(destination,'chatwork.key'),'utf8'),'test-ke
 assert.equal(readFileSync(path.join(destination,'pending-results.json'),'utf8'),'[{"taskId":"pending-report"}]');
 assert.equal(readFileSync(path.join(destination,'pending-results.json.tmp'),'utf8'),'[{"taskId":"possibly-newer-report"}]');
 assert.throws(()=>restoreBackup(folder,destination),/空のフォルダ/);
+const redirected=path.join(base,'redirected');
+mkdirSync(redirected);
+const link=path.join(base,'linked-restored');
+symlinkSync(redirected,link,'dir');
+assert.throws(()=>restoreBackup(folder,link),/空のフォルダ/);
+await assert.rejects(()=>createBackup(source,link),/通常のフォルダ/);
+assert.equal(existsSync(path.join(redirected,'rei.sqlite')),false);
 writeFileSync(path.join(folder,'chatwork.key'),'tampered');
 assert.throws(()=>verifyBackup(folder),/検証に失敗/);
 console.log('PASS online backup, integrity, restore, tamper detection');

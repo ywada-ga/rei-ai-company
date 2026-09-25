@@ -1,0 +1,24 @@
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { openStorage, one, run } from '../storage.mjs';
+import { configureChatwork, sendPendingHuman, pollChatwork } from '../chatwork.mjs';
+const dir=mkdtempSync(path.join(os.tmpdir(),'rei-chatwork-'));
+process.env.REI_DATA_DIR=dir;
+const db=openStorage(dir),root='00000000-0000-4000-8000-000000000001',child='00000000-0000-4000-8000-000000000002';
+run(db,"INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)",root,'root','人に確認','running',Date.now());
+run(db,"INSERT INTO tasks(id,parent_id,kind,text,status,created_at) VALUES(?,?,?,?,?,?)",child,root,'human','今日の状況を教えてください','waiting_human',Date.now());
+configureChatwork(db,dir,'12345','test-token');
+let posted='';
+globalThis.fetch=async(url,opts)=>{
+  if(opts?.method==='POST'){posted=String(opts.body);return {ok:true,json:async()=>({message_id:'sent-1'})};}
+  return {ok:true,status:200,json:async()=>[{message_id:'sent-1',body:'original'},{message_id:'reply-1',body:`[REI:${child}]\n本日は順調です`} ]};
+};
+await sendPendingHuman(db,dir);
+assert.match(posted,/REI%3A/);
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',child).status,'waiting_reply');
+const result=await pollChatwork(db,dir);
+assert.equal(result.received,1);
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',root).status,'completed');
+console.log('PASS Chatwork send/reply correlation');

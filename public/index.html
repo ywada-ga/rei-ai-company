@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#030b12">
+  <title>REI | AI Company</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail" aria-label="メインメニュー">
+      <div class="rail-brand" aria-label="AI Company">◈</div>
+      <nav>
+        <button class="rail-btn active" data-view="core" title="司令室" aria-label="司令室">⌘</button>
+        <button class="rail-btn" data-view="missions" title="ミッション" aria-label="ミッション">▤</button>
+        <button class="rail-btn" data-view="briefing" title="稼働報告" aria-label="稼働報告">◴</button>
+      </nav>
+      <div class="rail-tail"><span class="rail-pulse"></span><span>AI<br>CO</span></div>
+    </aside>
+    <main class="workspace">
+      <header class="hud-top">
+        <div class="wordmark"><span class="wordmark-symbol">◇</span><span>REI <b>/ AI COMPANY</b></span></div>
+        <div class="hud-meta"><span class="top-code">SYSTEM <b id="system-status">CHECKING</b></span><span class="top-separator"></span><span id="clock">--:--:--</span><span class="top-separator"></span><span id="date">----</span><button id="settings-open" class="outline-button">端末・設定</button><button id="refresh" class="icon-button" title="更新" aria-label="更新">↻</button></div>
+      </header>
+      <section class="control-head"><div><p class="overline">YOUR ORGANIZATION, ONLINE</p><h1 id="view-title">レイ <span>COMMAND CENTER</span></h1><p id="view-subtitle">レイに目的を伝える。AI会社が仕事を動かす。</p></div><div class="head-indicators"><span><i class="indicator teal"></i><b id="agent-count">00</b> ACTIVE AGENT</span><span><i class="indicator orange"></i><b id="running-count">00</b> RUNNING</span></div></section>
+      <section id="core-view" class="view core-layout">
+        <div class="left-column">
+          <section class="glass-panel mission-panel"><div class="panel-heading"><span>01 / REI CHANNEL</span><button data-go="missions">履歴 ↗</button></div><h2>レイとの会話</h2><div id="mission-feed"></div></section>
+          <section class="glass-panel signal-panel"><div class="panel-heading"><span>02 / SIGNAL</span><span class="tiny-live">● LIVE</span></div><h2>システム状態</h2><div id="system-signals"></div></section>
+        </div>
+        <div class="center-stage">
+          <div class="stage-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="stage-top"><span>ORGANIZATION TOPOLOGY</span><span id="stage-status">CONNECTING...</span></div>
+          <div class="orbit-field">
+            <div class="field-grid" aria-hidden="true"></div>
+            <div class="orbit-ring ring-outer" aria-hidden="true"></div><div class="orbit-ring ring-mid" aria-hidden="true"></div><div class="orbit-ring ring-inner" aria-hidden="true"></div>
+            <svg class="orbit-lines" viewBox="0 0 800 630" preserveAspectRatio="none" aria-hidden="true"><path d="M400 315 L400 73 M400 315 L630 185 M400 315 L630 445 M400 315 L400 557 M400 315 L170 445 M400 315 L170 185" /></svg>
+            <div id="department-orbit"></div>
+            <div class="core-halo" aria-hidden="true"><div class="halo-one"></div><div class="halo-two"></div><div class="halo-three"></div></div>
+            <button class="central-core" id="core-button" aria-label="レイに話しかける"><span class="core-symbol">✳</span><span class="core-name">EXECUTIVE ASSISTANT</span><strong>レイ</strong><small id="core-state">STANDBY</small></button>
+            <div class="axis-label axis-left">INTELLIGENCE LAYER <span>◀─────</span></div><div class="axis-label axis-right"><span>─────▶</span> EXECUTION LAYER</div>
+          </div>
+          <div class="stage-bottom"><span>CORE / 001</span><span>SELECT A DEPARTMENT TO INSPECT</span><span>LOCAL NODE</span></div>
+        </div>
+        <div class="right-column">
+          <section class="glass-panel agents-panel"><div class="panel-heading"><span>03 / NETWORK</span><span id="network-count">01 / 06</span></div><h2>接続ユニット</h2><div id="unit-list"></div></section>
+          <section class="glass-panel focus-panel"><div class="panel-heading"><span>04 / FOCUS</span><span>ACTIVE SELECTION</span></div><div id="focus-content"></div></section>
+        </div>
+      </section>
+      <section id="missions-view" class="view list-view hidden"><div class="section-title"><div><span>MISSION CONTROL</span><h2>仕事の指令と結果</h2></div><strong id="mission-total">00 MISSIONS</strong></div><div class="mission-grid"><div class="glass-panel" id="mission-list"></div><div class="glass-panel" id="mission-detail"></div></div></section>
+      <section id="briefing-view" class="view list-view hidden"><div class="section-title"><div><span>DAILY INTELLIGENCE</span><h2>今日の稼働報告</h2></div><button class="outline-button" id="report-refresh">↻ 報告を更新</button></div><div id="briefing-content"></div></section>
+      <footer class="command-dock"><div class="dock-label"><span class="dock-pulse"></span><span>TALK TO REI</span><small>レイへの指示</small></div><form id="command-form"><label for="command-input" class="sr-only">レイへの指示</label><input id="command-input" autocomplete="off" maxlength="8000" placeholder="レイに話しかける... 例：今日の稼働報告をして"><button type="button" id="voice-button" title="音声入力" aria-label="音声入力">⌁</button><button type="submit" class="send-button" aria-label="指示を送る">送信 <span>↗</span></button></form><div class="dock-footer"><span id="command-feedback">REI IS READY</span><button type="button" id="voice-output" aria-pressed="false">音声応答 OFF</button></div></footer>
+    </main>
+  </div>
+  <section id="auth-screen" class="modal-screen hidden" aria-label="ログイン"><form id="auth-form" class="modal-card"><span class="overline">REI ACCESS</span><h2 id="auth-title">レイにログイン</h2><p id="auth-help">あなたの司令室に入ります。</p><label>ユーザー名<input id="auth-username" required autocomplete="username"></label><label>パスワード<input id="auth-password" type="password" required autocomplete="current-password" minlength="14"></label><button type="submit" class="send-button">続ける ↗</button><p id="auth-error" class="form-error"></p></form></section>
+  <section id="settings-screen" class="modal-screen hidden" aria-label="端末と設定"><div class="modal-card settings-card"><div class="settings-head"><div><span class="overline">NETWORK CONTROL</span><h2>端末と設定</h2></div><button id="settings-close" class="icon-button" aria-label="閉じる">×</button></div><p id="signed-in-user"></p><h3>承認待ち</h3><div id="approval-management"></div><h3>接続端末</h3><div id="device-management"></div><form id="enroll-form" class="settings-form"><label>端末名<input id="device-label" placeholder="Mac mini 1" required maxlength="80"></label><label class="check-line"><input id="device-planner" type="checkbox">この端末をREIの計画担当にする</label><button type="submit" class="outline-button">端末を登録</button></form><div id="enroll-result" class="secret-result hidden"></div><h3>Chatwork</h3><div id="chatwork-status"></div><form id="chatwork-form" class="settings-form"><label>ルームID<input id="chatwork-room" inputmode="numeric" required></label><label>APIトークン<input id="chatwork-token" type="password" required></label><button type="submit" class="outline-button">Chatworkを接続</button></form><h3>利用者</h3><form id="invite-form" class="settings-form"><label>招待する権限<select id="invite-role"><option value="requester">依頼者</option><option value="viewer">閲覧者</option><option value="admin">管理者</option></select></label><button type="submit" class="outline-button">招待リンクを作成</button></form><div id="invite-result" class="secret-result hidden"></div><button id="logout" class="outline-button logout-button">ログアウト</button><p id="settings-feedback" class="form-error"></p></div></section>
+</body>
+</html>

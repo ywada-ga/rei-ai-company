@@ -1,0 +1,14 @@
+{
+  "name": "rei-local",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node hub.mjs",
+    "connector": "node connector.mjs",
+    "test": "node tests/integration.mjs && node tests/chatwork.mjs",
+    "test:live": "node tests/live-openclaw.mjs",
+    "check": "node --check hub.mjs && node --check connector.mjs && node --check storage.mjs && node --check security.mjs && node --check workflow.mjs && node --check chatwork.mjs && node --check install-macos.mjs && node --check public/app.js"
+  }
+}

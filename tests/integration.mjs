@@ -1,0 +1,30 @@
+import { spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
+const data=mkdtempSync(path.join(os.tmpdir(),'rei-smoke-'));
+const child=spawn(process.execPath,['hub.mjs'],{cwd:root,env:{...process.env,REI_DATA_DIR:data,REI_PORT:'4181'},stdio:['ignore','pipe','pipe']});
+let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
+try {
+  for(let i=0;i<100&&!output.includes('REI Hub:');i++)await new Promise(r=>setTimeout(r,100));
+  assert.match(output,/REI Hub:/);
+  const setup=output.match(/\?setup=([^\s]+)/)[1];
+  let cookie='';
+  const api=async(route,data,auth)=>{const res=await fetch(`http://127.0.0.1:4181/api?route=${route}`,{method:data?'POST':'GET',headers:{...(data?{'content-type':'application/json'}:{}),...(cookie?{cookie}:{}),...(auth?{authorization:`Bearer ${auth}`}:{})},body:data?JSON.stringify(data):undefined});const body=await res.json();assert.ok(res.ok,`${route}: ${res.status} ${JSON.stringify(body)}`);if(res.headers.get('set-cookie'))cookie=res.headers.get('set-cookie').split(';')[0];return body;};
+  await api('setup/complete',{token:setup,username:'owner',password:'smoke-test-password-123'});
+  await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
+  const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
+  const auth=enrolled.token;
+  await api('connector/heartbeat',{capabilities:['openclaw']},auth);
+  const created=await api('command',{text:'テスト用の仕事をして',department:'operations'});
+  const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
+  await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);
+  const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');
+  await api('connector/result',{taskId:execute.job.id,leaseId:execute.job.lease_id,success:true,result:'一つ目が完了'},auth);
+  const bootstrap=await api('bootstrap');assert.equal(bootstrap.tasks[0].status,'completed');
+  const report=await api('report/today');assert.equal(report.completed,1);
+  console.log('PASS setup/login/enroll/plan/dispatch/result/report');
+} finally {child.kill('SIGTERM');}

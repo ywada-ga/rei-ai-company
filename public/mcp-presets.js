@@ -91,6 +91,16 @@ export const MCP_PRESETS = [
     docs:'https://developers.google.com/workspace/guides/configure-mcp-servers'
   },
   {
+    id:'google-people',category:'Google Workspace（開発者向け）',title:'Google連絡先・社内ディレクトリ',label:'Google People',url:'https://people.googleapis.com/mcp/v1',auth:'oauth',
+    note:'連絡先・利用者プロフィールの検索用。Developer Preview、CloudプロジェクトとOAuth設定が必要です。',
+    docs:'https://developers.google.com/people/v1/configure-mcp-server'
+  },
+  {
+    id:'google-workspace-search',category:'Google Workspace（開発者向け）',title:'Google Workspace横断検索',label:'Google Workspace横断検索',url:'https://workspacemcp.googleapis.com/mcp/v1',auth:'oauth',
+    note:'Gmail・ドライブ・カレンダー・Chatの横断検索用。Developer Previewと対象API・OAuth設定が必要です。',
+    docs:'https://developers.google.com/workspace/guides/universal-search-mcp'
+  },
+  {
     id:'context7',category:'開発・技術資料',title:'Context7',label:'Context7',url:'https://mcp.context7.com/mcp/oauth',auth:'oauth',
     note:'ライブラリの最新ドキュメントを検索します。OAuth専用URLを使用します。',
     docs:'https://context7.com/docs/resources/all-clients'

@@ -16,7 +16,8 @@
 | Notion | OAuth | [Notion開発者向け説明](https://developers.notion.com/guides/mcp/get-started-with-mcp) |
 | Linear／Linear閲覧のみ | OAuth。閲覧のみは別エンドポイント | [Linear公式手順](https://linear.app/docs/mcp) |
 | Jira・Confluence | OAuth。Atlassian Cloudでの利用権限が必要 | [Atlassian公式MCP](https://atlassian.github.io/atlassian-mcp-server/) |
-| Googleカレンダー／Gmail／ドライブ／ドキュメント／スプレッドシート／スライド／Chat | OAuth。Google Workspace Developer Preview、Cloudプロジェクト等の準備が必要 | [Google Workspace公式設定手順](https://developers.google.com/workspace/guides/configure-mcp-servers) |
+| Googleカレンダー／Gmail／ドライブ／ドキュメント／スプレッドシート／スライド／Chat／連絡先 | OAuth。Google Workspace Developer Preview、Cloudプロジェクト等の準備が必要 | [Google Workspace公式設定手順](https://developers.google.com/workspace/guides/configure-mcp-servers) |
+| Google Workspace横断検索 | OAuth。Developer Preview、検索対象の各APIとOAuth設定が必要 | [Google公式手順](https://developers.google.com/workspace/guides/universal-search-mcp) |
 
 REIはサーバー定義を選んだPCのOpenClawへ登録します。OAuthが必要なサービスはそのPCで `openclaw mcp login <表示された名前>` を実行します。REIの「登録済み」は外部サービスとの通信成功を意味しません。アカウント認証とツール実行は各サービスで確認する必要があります。REIがパスワードやOAuthトークンを収集することはありません。
 

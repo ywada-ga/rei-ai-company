@@ -47,9 +47,9 @@ export function ensureReiAgent(root,command=runOpenClawCli) {
   if(!existing) {
     backupConfig(root,command,'openclaw-before-rei.json');
     checked(command,['agents','add','rei','--workspace',workspace,'--non-interactive','--json']);
-    writeInstructions(workspace,true);
-    checked(command,['agents','set-identity','--agent','rei','--identity-file',path.join(workspace,'IDENTITY.md'),'--json']);
   }
+  writeInstructions(workspace,!existing);
+  checked(command,['agents','set-identity','--agent','rei','--identity-file',path.join(workspace,'IDENTITY.md'),'--json']);
   restrictAgent(command,'rei');
   checked(command,['config','validate']);
   return {agent:'rei',workspace,created:!existing};

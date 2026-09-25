@@ -48,6 +48,8 @@ Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `n
 3. REIの **端末・設定 → かんたん端末追加** にPCの名前を入力します。10分間だけ使える接続コードが表示されます。
 4. 参加PCでは、画面に表示されたコマンドを実行し、接続コードを入力します。コードの有効性を中心PCで確認してから、個人用とは別の `rei` エージェントを作り、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。最初に追加されたPCはREIの計画担当になります。
 
+端末追加がOpenClawの設定途中で止まった場合は、同じPCで新しい接続コードを作って手順を再実行してください。REI専用エージェントの不足ファイルと識別設定は再実行時に補われます。既に `data/connector.json` がある場合は接続済みの情報を保護するため再登録を止めます。
+
 各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
 
 REIはTailscaleの設定を確認し、このPCのREIへHTTPSで転送されるルートだけを接続URLとして表示します。公開用の[Tailscale Funnel](https://tailscale.com/docs/reference/tailscale-cli/funnel)が同じ入口で有効な場合は警告し、端末追加用URLを自動入力しません。Funnelを無効にしてから再確認してください。入口を別のサービスが使用中なら、その設定は自動で上書きしません。

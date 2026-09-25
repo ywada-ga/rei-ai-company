@@ -34,7 +34,7 @@ npm run connector -- setup
 
 接続先は `http://127.0.0.1:4178`、次に端末トークンとOpenClawエージェント名 `rei` を入力します。**既存のOpenClawをREI専用に変えてよい場合**は、上の `npm run agent:setup` の代わりに `npm run agent:reuse-main` を実行し、エージェント名に `main` を入力します。元のOpenClaw設定は `data/private-backups/` に退避します。手動設定では別のターミナルで `npm run connector` を起動します。Web画面から仕事を依頼すると、REIが計画を作り、このPCのOpenClawで実行します。
 
-起動ファイルは同じポートで稼働中のREIの版を確認します。展開したフォルダと版が違う場合は旧版の画面を開かず、進行中の仕事を確認して旧版を停止・更新するよう案内します。
+起動ファイルは同じポートで稼働中のREIの版を確認します。展開したフォルダと版が違う場合は旧版の画面を開かず、進行中の仕事を確認して旧版を停止・更新するよう案内します。別のサービスが同じポートを使用中なら、別のポートを指定するよう表示します。
 
 `connector.mjs setup` と `connector.mjs join` は既存の `data/connector.json` を上書きしません。再設定が必要な場合は、先に接続中の仕事と保存済みトークンを確認してください。
 

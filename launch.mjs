@@ -21,19 +21,23 @@ function openBrowser(target) {
 }
 
 let running=false;
+let response;
 try {
-  const response=await fetch(`${url}api?route=setup%2Fstatus`,{signal:AbortSignal.timeout(2000)});
-  if(response.ok){
-    const status=await response.json();
-    if(typeof status.needsSetup==='boolean'){
-      if(status.version!==version){
-        console.error(`起動中のREIは版 ${status.version||'不明'}、このフォルダは版 ${version} です。仕事が終わってから旧版のREIを停止し、再度起動してください。`);
-        process.exit(1);
-      }
-      running=true;
-    }
-  }
+  response=await fetch(`${url}api?route=setup%2Fstatus`,{signal:AbortSignal.timeout(2000)});
 } catch { /* No REI is running on this port. */ }
+if(response){
+  let status;
+  try {if(response.ok)status=await response.json();} catch { /* Another service may use this port. */ }
+  if(typeof status?.needsSetup!=='boolean'){
+    console.error(`${port}番ポートは別のサービスが使用中です。REI_PORTに別の番号を指定するか、そのサービスを停止してください。`);
+    process.exit(1);
+  }
+  if(status.version!==version){
+    console.error(`起動中のREIは版 ${status.version||'不明'}、このフォルダは版 ${version} です。仕事が終わってから旧版のREIを停止し、再度起動してください。`);
+    process.exit(1);
+  }
+  running=true;
+}
 if(running) {
   console.log('起動中のREIを開きます。');
   openBrowser(url);

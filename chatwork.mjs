@@ -20,6 +20,7 @@ export async function sendPendingHuman(db,root) {
   const pending=all(db,"SELECT * FROM tasks WHERE kind='human' AND status='waiting_human' ORDER BY created_at LIMIT 5");
   for(const task of pending) {
     if(!run(db,"UPDATE tasks SET status='sending' WHERE id=? AND status='waiting_human'",task.id).changes)continue;
+    event(db,task.id,'chatwork','sending','Chatworkへ依頼を送信中');
     const message=`[REI:${task.id}]\n依頼: ${task.text}\n回答するときはこの [REI:${task.id}] を含めてください。`;
     try {
       const response=await fetch(`https://api.chatwork.com/v2/rooms/${cfg.room}/messages`,{method:'POST',headers:{'x-chatworktoken':cfg.token,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({body:message}),signal:AbortSignal.timeout(15000)});

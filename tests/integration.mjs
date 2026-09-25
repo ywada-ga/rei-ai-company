@@ -115,6 +115,8 @@ try {
   await api('projects/status',{projectId:project.id,status:'paused'});
   const paused=await fetch('http://127.0.0.1:4181/api?route=command',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({text:'保留中の依頼',projectId:project.id})});
   assert.equal(paused.status,400);
+  const pausedReport=await api('command',{text:'今日の稼働報告をして',projectId:project.id});
+  assert.equal(pausedReport.kind,'report');
   await api('projects/status',{projectId:project.id,status:'active'});
   const report=await api('report/today');assert.equal(report.completed,2);
   assert.ok(report.devices.find(device=>device.id===enrolled.device.id).completed>=3);

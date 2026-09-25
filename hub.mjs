@@ -121,8 +121,8 @@ async function api(req,res,route) {
   if(route==='command'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'指示する権限がありません');
     const data=await body(req),message=text(data.text),department=departments.some(d=>d.id===data.department)?data.department:'operations',projectId=data.projectId?String(data.projectId):null;
-    if(projectId&&!one(db,"SELECT id FROM projects WHERE id=? AND status='active'",projectId))return error(res,400,'稼働中のプロジェクトを選んでください');
     if(/今日.{0,12}(稼働|活動).{0,8}報告/.test(message)) {const data=report(db);data.gateway={reachable:!!one(db,'SELECT id FROM devices WHERE revoked=0 AND last_seen>? LIMIT 1',Date.now()-30000)};return send(res,200,{kind:'report',report:data});}
+    if(projectId&&!one(db,"SELECT id FROM projects WHERE id=? AND status='active'",projectId))return error(res,400,'稼働中のプロジェクトを選んでください');
     const task=createTask(db,message,department,user.id,user.role==='requester',projectId);
     return send(res,201,{kind:'task',task:taskJson(task)});
   }

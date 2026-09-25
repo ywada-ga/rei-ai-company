@@ -20,7 +20,7 @@ if(process.platform==='linux') {
   }
   const project=mkdtempSync(path.join(os.tmpdir(),'rei-linux-join-'));
   const bin=path.join(project,'bin');mkdirSync(bin);
-  for(const file of ['connector.mjs','openclaw-process.mjs','rei-agent.mjs','mcp-sync.mjs','install-linux.mjs'])copyFileSync(path.join(root,file),path.join(project,file));
+  for(const file of ['package.json','connector.mjs','openclaw-process.mjs','rei-agent.mjs','mcp-sync.mjs','install-linux.mjs'])copyFileSync(path.join(root,file),path.join(project,file));
   const fakeOpenClaw=`#!/usr/bin/env node
 const fs=require('node:fs');
 const args=process.argv.slice(2),key=args.slice(0,2).join(' ');

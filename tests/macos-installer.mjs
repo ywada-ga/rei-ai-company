@@ -24,7 +24,7 @@ if(process.platform==='darwin') {
     assert.equal(statSync(path.join(agents,`ai.rei.${mode}.plist`)).mode&0o777,0o600);
   }
   const project=path.join(temp,'joined-pc');mkdirSync(project);
-  for(const file of ['connector.mjs','openclaw-process.mjs','rei-agent.mjs','mcp-sync.mjs','install-macos.mjs'])copyFileSync(path.join(root,file),path.join(project,file));
+  for(const file of ['package.json','connector.mjs','openclaw-process.mjs','rei-agent.mjs','mcp-sync.mjs','install-macos.mjs'])copyFileSync(path.join(root,file),path.join(project,file));
   const fakeOpenClaw=`#!/usr/bin/env node
 const fs=require('node:fs');
 const args=process.argv.slice(2),key=args.slice(0,2).join(' ');

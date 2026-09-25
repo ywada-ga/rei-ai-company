@@ -35,13 +35,17 @@ try {
   assert.equal((await api('devices')).localConnector.status,'needs_attention');
   writeFileSync(path.join(data,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:auth,agent:'rei'}));
   assert.equal((await api('devices')).localConnector.status,'registered');
-  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw'],pendingResults:2},auth);
+  await api('connector/heartbeat',{agentName:'rei',version:'0.3.0',capabilities:['openclaw'],pendingResults:2},auth);
   assert.equal((await api('devices')).localConnector.online,true);
   assert.equal((await api('devices')).devices[0].agent_name,'rei');
   assert.equal((await api('devices')).devices[0].pending_results,2);
+  assert.equal((await api('devices')).devices[0].version,'0.3.0');
+  assert.equal((await api('devices')).hubVersion,'0.4.0');
   assert.equal((await api('bootstrap')).workers[0].pendingResults,2);
+  assert.equal((await api('bootstrap')).workers[0].version,'0.3.0');
   await api('connector/heartbeat',{pendingResults:0,capabilities:['openclaw']},auth);
   assert.equal((await api('devices')).devices[0].pending_results,0);
+  assert.equal((await api('devices')).devices[0].version,'');
   const mcp=await api('mcp/add',{label:'Test Calendar',url:'https://example.com/mcp',auth:'oauth',deviceId:enrolled.device.id});
   assert.match(mcp.name,/^rei_[a-f0-9]{12}$/);
   assert.equal((await api('mcp/list')).integrations[0].status,null);

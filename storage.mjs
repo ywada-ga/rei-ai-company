@@ -28,6 +28,7 @@ export function openStorage(root) {
   if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='project_id'))db.exec('ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id)');
   if(!all(db,'PRAGMA table_info(devices)').some(column=>column.name==='agent_name'))db.exec("ALTER TABLE devices ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''");
   if(!all(db,'PRAGMA table_info(devices)').some(column=>column.name==='pending_results'))db.exec('ALTER TABLE devices ADD COLUMN pending_results INTEGER NOT NULL DEFAULT 0');
+  if(!all(db,'PRAGMA table_info(devices)').some(column=>column.name==='version'))db.exec("ALTER TABLE devices ADD COLUMN version TEXT NOT NULL DEFAULT ''");
   db.exec('CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id,kind,created_at)');
   try { chmodSync(path.join(dir,'rei.sqlite'),0o600); } catch {}
   return db;

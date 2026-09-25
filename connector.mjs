@@ -8,6 +8,7 @@ import { syncMcp, probeMcp } from './mcp-sync.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
+const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
 const pendingPath=path.join(path.dirname(configPath),'pending-results.json');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -103,7 +104,7 @@ async function main() {
   let lastHeartbeat=0;
   let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
   let pending=loadPending();
-  const heartbeatPayload=()=>({agentName:config.agent,pendingResults:pending.length,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
+  const heartbeatPayload=()=>({agentName:config.agent,version:reiVersion,pendingResults:pending.length,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
   async function submitPending() {
     const item=pending[0];
     const ack=await api('connector/result',item);

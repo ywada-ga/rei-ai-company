@@ -17,10 +17,10 @@ else if(args[0]==='agent')setTimeout(()=>console.log(JSON.stringify({status:'ok'
 else process.exit(2);
 `;
 for(const name of ['openclaw','openclaw.mjs']){const file=path.join(bin,name);writeFileSync(file,fake);chmodSync(file,0o755);}
-let heartbeats=0,claimed=false,reported=false;
+let heartbeats=0,claimed=false,reported=false,reportedVersion='';
 const server=createServer((request,response)=>{
   const route=new URL(request.url,'http://localhost').searchParams.get('route');
-  if(route==='connector/heartbeat')heartbeats++;
+  if(route==='connector/heartbeat'){heartbeats++;let body='';request.on('data',chunk=>body+=chunk);request.on('end',()=>{reportedVersion=JSON.parse(body).version;});}
   const result=route==='connector/heartbeat'?{integrations:[],checks:[]}:
     route==='connector/claim'&&!claimed?(claimed=true,{job:{id:'test-task',kind:'execute',text:'接続確認',lease_id:'test-lease'},devices:[]}):
     route==='connector/claim'?{job:null,devices:[]}:
@@ -39,5 +39,6 @@ try {
   assert.equal(code,0,output);
   assert.equal(reported,true,output);
   assert.ok(heartbeats>=2,`実行中の心拍が不足しています: ${heartbeats}`);
+  assert.equal(reportedVersion,'0.4.0');
   console.log('PASS connector stays online during a long job');
 } finally {server.close();}

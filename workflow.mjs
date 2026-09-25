@@ -37,6 +37,19 @@ export function cancelTask(db,root,actor) {
     return true;
   });
 }
+export function retryPlan(db,rootId,actor) {
+  return transaction(db,()=>{
+    const root=one(db,"SELECT id,status FROM tasks WHERE id=? AND kind='root'",rootId);
+    if(root?.status!=='needs_review')return false;
+    const children=all(db,'SELECT id,kind,status FROM tasks WHERE parent_id=?',rootId);
+    if(children.length!==1||children[0].kind!=='plan'||!['failed','needs_review'].includes(children[0].status))return false;
+    const plan=children[0];
+    run(db,"UPDATE tasks SET status='ready',device_id=NULL,lease_id=NULL,lease_until=0,attempts=0,result='',error='',finished_at=0 WHERE id=?",plan.id);
+    run(db,"UPDATE tasks SET status='planning',result='',error='',finished_at=0 WHERE id=?",rootId);
+    event(db,rootId,actor,'plan_retried','計画を再実行');
+    return true;
+  });
+}
 export function claim(db,device) {
   return transaction(db,()=>{
     const plannerOnline=one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0 AND last_seen>? LIMIT 1',now()-30000);

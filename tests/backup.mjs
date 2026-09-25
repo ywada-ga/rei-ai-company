@@ -31,6 +31,11 @@ assert.deepEqual(verifyBackup(folder).files,['rei.sqlite','chatwork.key','mcp-sy
 assert.equal(existsSync(path.join(folder,'owner-credentials.txt')),false);
 const destination=path.join(base,'restored');
 restoreBackup(folder,destination);
+assert.equal(readdirSync(base).some(name=>name.startsWith('.partial-restore-')),false);
+const emptyDestination=path.join(base,'empty-restored');
+mkdirSync(emptyDestination);
+assert.equal(restoreBackup(folder,emptyDestination),emptyDestination);
+assert.equal(readFileSync(path.join(emptyDestination,'chatwork.key'),'utf8'),'test-key');
 const restored=new DatabaseSync(path.join(destination,'rei.sqlite'),{readOnly:true});
 assert.equal(restored.prepare('SELECT value FROM sample').get().value,'saved');
 restored.close();db.close();
@@ -56,4 +61,7 @@ await assert.rejects(()=>createBackup(source,path.join(base,'backups')),/バッ�
 assert.deepEqual(readdirSync(path.join(base,'backups')).sort(),beforeFailedBackup);
 writeFileSync(path.join(folder,'chatwork.key'),'tampered');
 assert.throws(()=>verifyBackup(folder),/検証に失敗/);
+const refusedDestination=path.join(base,'refused-restored');
+assert.throws(()=>restoreBackup(folder,refusedDestination),/検証に失敗/);
+assert.equal(existsSync(refusedDestination),false);
 console.log('PASS online backup, integrity, restore, tamper detection');

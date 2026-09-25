@@ -1,6 +1,6 @@
 import { DatabaseSync, backup } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, chmodSync, constants } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, writeFileSync, chmodSync, constants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,10 +67,17 @@ export function restoreBackup(folder,destination) {
   const existing=lstatSync(destination,{throwIfNoEntry:false});
   if(existing&&(!existing.isDirectory()||readdirSync(destination).length))throw new Error('復元先には新しい空のフォルダを指定してください');
   const verified=verifyBackup(folder);
-  mkdirSync(destination,{recursive:true,mode:0o700});
-  chmodSync(destination,0o700);
-  for(const file of verified.files) {copyFileSync(path.join(folder,file),path.join(destination,file),constants.COPYFILE_EXCL);chmodSync(path.join(destination,file),0o600);}
-  checkDatabase(path.join(destination,'rei.sqlite'));
+  mkdirSync(path.dirname(destination),{recursive:true,mode:0o700});
+  const staging=path.join(path.dirname(destination),`.partial-restore-${randomBytes(8).toString('hex')}`);
+  mkdirSync(staging,{mode:0o700});
+  try {
+    for(const file of verified.files) {copyFileSync(path.join(folder,file),path.join(staging,file),constants.COPYFILE_EXCL);chmodSync(path.join(staging,file),0o600);}
+    copyFileSync(path.join(folder,'manifest.json'),path.join(staging,'manifest.json'),constants.COPYFILE_EXCL);
+    chmodSync(path.join(staging,'manifest.json'),0o600);
+    verifyBackup(staging);
+    if(existing)rmdirSync(destination);
+    renameSync(staging,destination);
+  } catch(error) {rmSync(staging,{recursive:true,force:true});throw error;}
   return destination;
 }
 

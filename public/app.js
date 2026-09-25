@@ -41,16 +41,16 @@ function setView(view) {
 }
 async function refresh() {
   try { state.data = await request('/api/bootstrap'); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); }
-  catch (error) { if(error.message!=='ログインしてください')feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
+  catch (error) { if(error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {
   if (!state.data) return;
   const { departments, workers, tasks, gateway } = state.data;
   const live = gateway.reachable;
-  $('system-status').textContent = live ? 'ONLINE' : 'OFFLINE';
+  $('system-status').textContent = live ? 'ONLINE' : 'NO AGENT';
   $('system-status').classList.toggle('offline', !live);
-  $('stage-status').textContent = live ? 'GATEWAY LINK ESTABLISHED' : 'GATEWAY DISCONNECTED';
-  $('core-state').textContent = live ? 'CONNECTED / READY' : 'DISCONNECTED';
+  $('stage-status').textContent = live ? 'AGENT LINK ESTABLISHED' : 'NO AGENT CONNECTED';
+  $('core-state').textContent = live ? 'CONNECTED / READY' : 'WAITING FOR AGENT';
   $('agent-count').textContent = String(workers.filter(w=>w.connected).length).padStart(2,'0');
   $('running-count').textContent = String(tasks.filter(task => ['running','planning'].includes(task.status)).length).padStart(2,'0');
   $('network-count').textContent = `${String(workers.filter(w=>w.connected).length).padStart(2,'0')} / ${String(workers.length).padStart(2,'0')}`;
@@ -219,6 +219,13 @@ $('voice-button').onclick = () => {
 };
 function showAuth() {
   const setupToken = new URLSearchParams(location.search).get('setup');
+  state.data=null;
+  state.taskDetail=null;
+  $('settings-screen').classList.add('hidden');
+  $('system-status').textContent='LOGIN REQUIRED';
+  $('system-status').classList.add('offline');
+  $('agent-count').textContent='00';
+  $('running-count').textContent='00';
   $('auth-screen').classList.remove('hidden');
   $('auth-title').textContent = setupToken ? 'レイの初期登録' : 'レイにログイン';
   $('auth-help').textContent = setupToken ? '所有者のユーザー名とパスワードを設定してください。' : 'あなたの司令室に入ります。';
@@ -347,3 +354,4 @@ $('invite-form').onsubmit=async event=>{event.preventDefault();$('settings-feedb
 $('password-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{await request('/api/auth/password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({currentPassword:$('current-password').value,newPassword:$('new-password').value})});$('current-password').value='';$('new-password').value='';$('settings-feedback').textContent='パスワードを変更しました';}catch(e){$('settings-feedback').textContent=e.message;}};
 $('logout').onclick=async()=>{await request('/api/auth/logout',{method:'POST'});state.data=null;$('settings-screen').classList.add('hidden');showAuth();};
 tick();setInterval(tick,1000);refresh();setInterval(()=>{if(!document.hidden&&$('auth-screen').classList.contains('hidden'))refresh();},5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&$('auth-screen').classList.contains('hidden'))void refresh();});

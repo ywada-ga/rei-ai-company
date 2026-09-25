@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -118,7 +118,7 @@ function renderMissions() {
   const workerName=id=>state.data.workers.find(worker=>worker.id===id)?.name||'担当未定';
   const children=detail?.children||[];
   const events=detail?.events||[];
-  $('mission-detail').innerHTML = chosen ? `<div class="detail-header"><span>MISSION FILE / ${escapeHtml(chosen.id.slice(0,8).toUpperCase())}</span><em class="status ${escapeHtml(chosen.status)}">${escapeHtml(labels[chosen.status] || chosen.status)}</em></div><h3>${escapeHtml(chosen.text)}</h3><div class="detail-facts"><div><span>プロジェクト</span><b>${escapeHtml(projectName(chosen.projectId))}</b></div><div><span>開始</span><b>${formatTime(chosen.startedAt)}</b></div><div><span>完了</span><b>${formatTime(chosen.finishedAt)}</b></div></div><div class="detail-result"><span>RESPONSE / RESULT</span><p>${escapeHtml(chosen.result || chosen.error || '実行結果を待っています。')}</p></div><div class="mission-actions">${detail?.canCancel?'<button id="task-cancel" class="outline-button">実行前の仕事を中止</button>':''}${detail?.canRetryPlan?'<button id="task-retry-plan" class="outline-button">計画を再実行</button>':''}<button id="task-reissue" class="outline-button">内容を再入力</button></div><div class="detail-steps"><h4>担当と進行状況</h4>${detail?children.map((child,index)=>`<div class="detail-step"><span>${String(index+1).padStart(2,'0')} / ${child.kind==='plan'?'計画':child.kind==='human'?'人への依頼':'実行'}</span><b>${escapeHtml(labels[child.status]||child.status)}</b><strong>${escapeHtml(child.text)}</strong><small>${escapeHtml(workerName(child.assignedDeviceId))}</small>${child.result||child.error?`<p>${escapeHtml(child.result||child.error)}</p>`:''}${child.kind==='human'&&['waiting_human','waiting_reply'].includes(child.status)&&['owner','admin'].includes(state.data.user.role)?`<form class="human-reply-form" data-human-reply="${escapeHtml(child.id)}"><label>人からの回答を記録<textarea required maxlength="8000" rows="3" placeholder="回答内容を入力"></textarea></label><button class="outline-button" type="submit">回答を記録</button></form>`:''}</div>`).join('')||'<p class="project-empty">工程はまだありません。</p>':'<p class="project-empty">工程を読み込んでいます。</p>'}</div><div class="detail-events"><h4>履歴</h4>${events.slice(-30).reverse().map(item=>`<div><time>${formatTime(item.createdAt)}</time><span>${escapeHtml(item.actor)} · ${escapeHtml(item.type)}</span><p>${escapeHtml(item.detail)}</p></div>`).join('')||'<p class="project-empty">履歴を読み込んでいます。</p>'}</div>` : `<div class="panel-empty tall"><span>⌕</span><strong>詳細を表示する仕事がありません</strong></div>`;
+  $('mission-detail').innerHTML = chosen ? `<div class="detail-header"><span>MISSION FILE / ${escapeHtml(chosen.id.slice(0,8).toUpperCase())}</span><em class="status ${escapeHtml(chosen.status)}">${escapeHtml(labels[chosen.status] || chosen.status)}</em></div><h3>${escapeHtml(chosen.text)}</h3><div class="detail-facts"><div><span>プロジェクト</span><b>${escapeHtml(projectName(chosen.projectId))}</b></div><div><span>開始</span><b>${formatTime(chosen.startedAt)}</b></div><div><span>完了</span><b>${formatTime(chosen.finishedAt)}</b></div></div><div class="detail-result"><span>RESPONSE / RESULT</span><p>${escapeHtml(chosen.result || chosen.error || '実行結果を待っています。')}</p></div><div class="mission-actions">${detail?.canCancel?'<button id="task-cancel" class="outline-button">実行前の仕事を中止</button>':''}${detail?.canRetryPlan?'<button id="task-retry-plan" class="outline-button">計画を再実行</button>':''}<button id="task-reissue" class="outline-button">内容を再入力</button></div><div class="detail-steps"><h4>担当と進行状況</h4>${detail?children.map((child,index)=>`<div class="detail-step"><span>${String(index+1).padStart(2,'0')} / ${child.kind==='plan'?'計画':child.kind==='human'?'人への依頼':'実行'}</span><b>${escapeHtml(labels[child.status]||child.status)}</b><strong>${escapeHtml(child.text)}</strong><small>${escapeHtml(workerName(child.assignedDeviceId))}</small>${child.result||child.error?`<p>${escapeHtml(child.result||child.error)}</p>`:''}${child.kind==='human'&&['waiting_human','waiting_reply'].includes(child.status)&&['owner','admin'].includes(state.data.user.role)?`<form class="human-reply-form" data-human-reply="${escapeHtml(child.id)}"><label>人からの回答を記録<textarea required maxlength="8000" rows="3" placeholder="回答内容を入力"></textarea></label><button class="outline-button" type="submit">回答を記録</button></form>`:''}</div>`).join('')||'<p class="project-empty">工程はまだありません。</p>':'<p class="project-empty">工程を読み込んでいます。</p>'}</div><div class="detail-events"><h4>履歴</h4>${events.slice(-state.eventVisibleCount).reverse().map(item=>`<div><time>${formatTime(item.createdAt)}</time><span>${escapeHtml(item.actor)} · ${escapeHtml(item.type)}</span><p>${escapeHtml(item.detail)}</p></div>`).join('')||'<p class="project-empty">履歴を読み込んでいます。</p>'}${detail&&(events.length>state.eventVisibleCount||detail.hasOlderEvents)?'<button id="event-load-more" class="outline-button" type="button">古い履歴をさらに表示</button>':''}</div>` : `<div class="panel-empty tall"><span>⌕</span><strong>詳細を表示する仕事がありません</strong></div>`;
   if(detail) {
     const cards=$('mission-detail').querySelectorAll('.detail-step');
     children.forEach((child,index)=>{if(child.lateReport&&child.lateReport!==child.result)cards[index]?.insertAdjacentHTML('beforeend',`<p>端末から遅れて届いた報告（${child.lateReportSuccess?'成功':'失敗'}）: ${escapeHtml(child.lateReport)}</p>`);});
@@ -136,6 +136,26 @@ function renderMissions() {
   document.querySelectorAll('.reassign-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/reassign',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.reassign,deviceId:form.querySelector('select').value})});form.querySelector('select').blur();state.taskDetail=null;await refresh();feedback('未着手の仕事を別のPCへ移しました');}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('#mission-list [data-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.task;setView('missions');});
   if($('mission-load-more'))$('mission-load-more').onclick=loadMoreTasks;
+  if($('event-load-more'))$('event-load-more').onclick=loadMoreEvents;
+}
+async function loadMoreEvents() {
+  const detail=state.taskDetail;
+  if(!detail||state.eventsLoading)return;
+  if(state.eventVisibleCount<detail.events.length) {state.eventVisibleCount+=30;renderMissions();return;}
+  if(!detail.hasOlderEvents)return;
+  const oldest=detail.events[0],epoch=state.authEpoch,id=detail.task.id;
+  state.eventsLoading=true;
+  const button=$('event-load-more');if(button)button.disabled=true;
+  try {
+    const page=await request(`/api/tasks/events/${id}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({beforeTime:Date.parse(oldest.createdAt),beforeId:oldest.id})});
+    if(epoch!==state.authEpoch||state.taskDetail?.task.id!==id)return;
+    state.taskDetail.events=[...page.events,...state.taskDetail.events];
+    state.taskDetail.hasOlderEvents=page.hasMore;
+    state.eventHistoryExpanded=true;
+    state.eventVisibleCount+=30;
+    renderMissions();
+  } catch(error) {if(epoch===state.authEpoch){feedback(error.message,true);if(button.isConnected)button.disabled=false;}}
+  finally {if(epoch===state.authEpoch)state.eventsLoading=false;}
 }
 async function loadMoreTasks() {
   if(state.historyLoading)return;
@@ -153,7 +173,15 @@ async function loadTaskDetail() {
   const id=state.selectedTask||state.data?.tasks[0]?.id;
   if(!id||state.taskDetailLoading===id)return;
   state.taskDetailLoading=id;
-  try {const detail=await request(`/api/tasks/detail/${id}`);if(epoch===state.authEpoch&&(state.selectedTask||state.data?.tasks[0]?.id)===id){state.taskDetail=detail;renderMissions();}}
+  try {const detail=await request(`/api/tasks/detail/${id}`);if(epoch===state.authEpoch&&(state.selectedTask||state.data?.tasks[0]?.id)===id){
+    const previous=state.taskDetail?.task.id===id?state.taskDetail:null;
+    if(!previous){state.eventVisibleCount=30;state.eventHistoryExpanded=false;}
+    else if(state.eventHistoryExpanded){
+      const byId=new Map([...previous.events,...detail.events].map(item=>[item.id,item]));
+      detail.events=[...byId.values()].sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt)||a.id.localeCompare(b.id));
+      detail.hasOlderEvents=previous.hasOlderEvents;
+    }
+    state.taskDetail=detail;renderMissions();}}
   catch(error){if(epoch===state.authEpoch)feedback(error.message,true);}
   finally{if(epoch===state.authEpoch&&state.taskDetailLoading===id)state.taskDetailLoading=null;}
 }
@@ -265,6 +293,9 @@ function showAuth() {
   state.data=null;
   state.taskDetail=null;
   state.taskDetailLoading=null;
+  state.eventVisibleCount=30;
+  state.eventHistoryExpanded=false;
+  state.eventsLoading=false;
   state.olderTasks=[];
   state.hasMoreTasks=false;
   state.historyLoading=false;

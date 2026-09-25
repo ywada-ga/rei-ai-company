@@ -49,6 +49,7 @@ try {
   assert.equal((await api('devices')).hubVersion,currentVersion);
   assert.equal((await api('bootstrap')).workers[0].pendingResults,2);
   assert.equal((await api('bootstrap')).workers[0].version,'0.3.0');
+  assert.equal((await api('bootstrap')).gateway.reachable,false);
   await api('connector/heartbeat',{pendingResults:0,capabilities:['openclaw']},auth);
   assert.equal((await api('devices')).devices[0].pending_results,0);
   assert.equal((await api('devices')).devices[0].version,'');
@@ -94,6 +95,7 @@ try {
   assert.equal(outdatedClaim.updateRequired,true);
   assert.equal(outdatedClaim.hubVersion,currentVersion);
   await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning']},auth);
+  assert.equal((await api('bootstrap')).gateway.reachable,true);
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);

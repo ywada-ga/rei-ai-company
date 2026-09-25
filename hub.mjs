@@ -38,6 +38,7 @@ async function body(req) {let raw='';for await(const chunk of req){raw+=chunk;if
 function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.kind,text:t.text,department:t.department,projectId:t.project_id||null,status:t.status,assignedDeviceId:t.device_id,result:brief?t.result.slice(0,500):t.result,error:brief?t.error.slice(0,500):t.error,createdAt:new Date(t.created_at).toISOString(),startedAt:t.started_at?new Date(t.started_at).toISOString():null,finishedAt:t.finished_at?new Date(t.finished_at).toISOString():null};}
 function projectJson(p) {return {id:p.id,name:p.name,objective:p.objective,status:p.status,createdAt:new Date(p.created_at).toISOString(),updatedAt:new Date(p.updated_at).toISOString(),total:p.total||0,completed:p.completed||0,attention:p.attention||0};}
 function projects() {return all(db,"SELECT p.*,COUNT(t.id) AS total,COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END),0) AS completed,COALESCE(SUM(CASE WHEN t.status IN ('failed','needs_review') THEN 1 ELSE 0 END),0) AS attention FROM projects p LEFT JOIN tasks t ON t.project_id=p.id AND t.kind='root' GROUP BY p.id ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,p.updated_at DESC").map(projectJson);}
+function readyConnector() {return !!one(db,'SELECT id FROM devices WHERE revoked=0 AND last_seen>? AND version=? LIMIT 1',Date.now()-30000,reiVersion);}
 function createSetupToken() {
   if(one(db,'SELECT id FROM users LIMIT 1')) return;
   const raw=random();
@@ -117,13 +118,13 @@ async function api(req,res,route) {
     const recent=all(db,"SELECT * FROM tasks WHERE kind='root' ORDER BY created_at DESC,id DESC LIMIT 101");
     const tasks=recent.slice(0,100).map(task=>taskJson(task,true));
     const humanPending=all(db,"SELECT DISTINCT parent_id FROM tasks WHERE kind='human' AND status IN ('waiting_human','waiting_reply','sending') AND parent_id IS NOT NULL ORDER BY created_at DESC LIMIT 100").map(item=>item.parent_id);
-    return send(res,200,{user,departments,workers,tasks,hasOlderTasks:recent.length>100,projects:projects(),humanPending,gateway:{reachable:workers.some(w=>w.connected),version:reiVersion,agent:'rei'}});
+    return send(res,200,{user,departments,workers,tasks,hasOlderTasks:recent.length>100,projects:projects(),humanPending,gateway:{reachable:readyConnector(),version:reiVersion,agent:'rei'}});
   }
-  if(route==='report/today'&&req.method==='GET') {const data=report(db);data.gateway={reachable:!!one(db,'SELECT id FROM devices WHERE revoked=0 AND last_seen>? LIMIT 1',Date.now()-30000)};return send(res,200,data);}
+  if(route==='report/today'&&req.method==='GET') {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,data);}
   if(route==='command'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'指示する権限がありません');
     const data=await body(req),message=text(data.text),department=departments.some(d=>d.id===data.department)?data.department:'operations',projectId=data.projectId?String(data.projectId):null;
-    if(/今日.{0,12}(稼働|活動).{0,8}報告/.test(message)) {const data=report(db);data.gateway={reachable:!!one(db,'SELECT id FROM devices WHERE revoked=0 AND last_seen>? LIMIT 1',Date.now()-30000)};return send(res,200,{kind:'report',report:data});}
+    if(/今日.{0,12}(稼働|活動).{0,8}報告/.test(message)) {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,{kind:'report',report:data});}
     if(projectId&&!one(db,"SELECT id FROM projects WHERE id=? AND status='active'",projectId))return error(res,400,'稼働中のプロジェクトを選んでください');
     const task=createTask(db,message,department,user.id,user.role==='requester',projectId);
     return send(res,201,{kind:'task',task:taskJson(task)});

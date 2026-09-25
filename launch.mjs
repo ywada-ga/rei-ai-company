@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
+const version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const port=Number(process.env.REI_PORT||4178);
 if(!Number.isSafeInteger(port)||port<1||port>65535)throw new Error('REI_PORTは1〜65535で指定してください');
 const url=`http://127.0.0.1:${port}/`;
@@ -21,7 +23,16 @@ function openBrowser(target) {
 let running=false;
 try {
   const response=await fetch(`${url}api?route=setup%2Fstatus`,{signal:AbortSignal.timeout(2000)});
-  if(response.ok)running=typeof (await response.json()).needsSetup==='boolean';
+  if(response.ok){
+    const status=await response.json();
+    if(typeof status.needsSetup==='boolean'){
+      if(status.version!==version){
+        console.error(`起動中のREIは版 ${status.version||'不明'}、このフォルダは版 ${version} です。仕事が終わってから旧版のREIを停止し、再度起動してください。`);
+        process.exit(1);
+      }
+      running=true;
+    }
+  }
 } catch { /* No REI is running on this port. */ }
 if(running) {
   console.log('起動中のREIを開きます。');

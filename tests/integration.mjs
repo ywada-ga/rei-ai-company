@@ -141,5 +141,20 @@ try {
   assert.equal(fallbackStep.kind,'execute');
   await api('connector/result',{taskId:fallbackStep.id,leaseId:fallbackStep.lease_id,success:true,result:'予備端末で完了'},paired.token);
   assert.equal((await api(`tasks/detail/${gated.task.id}`)).task.status,'completed');
+  const uncertain=(await api('command',{text:'通信切断後の結果確認'})).task;
+  const uncertainPlan=(await api('connector/claim',{},paired.token)).job;
+  await api('connector/result',{taskId:uncertainPlan.id,leaseId:uncertainPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'結果を確認する作業',deviceId:paired.device.id}]})},paired.token);
+  const uncertainStep=(await api('connector/claim',{},paired.token)).job;
+  const staleDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  staleDb.prepare('UPDATE tasks SET lease_until=? WHERE id=?').run(Date.now()-1,uncertainStep.id);
+  staleDb.close();
+  assert.equal((await api('bootstrap')).tasks.find(task=>task.id===uncertain.id).status,'needs_review');
+  assert.equal((await api(`tasks/detail/${uncertain.id}`)).children.find(step=>step.id===uncertainStep.id).status,'needs_review');
+  await api('tasks/reconcile',{taskId:uncertainStep.id,resolution:'completed',note:'端末で成果物を確認した'});
+  const reconciled=await api(`tasks/detail/${uncertain.id}`);
+  assert.equal(reconciled.task.status,'completed');
+  assert.ok(reconciled.events.some(item=>item.type==='reconciled'));
+  const secondReconcile=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freconcile',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:uncertainStep.id,resolution:'completed',note:'重複'})});
+  assert.equal(secondReconcile.status,409);
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
 } finally {child.kill('SIGTERM');}

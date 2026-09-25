@@ -73,7 +73,7 @@ export function finishRoot(db,rootId) {
   if(!steps.length||steps.some(s=>!['completed','failed','needs_review','cancelled'].includes(s.status))) return;
   const status=steps.every(s=>s.status==='completed')?'completed':'needs_review';
   const result=steps.map((s,i)=>`${i+1}. ${s.status==='completed'?'完了':'要確認'}: ${(s.result||s.error).slice(0,1000)}`).join('\n');
-  run(db,"UPDATE tasks SET status=?,result=?,finished_at=? WHERE id=? AND status IN ('planning','running')",status,result,now(),rootId);
+  run(db,"UPDATE tasks SET status=?,result=?,error='',finished_at=? WHERE id=? AND status IN ('planning','running','needs_review')",status,result,now(),rootId);
   event(db,rootId,'rei',status,'子仕事の結果を集約');
 }
 export function finishJob(db,device,input) {

@@ -160,6 +160,14 @@ try {
   const recovered=await api(`tasks/detail/${retryable.id}`);
   assert.equal(recovered.task.status,'completed');
   assert.ok(recovered.events.some(item=>item.type==='plan_retried'));
+  const malformed=(await api('command',{text:'計画の形式が崩れた場合'})).task;
+  const malformedPlan=(await api('connector/claim',{},paired.token)).job;
+  await api('connector/result',{taskId:malformedPlan.id,leaseId:malformedPlan.lease_id,success:true,result:'JSONではない文章'},paired.token);
+  const malformedDetail=await api(`tasks/detail/${malformed.id}`);
+  assert.equal(malformedDetail.task.status,'needs_review');
+  assert.equal(malformedDetail.children.length,1);
+  assert.equal(malformedDetail.canRetryPlan,true);
+  assert.equal((await api('connector/claim',{},paired.token)).job,null);
   const uncertain=(await api('command',{text:'通信切断後の結果確認'})).task;
   const uncertainPlan=(await api('connector/claim',{},paired.token)).job;
   await api('connector/result',{taskId:uncertainPlan.id,leaseId:uncertainPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'結果を確認する作業',deviceId:paired.device.id}]})},paired.token);

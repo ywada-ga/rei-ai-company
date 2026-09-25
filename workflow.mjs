@@ -72,7 +72,7 @@ export function sweep(db) {
 function parsePlan(raw,original,devices) {
   let parsed;
   try {parsed=JSON.parse(String(raw).trim().replace(/^```(?:json)?\s*|\s*```$/g,''));} catch {}
-  if(!Array.isArray(parsed?.steps)||!parsed.steps.length) return [{text:original,department:'operations',device_id:null,kind:'execute'}];
+  if(!Array.isArray(parsed?.steps)||!parsed.steps.length||parsed.steps.some(step=>!step||typeof step!=='object'||!String(step.prompt||step.title||'').trim()))return null;
   return parsed.steps.slice(0,12).map(step=>({
     text:String(step.prompt||step.title||original).slice(0,8000),
     department:departments.some(d=>d.id===step.department)?step.department:'operations',
@@ -92,15 +92,17 @@ export function finishRoot(db,rootId) {
 export function finishJob(db,device,input) {
   const job=one(db,"SELECT * FROM tasks WHERE id=? AND device_id=? AND lease_id=? AND status='running'",input.taskId,device.id,input.leaseId);
   if(!job) return {ok:false,duplicate:true};
-  const success=!!input.success,result=String(input.result||'').slice(0,100000),error=String(input.error||'').slice(0,4000);
+  const result=String(input.result||'').slice(0,100000);
+  const devices=job.kind==='plan'?all(db,'SELECT id,label FROM devices WHERE revoked=0'):[];
+  const steps=job.kind==='plan'&&input.success?parsePlan(result,job.text,devices):null;
+  const success=!!input.success&&(job.kind!=='plan'||!!steps);
+  const error=success?'':job.kind==='plan'&&input.success&&!steps?'計画の形式を読み取れませんでした。計画だけ再実行してください':String(input.error||'').slice(0,4000);
   transaction(db,()=>{
     run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_until=0 WHERE id=?',success?'completed':'failed',result,error,now(),job.id);
     event(db,job.id,device.label,success?'completed':'failed',success?'結果を受信':error);
     if(job.kind==='plan') {
       if(!success) {run(db,"UPDATE tasks SET status='needs_review',error=?,finished_at=? WHERE id=?",error||'計画に失敗しました',now(),job.parent_id);return;}
       const root=one(db,'SELECT * FROM tasks WHERE id=?',job.parent_id);
-      const devices=all(db,'SELECT id,label FROM devices WHERE revoked=0');
-      const steps=parsePlan(result,root.text,devices);
       for(const step of steps) {
         const child=id();
         run(db,'INSERT INTO tasks(id,parent_id,kind,text,department,status,device_id,created_by,created_at,project_id) VALUES(?,?,?,?,?,?,?,?,?,?)',child,root.id,step.kind,step.text,step.department,step.kind==='human'?'waiting_human':'ready',step.device_id,root.created_by,now(),root.project_id);

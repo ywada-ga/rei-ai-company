@@ -22,6 +22,14 @@ try {
   assert.ok(saved.folder.startsWith(data));
   const firstPairing=await api('devices/pairing',{label:'first-paired'});
   assert.equal((await api('connector/pair/check',{code:firstPairing.code})).ok,true);
+  const pairDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  pairDb.exec("CREATE TRIGGER fail_pair_event BEFORE INSERT ON events WHEN NEW.type='device_paired' BEGIN SELECT RAISE(ABORT,'pair event failure'); END;");
+  const failedPair=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:firstPairing.code})});
+  assert.equal(failedPair.status,500);
+  assert.equal((await api('connector/pair/check',{code:firstPairing.code})).ok,true);
+  assert.equal(pairDb.prepare("SELECT COUNT(*) AS count FROM devices WHERE label='first-paired'").get().count,0);
+  pairDb.exec('DROP TRIGGER fail_pair_event');
+  pairDb.close();
   const badPairCheck=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair%2Fcheck',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:'INVALIDCODE12345'})});
   assert.equal(badPairCheck.status,403);
   const firstPaired=await api('connector/pair',{code:firstPairing.code});

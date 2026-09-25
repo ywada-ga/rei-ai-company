@@ -91,10 +91,10 @@ async function api(req,res,route) {
       run(db,'UPDATE pairings SET used=1 WHERE hash=?',pairing.hash);
       const planner=!one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0');
       run(db,'INSERT INTO devices(id,label,token_hash,planner) VALUES(?,?,?,?)',id,pairing.label,hash(raw),planner?1:0);
+      event(db,null,pairing.label,'device_paired','端末を接続');
       return {id,label:pairing.label};
     });
     if(!paired)return error(res,403,'接続コードが無効か期限切れです');
-    event(db,null,paired.label,'device_paired','端末を接続');
     return send(res,201,{device:paired,token:raw});
   }
 

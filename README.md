@@ -49,7 +49,7 @@ Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `n
 
 ## Mac mini・Windows・Linux PCをかんたんに追加する（遠隔も可）
 
-1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
+1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。Macでは[公式のStandalone版](https://tailscale.com/docs/install/mac)が推奨されています。インストール時はそのMacの管理者パスワードとVPNの許可が必要です。REIにパスワードを入力する必要はありません。
 2. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。REIが接続URLを検出して入力欄へ入れます。Tailscale側でHTTPSを有効にする案内が出た場合は、その案内を完了してください。
 3. REIの **端末・設定 → かんたん端末追加** にPCの名前を入力します。10分間だけ使える接続コードが表示されます。
 4. 参加PCでは、画面に表示されたコマンドを実行し、接続コードを入力します。コードの有効性を中心PCで確認してから、個人用とは別の `rei` エージェントを作り、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。最初に追加されたPCはREIの計画担当になります。

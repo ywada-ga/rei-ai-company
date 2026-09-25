@@ -14,7 +14,7 @@ const command=args=>{
   let stdout='';
   if(key==='agents list')stdout=JSON.stringify(agent?[agent]:[{id:'main',workspace:'/other'}]);
   else if(key==='config file')stdout=configFile;
-  else if(key==='agents add'){adds++;agent={id:'rei',workspace};stdout=JSON.stringify(agent);}
+  else if(key==='agents add'){adds++;agent={id:'rei',workspace:args[args.indexOf('--workspace')+1]};stdout=JSON.stringify(agent);}
   else if(key==='agents set-identity'){identityUpdates++;stdout='{}';}
   else if(key==='config get')stdout=JSON.stringify({list:[{id:'main'},agent?{id:'rei',tools:{deny,profile}}:null].filter(Boolean)});
   else if(key==='config set'){
@@ -42,6 +42,14 @@ assert.equal(readFileSync(path.join(workspace,'AGENTS.md'),'utf8'),'customized')
 assert.equal(existsSync(path.join(workspace,'SOUL.md')),true);
 agent={id:'rei',workspace:'/someone-else'};
 assert.throws(()=>ensureReiAgent(root,command),/別の用途/);
+const customData=mkdtempSync(path.join(os.tmpdir(),'rei-agent-data-'));
+process.env.REI_DATA_DIR=customData;
+agent=null;
+assert.equal(ensureReiAgent(root,command).workspace,path.join(customData,'openclaw-workspace'));
+assert.equal(existsSync(path.join(customData,'private-backups','openclaw-before-rei.json')),true);
+agent={id:'rei',workspace};
+assert.equal(ensureReiAgent(root,command).workspace,workspace);
+delete process.env.REI_DATA_DIR;
 const mainRoot=mkdtempSync(path.join(os.tmpdir(),'rei-main-'));
 const mainConfig=path.join(mainRoot,'openclaw.json');
 writeFileSync(mainConfig,'{"personal":true}');
@@ -72,4 +80,10 @@ const agentFile=path.join(main.workspace,'AGENTS.md');
 writeFileSync(agentFile,'customized');
 reuseMainAgent(mainRoot,mainCommand);
 assert.equal(readFileSync(agentFile,'utf8'),'customized');
+process.env.REI_DATA_DIR=customData;
+assert.equal(reuseMainAgent(mainRoot,mainCommand).workspace,path.join(mainRoot,'data','openclaw-main-workspace'));
+main.workspace='/old-personal-workspace';
+assert.equal(reuseMainAgent(mainRoot,mainCommand).workspace,path.join(customData,'openclaw-main-workspace'));
+assert.equal(existsSync(path.join(customData,'private-backups','openclaw-before-main-repurpose.json')),true);
+delete process.env.REI_DATA_DIR;
 console.log('PASS dedicated REI agent setup and existing agent protection');

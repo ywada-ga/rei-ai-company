@@ -18,10 +18,11 @@ function checked(command,args) {
 }
 function backupConfig(root,command,name) {
   const configFile=checked(command,['config','file']).trim().replace(/^~(?=\/)/,os.homedir());
-  const backupDir=path.join(root,'data','private-backups');
+  const backupDir=path.join(dataDir(root),'private-backups');
   mkdirSync(backupDir,{recursive:true,mode:0o700});
   if(existsSync(configFile)) {const backup=path.join(backupDir,name);if(!existsSync(backup)){copyFileSync(configFile,backup);chmodSync(backup,0o600);}}
 }
+function dataDir(root) {return process.env.REI_DATA_DIR||path.join(root,'data');}
 function writeInstructions(workspace,overwrite) {
   mkdirSync(workspace,{recursive:true,mode:0o700});
   for(const [name,content] of Object.entries(instructions)) {const file=path.join(workspace,name);if(overwrite||!existsSync(file))writeFileSync(file,content,{mode:0o600});}
@@ -44,10 +45,12 @@ function restrictAgent(command,id) {
   }
 }
 export function ensureReiAgent(root,command=runOpenClawCli) {
-  const workspace=path.join(root,'data','openclaw-workspace');
+  const desired=path.join(dataDir(root),'openclaw-workspace');
+  const legacy=path.join(root,'data','openclaw-workspace');
   const agents=JSON.parse(checked(command,['agents','list','--json']));
   const existing=agents.find(agent=>agent.id==='rei');
-  if(existing&&path.resolve(existing.workspace||'')!==path.resolve(workspace))throw new Error('既存のreiエージェントは別の用途で使われています。REI用の名前を変更してから再試行してください');
+  if(existing&&![desired,legacy].some(workspace=>path.resolve(existing.workspace||'')===path.resolve(workspace)))throw new Error('既存のreiエージェントは別の用途で使われています。REI用の名前を変更してから再試行してください');
+  const workspace=existing?.workspace||desired;
   if(!existing) {
     backupConfig(root,command,'openclaw-before-rei.json');
     checked(command,['agents','add','rei','--workspace',workspace,'--non-interactive','--json']);
@@ -59,9 +62,12 @@ export function ensureReiAgent(root,command=runOpenClawCli) {
   return {agent:'rei',workspace,created:!existing};
 }
 export function reuseMainAgent(root,command=runOpenClawCli) {
-  const workspace=path.join(root,'data','openclaw-main-workspace');
+  const desired=path.join(dataDir(root),'openclaw-main-workspace');
+  const legacy=path.join(root,'data','openclaw-main-workspace');
   const agents=JSON.parse(checked(command,['agents','list','--json']));
-  if(!agents.some(agent=>agent.id==='main'))throw new Error('既存のOpenClaw mainが見つかりません');
+  const existing=agents.find(agent=>agent.id==='main');
+  if(!existing)throw new Error('既存のOpenClaw mainが見つかりません');
+  const workspace=path.resolve(existing.workspace||'')===path.resolve(legacy)?legacy:desired;
   backupConfig(root,command,'openclaw-before-main-repurpose.json');
   writeInstructions(workspace,false);
   const config=JSON.parse(checked(command,['config','get','agents']));

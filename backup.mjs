@@ -9,6 +9,12 @@ const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','mcp
 const dataDir=()=>process.env.REI_DATA_DIR||path.join(root,'data');
 const sha256=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
 function regularFile(file) {return existsSync(file)&&lstatSync(file).isFile();}
+function optionalSourceFile(file) {
+  const status=lstatSync(file,{throwIfNoEntry:false});
+  if(!status)return false;
+  if(!status.isFile())throw new Error(`バックアップ対象が通常のファイルではありません: ${path.basename(file)}`);
+  return true;
+}
 function checkDatabase(file) {
   const db=new DatabaseSync(file,{readOnly:true});
   try {if(db.prepare('PRAGMA integrity_check').get().integrity_check!=='ok')throw new Error('SQLiteの整合性を確認できません');}
@@ -28,7 +34,7 @@ export async function createBackup(source=dataDir(),destination=path.join(source
   try {await backup(db,path.join(folder,'rei.sqlite'));}
   finally {db.close();}
   chmodSync(path.join(folder,'rei.sqlite'),0o600);
-  for(const file of allowed.slice(1))if(regularFile(path.join(source,file))) {copyFileSync(path.join(source,file),path.join(folder,file),constants.COPYFILE_EXCL);chmodSync(path.join(folder,file),0o600);}
+  for(const file of allowed.slice(1))if(optionalSourceFile(path.join(source,file))) {copyFileSync(path.join(source,file),path.join(folder,file),constants.COPYFILE_EXCL);chmodSync(path.join(folder,file),0o600);}
   const files=Object.fromEntries(allowed.filter(file=>regularFile(path.join(folder,file))).map(file=>[file,sha256(path.join(folder,file))]));
   const manifest={format:1,createdAt:new Date().toISOString(),files};
   writeFileSync(path.join(folder,'manifest.json'),JSON.stringify(manifest,null,2),{mode:0o600,flag:'wx'});

@@ -35,6 +35,8 @@ symlinkSync(redirected,link,'dir');
 assert.throws(()=>restoreBackup(folder,link),/空のフォルダ/);
 await assert.rejects(()=>createBackup(source,link),/通常のフォルダ/);
 assert.equal(existsSync(path.join(redirected,'rei.sqlite')),false);
+symlinkSync(path.join(source,'owner-credentials.txt'),path.join(source,'connector.json'),'file');
+await assert.rejects(()=>createBackup(source,path.join(base,'backups')),/バックアップ対象が通常のファイルではありません: connector.json/);
 writeFileSync(path.join(folder,'chatwork.key'),'tampered');
 assert.throws(()=>verifyBackup(folder),/検証に失敗/);
 console.log('PASS online backup, integrity, restore, tamper detection');

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { checkOpenClaw, spawnOpenClaw } from './openclaw-process.mjs';
+import { syncMcp } from './mcp-sync.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(root,'data','connector.json');
@@ -90,11 +91,21 @@ async function main() {
     const result=await response.json();if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);return result;
   }
   let lastHeartbeat=0;
+  let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
   let pending=loadPending();
   console.log(`REI Connector: ${config.hub} / agent=${config.agent}`);
   while(true) {
     try {
-      if(Date.now()-lastHeartbeat>15000) {await api('connector/heartbeat',{capabilities:['openclaw','planning','execution']});lastHeartbeat=Date.now();}
+      if(Date.now()-lastHeartbeat>15000) {
+        const heartbeat=await api('connector/heartbeat',{capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
+        lastHeartbeat=Date.now();
+        const integrations=heartbeat.integrations||[],signature=JSON.stringify(integrations);
+        mcpDefinitions=integrations;
+        if(signature!==mcpSignature||Date.now()-lastMcpSync>60000) {
+          try {mcpStatuses=syncMcp(configPath,integrations);mcpSignature=signature;lastMcpSync=Date.now();}
+          catch(e) {console.error('MCP連携:',e.message);mcpStatuses=integrations.map(item=>({name:item.name,status:'error'}));lastMcpSync=Date.now();}
+        }
+      }
       if(pending.length) {
         const item=pending[0];
         const ack=await api('connector/result',item);

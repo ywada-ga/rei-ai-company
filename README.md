@@ -68,6 +68,14 @@ node install-macos.mjs connector
 
 トンネル用インストーラーに `user@hub-mac` を入力します。ローカルの4179番を使うため、そのMacに同ポートの別サービスがある場合は手動で転送ポートを変更してください。SSH接続先が別ネットワークにある場合は、VPN/Tailscale等でSSH到達性を確保します。REI Hubを認証なしでLANやインターネットへ直接公開しません。
 
+## カレンダー・メールなどのMCP連携
+
+所有者は **端末・設定 → MCP連携** から、Googleカレンダー、Gmail、または任意のHTTPS対応MCPサーバーを選び、利用するPCを指定します。REI ConnectorがそのPCのOpenClawへ `rei_` で始まる専用設定を反映します。既存のOpenClaw MCP設定には触れません。解除も対象PCが次に接続した時に反映されます。対象PCが停止中なら、画面では反映待ちになります。
+
+OAuthが必要な場合は、対象PCで画面に表示される `openclaw mcp login rei_...` を一度実行し、サービス側のログインを完了してください。OAuthトークンは対象PCのOpenClawに保存され、REIのHubには保存されません。REIの「登録済み」はOpenClawへの設定反映を表し、実際の外部サービスとの通信は検証していません。必要に応じて対象PCで `openclaw mcp probe rei_... --json` を実行してください。
+
+Googleの公式カレンダー・Gmail MCPは開発者向けプレビューです。Google Workspace Developer Previewへの参加やCloudプロジェクト、OAuthクライアントなど、Google側の準備が必要です。これらがない環境ではプリセットを選んでも接続は完了しません。一般のMCPはサーバー側が提供するHTTPS URLと認証方式を入力してください。現時点で対応するのはStreamable HTTPで、ローカル起動型（stdio）やAPIキーの入力には対応していません。
+
 ## Chatworkで人に依頼する
 
 所有者が **端末・設定** からルームIDとAPIトークンを登録します。REIが人の担当と判断した子仕事は、そのルームへ `[REI:仕事ID]` 付きで投稿します。担当者は同じタグを含めて返信します。Hubが約30秒ごとに返信を照合し、元の仕事へ記録します。トークンはこのPC内で暗号化して保存します。接続設定がない場合、人への仕事は待機し、送信しません。
@@ -84,11 +92,11 @@ node install-macos.mjs connector
 - `data/chatwork.key`: Chatworkトークンの暗号鍵。Gitには含めません。バックアップする場合はDBと一緒に保管します。
 - このPCで作成済みの所有者認証情報は `data/owner-credentials.txt` に保存しました。公開リポジトリには含めません。ログイン後に設定画面でパスワードを変更できます。
 - Connectorは接続先がHTTPS、またはSSH転送したlocalhostの場合にだけ起動します。
-- OpenClawの既存設定は変更しません。初期値では既存の `main` エージェントを利用します。実運用ではREI専用エージェントを設け、OpenClaw側のツール権限も設定してください。
+- MCP連携を追加した場合、対象PCのOpenClaw設定に `rei_` で始まる専用項目を追加します。それ以外の既存設定は変更しません。初期値では既存の `main` エージェントを利用します。実運用ではREI専用エージェントを設け、OpenClaw側のツール権限も設定してください。
 - 長時間実行の通信が失われた仕事は、二重実行を避けるため「要確認」にします。
 
 ## 実装と現状
 
-Web司令室、ログイン、役割、端末登録・解除、複数PC用Connector、OpenClaw計画・実行、結果集約、日次報告、Chatwork送受信、macOS自動起動を実装しています。このPCのOpenClawとの通し確認は完了しています。**Mac mini 3台とChatworkは、接続先や資格情報をまだ受け取っていないため実機接続は未完了**です。ChatGPTデスクトップアプリの会話を直接操作する機能はありません。
+Web司令室、ログイン、役割、端末登録・解除、複数PC用Connector、OpenClaw計画・実行、結果集約、日次報告、Chatwork送受信、PCごとのMCP設定配信、macOS自動起動を実装しています。このPCのOpenClawとの通し確認は完了しています。**Mac mini 3台とChatworkは、接続先や資格情報をまだ受け取っていないため実機接続は未完了**です。ChatGPTデスクトップアプリの会話を直接操作する機能はありません。
 
 開発・配布前の残課題は [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) に記録します。

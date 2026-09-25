@@ -71,7 +71,7 @@ async function api(req,res,route) {
 
   if(route.startsWith('connector/')) {
     const device=connectorDevice(db,req);if(!device)return error(res,401,'端末認証に失敗しました');
-    if(route==='connector/heartbeat'&&req.method==='POST') {const data=await body(req);run(db,'UPDATE devices SET last_seen=?,capabilities=? WHERE id=?',Date.now(),JSON.stringify(Array.isArray(data.capabilities)?data.capabilities:[]),device.id);return send(res,200,{ok:true,deviceId:device.id});}
+    if(route==='connector/heartbeat'&&req.method==='POST') {const data=await body(req),now=Date.now();run(db,'UPDATE devices SET last_seen=?,capabilities=? WHERE id=?',now,JSON.stringify(Array.isArray(data.capabilities)?data.capabilities:[]),device.id);if(Array.isArray(data.mcpStatuses))for(const item of data.mcpStatuses.slice(0,100)){if(typeof item?.name!=='string'||!['configured','auth_required','error'].includes(item.status))continue;if(!one(db,'SELECT name FROM mcp_integrations WHERE name=? AND device_id=?',item.name,device.id))continue;run(db,'INSERT INTO device_mcp_status(device_id,name,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(device_id,name) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at',device.id,item.name,item.status,now);}const integrations=all(db,'SELECT name,label,url,auth FROM mcp_integrations WHERE device_id=? ORDER BY name',device.id);return send(res,200,{ok:true,deviceId:device.id,integrations});}
     if(route==='connector/claim'&&req.method==='POST') {sweep(db);const job=claim(db,device);const devices=all(db,'SELECT id,label,capabilities FROM devices WHERE revoked=0').map(d=>({...d,capabilities:JSON.parse(d.capabilities)}));return send(res,200,{job,devices});}
     if(route==='connector/renew'&&req.method==='POST') {const data=await body(req);const changed=run(db,"UPDATE tasks SET lease_until=? WHERE id=? AND lease_id=? AND device_id=? AND status='running'",Date.now()+240000,String(data.taskId||''),String(data.leaseId||''),device.id);return send(res,200,{ok:changed.changes===1});}
     if(route==='connector/result'&&req.method==='POST') {const data=await body(req);const result=finishJob(db,device,data);if(result.ok)void sendPendingHuman(db,root).catch(e=>console.error('Chatwork:',e.message));return send(res,200,result);}
@@ -100,6 +100,20 @@ async function api(req,res,route) {
   if(route==='tasks/reject'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'却下する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE id=?",Date.now(),task.id);run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND kind='plan'",Date.now(),task.id);event(db,task.id,user.username,'rejected','実行を却下');});return send(res,200,{ok:true});}
   if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(taskJson);return send(res,200,{tasks});}
   if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices});}
+  if(route==='mcp/list'&&req.method==='GET') {const integrations=all(db,'SELECT m.name,m.label,m.url,m.auth,m.device_id,d.label AS device_label,s.status,s.updated_at FROM mcp_integrations m JOIN devices d ON d.id=m.device_id LEFT JOIN device_mcp_status s ON s.name=m.name AND s.device_id=m.device_id ORDER BY m.created_at DESC');return send(res,200,{integrations});}
+  if(route==='mcp/add'&&req.method==='POST') {
+    if(user.role!=='owner')return error(res,403,'所有者だけが連携を設定できます');
+    const data=await body(req),label=text(data.label,80),deviceId=String(data.deviceId||''),auth=String(data.auth||'oauth');
+    if(!['oauth','none'].includes(auth))return error(res,400,'認証方式が正しくありません');
+    const device=one(db,'SELECT id FROM devices WHERE id=? AND revoked=0',deviceId);if(!device)return error(res,400,'接続先のPCが見つかりません');
+    let url;try{url=new URL(String(data.url||''));}catch{return error(res,400,'MCPのURLが正しくありません');}
+    if(url.protocol!=='https:'||url.username||url.password||url.hash||url.href.length>1000)return error(res,400,'認証情報を含まないHTTPSのMCP URLを入力してください');
+    const name=`rei_${crypto.randomBytes(6).toString('hex')}`;
+    run(db,'INSERT INTO mcp_integrations(name,label,url,auth,device_id,created_at) VALUES(?,?,?,?,?,?)',name,label,url.toString(),auth,device.id,Date.now());
+    event(db,null,user.username,'mcp_added',`${label} / ${device.id}`);
+    return send(res,201,{name,label});
+  }
+  if(route==='mcp/remove'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが連携を解除できます');const data=await body(req),name=String(data.name||'');if(!one(db,'SELECT name FROM mcp_integrations WHERE name=?',name))return error(res,404,'連携が見つかりません');transaction(db,()=>{run(db,'DELETE FROM device_mcp_status WHERE name=?',name);run(db,'DELETE FROM mcp_integrations WHERE name=?',name);});event(db,null,user.username,'mcp_removed',name);return send(res,200,{ok:true});}
   if(route==='devices/pairing'&&req.method==='POST') {
     if(!['owner','admin'].includes(user.role))return error(res,403,'端末を登録する権限がありません');
     const data=await body(req),label=text(data.label,80),code=crypto.randomBytes(12).toString('base64url');

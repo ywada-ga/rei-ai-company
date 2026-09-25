@@ -19,10 +19,18 @@ try {
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
   await api('connector/heartbeat',{capabilities:['openclaw']},auth);
+  const mcp=await api('mcp/add',{label:'Test Calendar',url:'https://example.com/mcp',auth:'oauth',deviceId:enrolled.device.id});
+  assert.match(mcp.name,/^rei_[a-f0-9]{12}$/);
+  assert.equal((await api('mcp/list')).integrations[0].status,null);
+  assert.equal((await api('connector/heartbeat',{capabilities:['openclaw'],mcpStatuses:[{name:mcp.name,status:'auth_required'}]},auth)).integrations[0].name,mcp.name);
+  assert.equal((await api('mcp/list')).integrations[0].status,'auth_required');
   const pairing=await api('devices/pairing',{label:'remote-mac'});
   const paired=await api('connector/pair',{code:pairing.code});
   assert.equal(paired.device.label,'remote-mac');
   await api('connector/heartbeat',{capabilities:['openclaw']},paired.token);
+  assert.equal((await api('connector/heartbeat',{capabilities:['openclaw']},paired.token)).integrations.length,0);
+  await api('mcp/remove',{name:mcp.name});
+  assert.equal((await api('mcp/list')).integrations.length,0);
   const replay=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:pairing.code})});
   assert.equal(replay.status,403);
   const created=await api('command',{text:'テスト用の仕事をして',department:'operations'});

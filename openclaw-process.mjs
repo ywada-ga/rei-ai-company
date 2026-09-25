@@ -20,6 +20,11 @@ export function checkOpenClaw() {
   return spawnSync('openclaw',['--version'],{encoding:'utf8'});
 }
 
+export function runOpenClawCli(args) {
+  if(process.platform==='win32')return spawnSync(process.execPath,[windowsEntry(),...args],{encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:1024*1024});
+  return spawnSync('openclaw',args,{encoding:'utf8',timeout:30000,maxBuffer:1024*1024});
+}
+
 export function spawnOpenClaw(agent,key,instruction) {
   if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),'agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   return spawn('openclaw',['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe']});

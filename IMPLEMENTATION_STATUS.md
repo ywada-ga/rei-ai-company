@@ -12,6 +12,8 @@
 - 10分間の接続コードによる端末登録と、コードの再利用拒否
 - Windows向けのOpenClaw CLI起動とログイン時の自動起動を実装。Windows・macOS・LinuxのCIでREI本体を検証し、Windowsでは引用符や改行を含む指示文が模擬CLIにそのまま届くことを確認
 - ローカルWeb画面の初期登録表示、ブラウザのエラーログなし
+- MCP連携の登録・対象PCへの配信・認証待ち状態・解除を一時DBと模擬OpenClawで確認
+- このPCのOpenClaw CLIで実際にMCPを登録し、状態を読み、解除する操作を確認。実アカウントへのOAuth接続は未実施
 
 ## 実機で接続するために必要な情報
 
@@ -23,6 +25,7 @@
 
 - Mac mini 3台でのTailscale Serve接続、各端末でのOpenClaw実行。手動SSH方式を使う場合は転送の継続・再接続も確認。
 - Chatworkの実送信、API制限、返信照合。
+- Google Workspace Developer Previewの利用資格とOAuthクライアントの準備後、カレンダー・Gmailの実認証とツール実行。一般的なMCPの接続確認も必要。
 - 高権限のOpenClawツールをREI専用エージェントでどこまで許可するか。
 - Linuxでの自動起動と、一般利用者向けの配布用インストーラー。
 - 同時実行、長文、OS再起動、データバックアップ・復元の負荷試験。

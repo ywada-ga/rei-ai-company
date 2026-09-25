@@ -66,9 +66,10 @@ function extractAnswer(payload) {
 }
 function runOpenClaw(agent,job,devices) {
   const list=devices.map(d=>({id:d.id,label:d.label,capabilities:d.capabilities}));
+  const projectContext=job.project?`所属プロジェクト: ${job.project.name}。達成目的: ${job.project.objective}。この目的を踏まえて依頼を進めてください。`:'';
   const instruction=job.kind==='plan'
-    ? `あなたはREIというAI秘書の計画担当です。実行はしないでください。次の依頼を1〜12個の仕事に分け、JSONだけで返してください。形式: {"steps":[{"title":"短い仕事名","prompt":"担当AIへ渡す具体的な指示","department":"operations|research|production|sales|support|people","deviceId":"指定する場合は登録端末ID","human":false}]}。利用可能な端末: ${JSON.stringify(list)}。人への依頼が必要ならhuman:true。端末指定が不要ならdeviceIdを省略。実行できない部分は正直に記述。依頼: ${job.text}`
-    : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。依頼: ${job.text}`;
+    ? `あなたはREIというAI秘書の計画担当です。実行はしないでください。次の依頼を1〜12個の仕事に分け、JSONだけで返してください。形式: {"steps":[{"title":"短い仕事名","prompt":"担当AIへ渡す具体的な指示","department":"operations|research|production|sales|support|people","deviceId":"指定する場合は登録端末ID","human":false}]}。利用可能な端末: ${JSON.stringify(list)}。人への依頼が必要ならhuman:true。端末指定が不要ならdeviceIdを省略。実行できない部分は正直に記述。${projectContext}依頼: ${job.text}`
+    : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。${projectContext}依頼: ${job.text}`;
   return new Promise((resolve,reject)=>{
     const key=`agent:${agent}:rei-${job.kind}-${job.id}`;
     const child=spawnOpenClaw(agent,key,instruction);

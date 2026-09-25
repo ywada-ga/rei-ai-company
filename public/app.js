@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, selectedTask:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -30,6 +30,7 @@ function setView(view) {
   const copy = {
     core:['レイ','COMMAND CENTER','レイに目的を伝える。AI会社が仕事を動かす。'],
     missions:['ミッション','MISSION CONTROL','指示から実行、結果までを追跡します。'],
+    projects:['プロジェクト','PROJECT COMMAND','目的ごとに仕事と進捗をまとめます。'],
     briefing:['稼働報告','DAILY INTELLIGENCE','今日の実行記録を、接続済みのユニットから集約します。']
   }[view];
   $('view-title').innerHTML = `${copy[0]} <span>${copy[1]}</span>`;
@@ -64,6 +65,7 @@ function render() {
   }).join('');
   renderFocus();
   renderMissions();
+  renderProjects();
   renderBriefing();
   const reply = tasks.find(task => task.id === state.pendingReplyTaskId);
   if (reply && ['completed','failed','interrupted','needs_review'].includes(reply.status)) {
@@ -87,10 +89,28 @@ function renderFocus() {
 }
 function renderMissions() {
   const tasks = state.data.tasks;
+  const projectName=id=>state.data.projects.find(project=>project.id===id)?.name||'単発の依頼';
   $('mission-total').textContent = `${String(tasks.length).padStart(2,'0')} MISSIONS`;
-  $('mission-list').innerHTML = tasks.length ? tasks.map((task,index) => `<button class="mission-row ${state.selectedTask === task.id ? 'selected' : ''}" data-task="${escapeHtml(task.id)}"><span class="mission-index">${String(index+1).padStart(2,'0')}</span><span><strong>${escapeHtml(task.text)}</strong><small>${formatTime(task.createdAt)} · REI / HUB</small></span><em class="status ${escapeHtml(task.status)}">${escapeHtml(labels[task.status] || task.status)}</em></button>`).join('') : `<div class="panel-empty tall"><span>◇</span><strong>ミッションはありません</strong><small>下の入力欄から最初の仕事を依頼してください。</small></div>`;
+  $('mission-list').innerHTML = tasks.length ? tasks.map((task,index) => `<button class="mission-row ${state.selectedTask === task.id ? 'selected' : ''}" data-task="${escapeHtml(task.id)}"><span class="mission-index">${String(index+1).padStart(2,'0')}</span><span><strong>${escapeHtml(task.text)}</strong><small>${formatTime(task.createdAt)} · ${escapeHtml(projectName(task.projectId))}</small></span><em class="status ${escapeHtml(task.status)}">${escapeHtml(labels[task.status] || task.status)}</em></button>`).join('') : `<div class="panel-empty tall"><span>◇</span><strong>ミッションはありません</strong><small>下の入力欄から最初の仕事を依頼してください。</small></div>`;
   const chosen = tasks.find(item => item.id === state.selectedTask) || tasks[0];
   $('mission-detail').innerHTML = chosen ? `<div class="detail-header"><span>MISSION FILE / ${escapeHtml(chosen.id.slice(0,8).toUpperCase())}</span><em class="status ${escapeHtml(chosen.status)}">${escapeHtml(labels[chosen.status] || chosen.status)}</em></div><h3>${escapeHtml(chosen.text)}</h3><div class="detail-facts"><div><span>担当</span><b>OpenClaw · main</b></div><div><span>開始</span><b>${formatTime(chosen.startedAt)}</b></div><div><span>完了</span><b>${formatTime(chosen.finishedAt)}</b></div></div><div class="detail-result"><span>RESPONSE / RESULT</span><p>${escapeHtml(chosen.result || chosen.error || '実行結果を待っています。')}</p></div>` : `<div class="panel-empty tall"><span>⌕</span><strong>詳細を表示する仕事がありません</strong></div>`;
+}
+function renderProjects() {
+  const projects=state.data.projects||[];
+  if(projects.length&&!projects.some(project=>project.id===state.selectedProject))state.selectedProject=projects[0].id;
+  const select=$('command-project'),selected=select.value;
+  select.innerHTML='<option value="">単発の依頼</option>'+projects.filter(project=>project.status==='active').map(project=>`<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join('');
+  select.value=projects.some(project=>project.id===selected&&project.status==='active')?selected:'';
+  $('project-form').classList.toggle('hidden',!['owner','admin'].includes(state.data.user.role));
+  $('project-total').textContent=`${String(projects.length).padStart(2,'0')} PROJECTS`;
+  $('project-list').innerHTML=projects.length?projects.map(project=>`<button class="project-row ${state.selectedProject===project.id?'selected':''}" data-project="${escapeHtml(project.id)}"><span class="project-glyph">◈</span><span><strong>${escapeHtml(project.name)}</strong><small>${project.completed}/${project.total}件完了 · ${project.status==='active'?'稼働中':project.status==='paused'?'保留':'完了'}</small></span><em>${project.total?Math.round(project.completed/project.total*100):0}%</em></button>`).join(''):'<div class="panel-empty tall"><span>◈</span><strong>プロジェクトはまだありません</strong><small>目的を設定すると、複数の依頼をまとめて追跡できます。</small></div>';
+  const project=projects.find(item=>item.id===state.selectedProject)||projects[0];
+  const tasks=project?state.data.tasks.filter(task=>task.projectId===project.id):[];
+  $('project-detail').innerHTML=project?`<div class="project-detail-inner"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.attention}件要確認</span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}<h4>最近の仕事</h4>${tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):'<p class="project-empty">このプロジェクトの仕事はまだありません。</p>'}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
+  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;renderProjects();});
+  document.querySelectorAll('[data-project-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.projectTask;setView('missions');});
+  if($('project-assign'))$('project-assign').onclick=()=>{select.value=project.id;$('command-input').focus();};
+  if($('project-status'))$('project-status').onchange=async event=>{const value=event.target.value;try{await request('/api/projects/status',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,status:value})});await refresh();}catch(error){$('project-feedback').textContent=error.message;await refresh();}};
 }
 async function loadReport() {
   $('briefing-content').innerHTML = '<div class="glass-panel loading">実行記録を照合しています...</div>';
@@ -108,6 +128,7 @@ function renderBriefing() {
 document.querySelectorAll('.rail-btn').forEach(button => button.onclick = () => setView(button.dataset.view));
 $('refresh').onclick = refresh;
 $('report-refresh').onclick = loadReport;
+$('project-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type="submit"]');button.disabled=true;$('project-feedback').textContent='';try{const result=await request('/api/projects/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('project-name').value.trim(),objective:$('project-objective').value.trim()})});$('project-name').value='';$('project-objective').value='';state.selectedProject=result.project.id;await refresh();$('command-project').value=result.project.id;$('project-feedback').textContent='プロジェクトを作成しました';}catch(error){$('project-feedback').textContent=error.message;}finally{button.disabled=false;}};
 $('core-button').onclick = () => $('command-input').focus();
 $('command-form').onsubmit = async event => {
   event.preventDefault();
@@ -118,7 +139,7 @@ $('command-form').onsubmit = async event => {
   button.disabled = true;
   feedback('レイに伝えています...');
   try {
-    const result = await request('/api/command', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-AI-Company':'1' }, body:JSON.stringify({ text, department:state.selectedDepartment || 'operations' }) });
+    const result = await request('/api/command', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-AI-Company':'1' }, body:JSON.stringify({ text, department:state.selectedDepartment || 'operations', projectId:$('command-project').value||null }) });
     input.value = '';
     await refresh();
     if (result.kind === 'report') { state.report = result.report; setView('briefing'); feedback('DAILY BRIEFING READY'); }

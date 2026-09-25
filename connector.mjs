@@ -55,8 +55,20 @@ function validateHub(value) {
   if(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname))return;
   throw new Error('HubはHTTPS、またはSSH転送したローカルURLを指定してください');
 }
-function loadPending() {try {const value=JSON.parse(readFileSync(pendingPath,'utf8'));return Array.isArray(value)?value:[];}catch{return [];}}
-function savePending(items) {const temp=`${pendingPath}.tmp`;writeFileSync(temp,JSON.stringify(items),{mode:0o600});renameSync(temp,pendingPath);}
+function loadPending() {
+  if(existsSync(`${pendingPath}.tmp`))throw new Error(`未完了の結果保存ファイルがあります。${pendingPath}.tmp を確認してください`);
+  if(!existsSync(pendingPath))return [];
+  let value;
+  try {value=JSON.parse(readFileSync(pendingPath,'utf8'));}
+  catch {throw new Error(`送信待ち結果を読み取れません。${pendingPath} を確認してください`);}
+  if(!Array.isArray(value)||value.some(item=>!item||typeof item.taskId!=='string'||typeof item.leaseId!=='string'||typeof item.success!=='boolean'||typeof item.result!=='string'||typeof item.error!=='string'))throw new Error(`送信待ち結果の形式が正しくありません。${pendingPath} を確認してください`);
+  return value;
+}
+function savePending(items) {
+  const temp=`${pendingPath}.tmp`;
+  try {writeFileSync(temp,JSON.stringify(items),{mode:0o600,flag:'wx',flush:true});renameSync(temp,pendingPath);}
+  catch(error) {throw Object.assign(new Error(`送信待ち結果を保存できません: ${error.message}`),{fatal:true});}
+}
 function runOpenClaw(agent,job,devices) {
   const list=devices.map(d=>({id:d.id,label:d.label,agentName:d.agentName,online:d.online,capabilities:d.capabilities}));
   const projectContext=job.project?`所属プロジェクト: ${job.project.name}。達成目的: ${job.project.objective}。この目的を踏まえて依頼を進めてください。`:'';
@@ -93,7 +105,7 @@ async function main() {
     const ack=await api('connector/result',item);
     if(!ack.ok)throw new Error(`${item.taskId}: Hubが結果を受理できませんでした。送信待ち記録を保持しています`);
     console.log(`${item.taskId}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.alreadyRecorded?'保存済みの結果を再送':'報告完了'}`);
-    pending.shift();savePending(pending);
+    const remaining=pending.slice(1);savePending(remaining);pending=remaining;
   }
   console.log(`REI Connector: ${config.hub} / agent=${config.agent}`);
   while(true) {
@@ -129,10 +141,10 @@ async function main() {
       try {result=await runOpenClaw(config.agent,job,devices);success=true;}
       catch(e) {error=e.message;}
       finally {clearInterval(renewal);clearInterval(keepAlive);}
-      pending.push({taskId:job.id,leaseId:job.lease_id,success,result,error});savePending(pending);
+      const nextPending=[...pending,{taskId:job.id,leaseId:job.lease_id,success,result,error}];savePending(nextPending);pending=nextPending;
       await submitPending();
       if(process.argv.includes('--once'))break;
-    } catch(e) {console.error('接続/実行:',e.message);if(process.argv.includes('--once'))process.exitCode=1;else await sleep(5000);if(process.argv.includes('--once'))break;}
+    } catch(e) {console.error('接続/実行:',e.message);if(e.fatal||process.argv.includes('--once')){process.exitCode=1;break;}await sleep(5000);}
   }
 }
 await main();

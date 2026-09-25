@@ -70,7 +70,7 @@ node install-macos.mjs connector
 
 ## カレンダー・メールなどのMCP連携
 
-所有者は **端末・設定 → MCP連携** から、利用するPCと連携先をチェックして一括登録できます。国内向けのfreee、マネーフォワード クラウド会計・事業者情報、Misoca、kintone公式ドキュメント検索、SUZURIに加え、Meeting.ai、Notion、Linear、Jira・Confluence、Google Workspaceを選べます。画面には認証方式、利用条件、公式手順を表示します。対応範囲と調査結果は [MCP_JAPAN_CATALOG.md](MCP_JAPAN_CATALOG.md) に記録しています。REI ConnectorがそのPCのOpenClawへ `rei_` で始まる専用設定を反映します。既存のOpenClaw MCP設定には触れません。解除も対象PCが次に接続した時に反映されます。対象PCが停止中なら、画面では反映待ちになります。
+所有者は **端末・設定 → MCP連携** から、利用するPCと連携先をチェックして一括登録できます。国内向けのfreee、マネーフォワード クラウド会計・事業者情報、Misoca、kintone公式ドキュメント検索、SUZURIに加え、Meeting.ai、Notion、Linear、Jira・Confluence、Google Workspace、Context7、Supabase、Sentry、Cloudflare、Upstash、Exa、Firecrawl、Stripeを選べます。画面には認証方式、利用条件、公式手順を表示します。対応範囲と調査結果は [MCP_JAPAN_CATALOG.md](MCP_JAPAN_CATALOG.md) と [MCP_TREND_CATALOG.md](MCP_TREND_CATALOG.md) に記録しています。REI ConnectorがそのPCのOpenClawへ `rei_` で始まる専用設定を反映します。既存のOpenClaw MCP設定には触れません。解除も対象PCが次に接続した時に反映されます。対象PCが停止中なら、画面では反映待ちになります。
 
 OAuthが必要な場合は、対象PCで画面に表示される `openclaw mcp login rei_...` を一度実行し、サービス側のログインを完了してください。OAuthトークンは対象PCのOpenClawに保存され、REIのHubには保存されません。REIの「登録済み」はOpenClawへの設定反映を表し、実際の外部サービスとの通信は検証していません。必要に応じて対象PCで `openclaw mcp probe rei_... --json` を実行してください。
 

@@ -15,6 +15,7 @@
 - MCP連携の登録・対象PCへの配信・認証待ち状態・解除を一時DBと模擬OpenClawで確認。Notion、Linear、Atlassian、Googleカレンダー・Gmail・ドライブの公式URLを選べる画面も確認
 - このPCのOpenClaw CLIで実際にMCPを登録し、状態を読み、解除する操作を確認。実アカウントへのOAuth接続は未実施
 - 国内向けMCPを含むチェックボックス式の一括登録をブラウザで確認。kintone公式ドキュメントMCPは、このPCへ登録して3ツールの公開を実際に確認し、検証後に解除
+- Web・Xで挙がる候補を調べ、公式URLと接続条件を確認したMCPを追加。候補の選定と非対応の理由はMCP_TREND_CATALOG.mdに記録
 
 ## 実機で接続するために必要な情報
 

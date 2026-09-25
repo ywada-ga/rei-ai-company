@@ -91,6 +91,51 @@ export const MCP_PRESETS = [
     docs:'https://developers.google.com/workspace/guides/configure-mcp-servers'
   },
   {
+    id:'context7',category:'開発・技術資料',title:'Context7',label:'Context7',url:'https://mcp.context7.com/mcp/oauth',auth:'oauth',
+    note:'ライブラリの最新ドキュメントを検索します。OAuth専用URLを使用します。',
+    docs:'https://context7.com/docs/resources/all-clients'
+  },
+  {
+    id:'supabase',category:'開発・技術資料',title:'Supabase',label:'Supabase',url:'https://mcp.supabase.com/mcp',auth:'oauth',
+    note:'データベースやプロジェクト管理に対応します。接続後は対象プロジェクトと権限を確認してください。',
+    docs:'https://supabase.com/docs/guides/ai-tools/mcp'
+  },
+  {
+    id:'sentry',category:'開発・技術資料',title:'Sentry',label:'Sentry',url:'https://mcp.sentry.dev/mcp',auth:'oauth',
+    note:'エラーやトレースの調査に対応します。可能なら組織・プロジェクト単位のURLに絞ってください。',
+    docs:'https://mcp.sentry.dev/'
+  },
+  {
+    id:'cloudflare-api',category:'開発・技術資料',title:'Cloudflare API',label:'Cloudflare API',url:'https://mcp.cloudflare.com/mcp',auth:'oauth',
+    note:'DNSやWorkersなど広い操作に対応します。OAuth同意画面で必要な権限だけ選択してください。',
+    docs:'https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/'
+  },
+  {
+    id:'cloudflare-docs',category:'開発・技術資料',title:'Cloudflareドキュメント',label:'Cloudflareドキュメント',url:'https://docs.mcp.cloudflare.com/mcp',auth:'oauth',
+    note:'Cloudflareの公式技術資料を検索します。',
+    docs:'https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/'
+  },
+  {
+    id:'upstash',category:'開発・技術資料',title:'Upstash',label:'Upstash',url:'https://mcp.upstash.com/mcp',auth:'oauth',
+    note:'RedisなどのUpstashリソースを扱います。認証時に閲覧専用の権限も選べます。',
+    docs:'https://upstash.com/docs/agent-resources/mcp'
+  },
+  {
+    id:'exa',category:'調査・Web情報',title:'Exa Web検索',label:'Exa',url:'https://mcp.exa.ai/mcp',auth:'none',
+    note:'Web検索・クロール用。匿名接続では利用回数に制限があります。',
+    docs:'https://github.com/exa-labs/exa-mcp-server'
+  },
+  {
+    id:'firecrawl',category:'調査・Web情報',title:'Firecrawl',label:'Firecrawl',url:'https://mcp.firecrawl.dev/v2/mcp-oauth',auth:'oauth',
+    note:'Webページの取得・検索などに対応します。Firecrawlのブラウザ認証を使います。',
+    docs:'https://github.com/firecrawl/firecrawl-docs/blob/main/mcp-server.mdx'
+  },
+  {
+    id:'stripe',category:'決済・機密データ',title:'Stripe',label:'Stripe',url:'https://mcp.stripe.com',auth:'oauth',
+    note:'決済情報の閲覧や変更操作が可能です。Stripe側で接続先アカウントと権限を慎重に選んでください。',
+    docs:'https://docs.stripe.com/mcp'
+  },
+  {
     id:'custom',category:'個別設定',title:'その他のHTTPS MCP',label:'',url:'',auth:'oauth',
     note:'提供元が公開するStreamable HTTPのURLを入力してください。stdio方式やAPIキー方式は現在対象外です。',
     docs:''

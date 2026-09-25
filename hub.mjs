@@ -105,7 +105,7 @@ async function api(req,res,route) {
   if(route==='mcp/add-batch'&&req.method==='POST') {
     if(user.role!=='owner')return error(res,403,'所有者だけが連携を設定できます');
     const data=await body(req),deviceId=String(data.deviceId||''),ids=data.ids;
-    if(!Array.isArray(ids)||ids.length<1||ids.length>25||new Set(ids).size!==ids.length)return error(res,400,'連携先を1〜25件選んでください');
+    if(!Array.isArray(ids)||ids.length<1||ids.length>100||new Set(ids).size!==ids.length)return error(res,400,'連携先を1〜100件選んでください');
     const presets=ids.map(id=>MCP_PRESETS.find(preset=>preset.id===id&&preset.url));
     if(presets.some(preset=>!preset))return error(res,400,'選択された連携先が見つかりません');
     const device=one(db,'SELECT id FROM devices WHERE id=? AND revoked=0',deviceId);

@@ -66,3 +66,5 @@ SQLiteはWALモード。プロジェクト、仕事、子仕事、端末、利�
 ## 配布形態
 
 依存パッケージを必要としないNode.jsアプリ。GitHubにはソース、導入手順、テストだけを載せる。`data/`、Chatworkトークン、端末トークン、仕事履歴は `.gitignore` で除外する。新規利用者は自分のPCでHubを起動し、初回登録から始められる。
+
+macOSはLaunchAgent、Windowsはスタートアップ登録、LinuxはsystemdユーザーサービスでHubとConnectorを自動起動できる。各OSの設定は利用者自身のアカウント内に保存する。

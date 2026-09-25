@@ -35,6 +35,8 @@ node install-macos.mjs connector
 
 WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start` と `node connector.mjs join` を使えます。Windowsのログイン時にREI本体を自動起動する場合は `node install-windows.mjs hub` を実行します。Windowsの参加端末では `join` がConnectorを自動起動に登録します。OpenClaw CLIは[公式Windows手順](https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md)で用意してください。
 
+Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `node install-linux.mjs hub`、参加PCでは接続設定後に `node install-linux.mjs connector` を実行します。設定は `~/.config/systemd/user/` に保存され、ユーザーのログイン中に自動再起動します。ログアウト中も常駐させたい場合はOS側でユーザーサービスのlinger設定が必要です。
+
 ## Mac mini・Windows PCをかんたんに追加する（遠隔も可）
 
 1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。

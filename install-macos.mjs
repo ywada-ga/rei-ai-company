@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,10 @@ async function install(label,program,args,log) {
 <key>StandardOutPath</key>${string(log)}<key>StandardErrorPath</key>${string(log)}
 <key>EnvironmentVariables</key><dict>${Object.entries({PATH:'/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',...environment}).map(([key,value])=>`<key>${key}</key>${string(value)}`).join('')}</dict>
 </dict></plist>`;
-  writeFileSync(file,plist,{mode:0o600});chmodSync(file,0o600);
+  const previous=existsSync(file)?readFileSync(file):null;
+  const temporary=`${file}.${process.pid}.tmp`;
+  writeFileSync(temporary,plist,{mode:0o600,flag:'wx'});
+  renameSync(temporary,file);chmodSync(file,0o600);
   const target=`gui/${process.getuid()}/${label}`;
   spawnSync('launchctl',['bootout',target],{stdio:'ignore'});
   let result;
@@ -33,7 +36,15 @@ async function install(label,program,args,log) {
     result=spawnSync('launchctl',['bootstrap',`gui/${process.getuid()}`,file],{encoding:'utf8'});
     if(result.status===0)break;
   }
-  if(result.status!==0)throw new Error(`launchctl: ${result.stderr||result.stdout}`);
+  if(result.status!==0) {
+    if(previous) {
+      writeFileSync(temporary,previous,{mode:0o600,flag:'wx'});
+      renameSync(temporary,file);chmodSync(file,0o600);
+      const restored=spawnSync('launchctl',['bootstrap',`gui/${process.getuid()}`,file],{encoding:'utf8'});
+      if(restored.status!==0)throw new Error(`launchctl: 新しい設定も元の設定も起動できません。${restored.stderr||restored.stdout}`);
+    } else unlinkSync(file);
+    throw new Error(`launchctl: 新しい設定を起動できませんでした。${previous?'元の設定へ戻しました。':'自動起動の登録を取り消しました。'}${result.stderr||result.stdout}`);
+  }
   console.log(`${label} を自動起動に登録しました。ログ: ${log}`);
 }
 const rl=createInterface({input:process.stdin,output:process.stdout});

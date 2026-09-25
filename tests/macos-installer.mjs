@@ -12,7 +12,7 @@ if(process.platform==='darwin') {
   const bin=path.join(temp,'bin'),agents=path.join(temp,'agents'),data=path.join(temp,'restored-data');
   mkdirSync(bin);
   const fake=path.join(bin,'launchctl');
-  writeFileSync(fake,'#!/bin/sh\nexit 0\n');chmodSync(fake,0o755);
+  writeFileSync(fake,'#!/bin/sh\nif [ "$1" = bootstrap ] && [ -n "$REI_TEST_FAIL_PORT" ] && /usr/bin/grep -Fq "$REI_TEST_FAIL_PORT" "$3"; then exit 1; fi\nexit 0\n');chmodSync(fake,0o755);
   for(const mode of ['hub','connector']) {
     const result=spawnSync(process.execPath,['install-macos.mjs',mode],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:agents,REI_DATA_DIR:data,REI_CONNECTOR_CONFIG:path.join(data,'connector.json'),REI_PORT:'4188'}});
     assert.equal(result.status,0,result.stderr);
@@ -23,6 +23,13 @@ if(process.platform==='darwin') {
     assert.match(plist,/<key>REI_PORT<\/key><string>4188<\/string>/);
     assert.equal(statSync(path.join(agents,`ai.rei.${mode}.plist`)).mode&0o777,0o600);
   }
+  const failedUpdate=spawnSync(process.execPath,['install-macos.mjs','hub'],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:agents,REI_DATA_DIR:data,REI_PORT:'4199',REI_TEST_FAIL_PORT:'<string>4199</string>'}});
+  assert.notEqual(failedUpdate.status,0);
+  assert.match(readFileSync(path.join(agents,'ai.rei.hub.plist'),'utf8'),/<key>REI_PORT<\/key><string>4188<\/string>/);
+  const emptyAgents=path.join(temp,'failed-new-agents');
+  const failedNew=spawnSync(process.execPath,['install-macos.mjs','hub'],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:emptyAgents,REI_DATA_DIR:data,REI_PORT:'4199',REI_TEST_FAIL_PORT:'<string>4199</string>'}});
+  assert.notEqual(failedNew.status,0);
+  assert.equal(existsSync(path.join(emptyAgents,'ai.rei.hub.plist')),false);
   const project=path.join(temp,'joined-pc');mkdirSync(project);
   for(const file of ['package.json','connector.mjs','openclaw-process.mjs','rei-agent.mjs','mcp-sync.mjs','install-macos.mjs'])copyFileSync(path.join(root,file),path.join(project,file));
   const fakeOpenClaw=`#!/usr/bin/env node

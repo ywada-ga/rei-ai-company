@@ -1,6 +1,6 @@
 import { DatabaseSync, backup } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, constants } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, chmodSync, constants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,22 +23,31 @@ function checkDatabase(file) {
 export async function createBackup(source=dataDir(),destination=path.join(source,'backups')) {
   const database=path.join(source,'rei.sqlite');
   if(!optionalSourceFile(database))throw new Error('REIのデータベースが見つかりません');
+  const present=allowed.slice(1).filter(file=>optionalSourceFile(path.join(source,file)));
   const existing=lstatSync(destination,{throwIfNoEntry:false});
   if(existing&&!existing.isDirectory())throw new Error('バックアップ先には通常のフォルダを指定してください');
   mkdirSync(destination,{recursive:true,mode:0o700});
   chmodSync(destination,0o700);
   const name=`rei-${new Date().toISOString().replace(/[:.]/g,'-')}-${randomBytes(3).toString('hex')}`;
   const folder=path.join(destination,name);
-  mkdirSync(folder,{mode:0o700});
-  const db=new DatabaseSync(database,{readOnly:true});
-  try {await backup(db,path.join(folder,'rei.sqlite'));}
-  finally {db.close();}
-  chmodSync(path.join(folder,'rei.sqlite'),0o600);
-  for(const file of allowed.slice(1))if(optionalSourceFile(path.join(source,file))) {copyFileSync(path.join(source,file),path.join(folder,file),constants.COPYFILE_EXCL);chmodSync(path.join(folder,file),0o600);}
-  const files=Object.fromEntries(allowed.filter(file=>regularFile(path.join(folder,file))).map(file=>[file,sha256(path.join(folder,file))]));
-  const manifest={format:1,createdAt:new Date().toISOString(),files};
-  writeFileSync(path.join(folder,'manifest.json'),JSON.stringify(manifest,null,2),{mode:0o600,flag:'wx'});
-  verifyBackup(folder);
+  const staging=path.join(destination,`.partial-${name}`);
+  mkdirSync(staging,{mode:0o700});
+  try {
+    const db=new DatabaseSync(database,{readOnly:true});
+    try {await backup(db,path.join(staging,'rei.sqlite'));}
+    finally {db.close();}
+    chmodSync(path.join(staging,'rei.sqlite'),0o600);
+    for(const file of present) {
+      optionalSourceFile(path.join(source,file));
+      copyFileSync(path.join(source,file),path.join(staging,file),constants.COPYFILE_EXCL);
+      chmodSync(path.join(staging,file),0o600);
+    }
+    const files=Object.fromEntries(allowed.filter(file=>regularFile(path.join(staging,file))).map(file=>[file,sha256(path.join(staging,file))]));
+    const manifest={format:1,createdAt:new Date().toISOString(),files};
+    writeFileSync(path.join(staging,'manifest.json'),JSON.stringify(manifest,null,2),{mode:0o600,flag:'wx'});
+    verifyBackup(staging);
+    renameSync(staging,folder);
+  } catch(error) {rmSync(staging,{recursive:true,force:true});throw error;}
   return folder;
 }
 export function verifyBackup(folder) {

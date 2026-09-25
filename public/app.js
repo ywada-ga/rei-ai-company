@@ -92,7 +92,7 @@ function renderFocus() {
   $('focus-missions').onclick = () => setView('missions');
 }
 function renderMissions() {
-  if(document.activeElement?.closest('.human-reply-form,.reconcile-form'))return;
+  if(document.activeElement?.closest('.human-reply-form,.reconcile-form,.reassign-form'))return;
   const tasks = state.data.tasks;
   const projectName=id=>state.data.projects.find(project=>project.id===id)?.name||'単発の依頼';
   $('mission-total').textContent = `${String(tasks.length).padStart(2,'0')} MISSIONS`;
@@ -106,12 +106,14 @@ function renderMissions() {
   if(detail&&['owner','admin'].includes(state.data.user.role)) {
     const cards=$('mission-detail').querySelectorAll('.detail-step');
     children.forEach((child,index)=>{if(child.status==='needs_review'&&['execute','human'].includes(child.kind))cards[index]?.insertAdjacentHTML('beforeend',`<form class="reconcile-form" data-reconcile="${escapeHtml(child.id)}"><label>確認結果<select required><option value="completed">実施済み</option><option value="failed">未実施・失敗</option></select></label><label>確認した内容<textarea required maxlength="8000" rows="3" placeholder="端末や担当者に確認した内容を入力"></textarea></label><button class="outline-button" type="submit">確認結果を記録</button></form>`);});
+    children.forEach((child,index)=>{const alternatives=state.data.workers.filter(worker=>worker.connected&&worker.id!==child.assignedDeviceId);if(child.kind==='execute'&&child.status==='ready'&&alternatives.length)cards[index]?.insertAdjacentHTML('beforeend',`<form class="reassign-form" data-reassign="${escapeHtml(child.id)}"><label>担当PCを変更<select required>${alternatives.map(worker=>`<option value="${escapeHtml(worker.id)}">${escapeHtml(worker.name)}</option>`).join('')}</select></label><button class="outline-button" type="submit">未着手の仕事を移す</button></form>`);});
   }
   if($('task-cancel'))$('task-cancel').onclick=async()=>{if(!confirm('この仕事を実行前に中止しますか？'))return;try{await request('/api/tasks/cancel',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id})});state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);}};
   if($('task-retry-plan'))$('task-retry-plan').onclick=async()=>{const button=$('task-retry-plan');button.disabled=true;try{await request('/api/tasks/retry-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id})});state.taskDetail=null;await refresh();feedback('計画の再実行を依頼しました');}catch(error){feedback(error.message,true);button.disabled=false;}};
   if($('task-reissue'))$('task-reissue').onclick=()=>{$('command-input').value=chosen.text;$('command-project').value=chosen.projectId||'';$('command-input').focus();feedback('内容を確認してから送信してください');};
   document.querySelectorAll('.human-reply-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/human/respond',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.humanReply,answer:form.querySelector('textarea').value.trim()})});form.querySelector('textarea').blur();state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('.reconcile-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.reconcile,resolution:form.querySelector('select').value,note:form.querySelector('textarea').value.trim()})});form.querySelector('textarea').blur();state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);button.disabled=false;}});
+  document.querySelectorAll('.reassign-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/reassign',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.reassign,deviceId:form.querySelector('select').value})});form.querySelector('select').blur();state.taskDetail=null;await refresh();feedback('未着手の仕事を別のPCへ移しました');}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('#mission-list [data-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.task;setView('missions');});
 }
 async function loadTaskDetail() {

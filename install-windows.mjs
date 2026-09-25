@@ -14,7 +14,7 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const entry=path.join(root,mode==='hub'?'hub.mjs':'connector.mjs');
 const startup=process.env.REI_STARTUP_DIR||path.join(appData,'Microsoft','Windows','Start Menu','Programs','Startup');
 const safe=value=>{if(/["%\r\n]/.test(value))throw new Error('インストール先のパスに使用できない文字が含まれます');return `"${value}"`;};
-const environment=['REI_DATA_DIR','REI_CONNECTOR_CONFIG','REI_PORT','REI_JOB_TIMEOUT_SECONDS'].filter(key=>process.env[key]).map(key=>`set ${safe(`${key}=${process.env[key]}`)}\r\n`).join('');
+const environment=['REI_DATA_DIR','REI_BACKUP_DIR','REI_CONNECTOR_CONFIG','REI_PORT','REI_JOB_TIMEOUT_SECONDS'].filter(key=>process.env[key]).map(key=>`set ${safe(`${key}=${process.env[key]}`)}\r\n`).join('');
 mkdirSync(startup,{recursive:true});
 const file=path.join(startup,mode==='hub'?'REI Hub.cmd':'REI Connector.cmd');
 const previous=existsSync(file)?readFileSync(file):null;

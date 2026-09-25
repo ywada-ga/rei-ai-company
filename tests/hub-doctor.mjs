@@ -39,6 +39,16 @@ try {
   const healthy=await diagnose();
   assert.equal(healthy.code,0,healthy.output);
   assert.match(healthy.output,/最新のバックアップを検証しました/);
+  process.env.REI_BACKUP_DIR=path.join(data,'external-backups');
+  mkdirSync(process.env.REI_BACKUP_DIR);
+  await createBackup(data);
+  const external=await diagnose();
+  assert.equal(external.code,0,external.output);
+  process.env.REI_BACKUP_DIR='relative-backups';
+  const invalidDirectory=await diagnose();
+  assert.equal(invalidDirectory.code,1,invalidDirectory.output);
+  assert.match(invalidDirectory.output,/有効なバックアップを確認できません/);
+  delete process.env.REI_BACKUP_DIR;
   servedVersion='older';
   const outdated=await diagnose();
   assert.equal(outdated.code,1,outdated.output);

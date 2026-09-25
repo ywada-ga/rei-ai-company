@@ -7,6 +7,13 @@ import { fileURLToPath } from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','mcp-sync.json.tmp','pending-results.json','pending-results.json.tmp'];
 const dataDir=()=>process.env.REI_DATA_DIR||path.join(root,'data');
+export function backupDirectory(source=dataDir()) {
+  const configured=process.env.REI_BACKUP_DIR?.trim();
+  if(!configured)return path.join(source,'backups');
+  if(!path.isAbsolute(configured))throw new Error('REI_BACKUP_DIRには絶対パスを指定してください');
+  if(!lstatSync(configured,{throwIfNoEntry:false})?.isDirectory())throw new Error('REI_BACKUP_DIRの保存先が見つかりません。外付けドライブとフォルダを確認してください');
+  return configured;
+}
 const sha256=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
 function regularFile(file) {return lstatSync(file,{throwIfNoEntry:false})?.isFile()||false;}
 function optionalSourceFile(file) {
@@ -20,7 +27,7 @@ function checkDatabase(file) {
   try {if(db.prepare('PRAGMA integrity_check').get().integrity_check!=='ok')throw new Error('SQLiteの整合性を確認できません');}
   finally {db.close();}
 }
-export async function createBackup(source=dataDir(),destination=path.join(source,'backups')) {
+export async function createBackup(source=dataDir(),destination=backupDirectory(source)) {
   const database=path.join(source,'rei.sqlite');
   if(!optionalSourceFile(database))throw new Error('REIのデータベースが見つかりません');
   const present=allowed.slice(1).filter(file=>optionalSourceFile(path.join(source,file)));
@@ -53,7 +60,7 @@ export async function createBackup(source=dataDir(),destination=path.join(source
   } catch(error) {rmSync(staging,{recursive:true,force:true});throw error;}
   return folder;
 }
-export async function createBackupIfDue(source=dataDir(),destination=path.join(source,'backups'),now=Date.now()) {
+export async function createBackupIfDue(source=dataDir(),destination=backupDirectory(source),now=Date.now()) {
   const status=lstatSync(destination,{throwIfNoEntry:false});
   if(status&&!status.isDirectory())throw new Error('バックアップ先には通常のフォルダを指定してください');
   const latest=status?readdirSync(destination,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('rei-')).map(entry=>entry.name).sort().at(-1):null;
@@ -99,7 +106,7 @@ export function restoreBackup(folder,destination) {
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   try {
     const action=process.argv[2];
-    if(action==='create')console.log(await createBackup(dataDir(),process.argv[3]||path.join(dataDir(),'backups')));
+    if(action==='create')console.log(await createBackup(dataDir(),process.argv[3]||backupDirectory()));
     else if(action==='verify')console.log(JSON.stringify(verifyBackup(process.argv[3])));
     else if(action==='restore')console.log(restoreBackup(process.argv[3],process.argv[4]));
     else throw new Error('使い方: node backup.mjs create [保存先] | verify <バックアップ> | restore <バックアップ> <新しい復元先>');

@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verifyBackup } from './backup.mjs';
+import { backupDirectory, verifyBackup } from './backup.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const data=process.env.REI_DATA_DIR||path.join(root,'data');
@@ -36,8 +36,9 @@ try {
 } catch {result(false,'REI本体に接続できません。自動起動または保存先を確認してください');}
 
 if(ownerCount===1) {
-  const folder=path.join(data,'backups');
+  let folder;
   try {
+    folder=backupDirectory(data);
     const latest=readdirSync(folder,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('rei-')).map(entry=>entry.name).sort().at(-1);
     if(!latest)throw new Error('no backup');
     const verified=verifyBackup(path.join(folder,latest));
@@ -46,7 +47,7 @@ if(ownerCount===1) {
     const ageDays=Math.floor((Date.now()-createdAt)/86400000);
     result(ageDays<7,ageDays<7?'最新のバックアップを検証しました':`最新のバックアップは${ageDays}日前です。新しいバックアップを作成してください`);
   } catch {result(false,'有効なバックアップを確認できません。REI画面でバックアップを作成してください');}
-  if(lstatSync(folder,{throwIfNoEntry:false})?.isDirectory()) {
+  if(folder&&lstatSync(folder,{throwIfNoEntry:false})?.isDirectory()) {
     const stale=readdirSync(folder,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('.partial-')).filter(entry=>Date.now()-lstatSync(path.join(folder,entry.name)).mtimeMs>3600000);
     if(stale.length)result(false,`中断したバックアップが${stale.length}件残っています。内容を確認するまで削除しないでください`);
   }

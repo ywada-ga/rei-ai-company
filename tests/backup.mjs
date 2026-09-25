@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync, syml
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { createBackup, createBackupIfDue, verifyBackup, restoreBackup } from '../backup.mjs';
+import { backupDirectory, createBackup, createBackupIfDue, verifyBackup, restoreBackup } from '../backup.mjs';
 
 const base=mkdtempSync(path.join(os.tmpdir(),'rei-backup-'));
 const source=path.join(base,'data');
@@ -16,6 +16,21 @@ writeFileSync(path.join(source,'pending-results.json'),'[{"taskId":"pending-repo
 writeFileSync(path.join(source,'pending-results.json.tmp'),'[{"taskId":"possibly-newer-report"}]');
 writeFileSync(path.join(source,'owner-credentials.txt'),'excluded');
 const folder=await createBackup(source,path.join(base,'backups'));
+const previousBackupDir=process.env.REI_BACKUP_DIR;
+try {
+  process.env.REI_BACKUP_DIR=path.join(base,'separate-backups');
+  assert.throws(()=>backupDirectory(source),/保存先が見つかりません/);
+  mkdirSync(process.env.REI_BACKUP_DIR);
+  assert.equal(backupDirectory(source),process.env.REI_BACKUP_DIR);
+  const separate=await createBackup(source);
+  assert.equal(path.dirname(separate),process.env.REI_BACKUP_DIR);
+  assert.equal(verifyBackup(separate).files.includes('rei.sqlite'),true);
+  process.env.REI_BACKUP_DIR='relative-backups';
+  assert.throws(()=>backupDirectory(source),/絶対パス/);
+} finally {
+  if(previousBackupDir===undefined)delete process.env.REI_BACKUP_DIR;
+  else process.env.REI_BACKUP_DIR=previousBackupDir;
+}
 assert.equal(await createBackupIfDue(source,path.join(base,'backups')),null);
 const due=await createBackupIfDue(source,path.join(base,'backups'),Date.now()+86400001);
 assert.ok(due&&due!==folder);

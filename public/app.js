@@ -278,13 +278,18 @@ async function refreshSettings() {
   if (!state.data?.user) return;
   const epoch=state.authEpoch;
   const role=state.data.user.role;
+  const canManage=['owner','admin'].includes(role);
   $('signed-in-user').textContent = `${state.data.user.username} / ${{owner:'所有者',admin:'管理者',requester:'依頼者',viewer:'閲覧者'}[role]||role}`;
   $('backup-create').classList.toggle('hidden',role!=='owner');
-  $('invite-form').classList.toggle('hidden',!['owner','admin'].includes(role));
+  $('invite-form').classList.toggle('hidden',!canManage);
+  $('pairing-form').classList.toggle('hidden',!canManage);
+  $('enroll-form').classList.toggle('hidden',!canManage);
+  $('chatwork-form').classList.toggle('hidden',role!=='owner');
+  networkPanel.classList.toggle('hidden',!canManage);
   $('invite-role').querySelector('option[value="admin"]').disabled=role!=='owner';
   if(role!=='owner'&&$('invite-role').value==='admin')$('invite-role').value='requester';
   if(!$('user-management')){const panel=document.createElement('div');panel.id='user-management';$('invite-form').before(panel);}
-  if(['owner','admin'].includes(role)){
+  if(canManage){
     try {
       const {users}=await request('/api/users/list');
       if(epoch!==state.authEpoch)return;
@@ -294,7 +299,7 @@ async function refreshSettings() {
     }catch(e){if(epoch!==state.authEpoch)return;$('user-management').textContent=e.message;}
   }else $('user-management').textContent='利用者の管理は管理者が行います。';
   const pending=state.data.tasks.filter(task=>task.status==='approval_pending');
-  $('approval-management').innerHTML=pending.length?pending.map(task=>`<div class="setting-device"><span><b>${escapeHtml(task.text)}</b><small>依頼者の仕事</small></span><span><button data-approve="${escapeHtml(task.id)}" class="outline-button">承認</button><button data-reject="${escapeHtml(task.id)}" class="outline-button">却下</button></span></div>`).join(''):'<p>承認待ちはありません。</p>';
+  $('approval-management').innerHTML=!canManage?'<p>承認は管理者が行います。</p>':pending.length?pending.map(task=>`<div class="setting-device"><span><b>${escapeHtml(task.text)}</b><small>依頼者の仕事</small></span><span><button data-approve="${escapeHtml(task.id)}" class="outline-button">承認</button><button data-reject="${escapeHtml(task.id)}" class="outline-button">却下</button></span></div>`).join(''):'<p>承認待ちはありません。</p>';
   document.querySelectorAll('[data-approve],[data-reject]').forEach(button=>button.onclick=async()=>{const route=button.dataset.approve?'approve':'reject',taskId=button.dataset.approve||button.dataset.reject;try{await request(`/api/tasks/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId})});await refresh();await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
   try {
     const [devices,chatwork,mcp] = await Promise.all([request('/api/devices'),request('/api/chatwork/status'),request('/api/mcp/list')]);
@@ -303,11 +308,11 @@ async function refreshSettings() {
     const local=devices.localConnector;
     if(local?.status==='registered')$('local-setup').textContent=local.online?'✓ このPCのOpenClawはREIに接続中です。':'このPCは登録済みですが未接続です。REIのフォルダで npm run connector を実行してください。';
     else if(local?.status==='needs_attention')$('local-setup').textContent='このPCに以前の接続設定があります。上書きせず、端末の接続設定を確認してください。';
-    else if(['owner','admin'].includes(role)) {
+    else if(canManage) {
       $('local-setup').innerHTML='<strong>このPCのOpenClawをREIへ接続</strong><p>最初の1台は、ここから始められます。既存のOpenClawとは別にREI専用エージェントを作ります。</p><button id="local-pair" class="outline-button" type="button">このPCの接続コードを作る</button><div id="local-pair-result" class="secret-result hidden"></div>';
       $('local-pair').onclick=async()=>{const button=$('local-pair');button.disabled=true;try{const paired=await request('/api/devices/pairing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:'このPC'})});const result=$('local-pair-result');result.classList.remove('hidden');result.textContent=`このPCのREIフォルダで実行:\nnode connector.mjs join ${location.origin}\n\n質問されたら接続コードを入力（10分間有効）:\n${paired.code}\n\n接続後、端末の状態を更新してください。`;button.disabled=false;}catch(error){$('settings-feedback').textContent=error.message;button.disabled=false;}};
     } else $('local-setup').textContent='このPCの接続設定は所有者または管理者が行えます。';
-    $('device-management').innerHTML = devices.devices.length ? devices.devices.map(d=>`<div class="setting-device"><span><b>${escapeHtml(d.label)}</b><small>${d.online?'● 接続中':'○ 未接続'}${d.planner?' · REI計画担当':''}${d.agent_name?` · OpenClaw: ${escapeHtml(d.agent_name)}`:''} · REI ${escapeHtml(d.version||'版未報告')}${d.version&&d.version!==devices.hubVersion?' · 更新が必要':''}${d.pending_results?` · 結果送信待ち ${d.pending_results}件。端末の接続と仕事の状態を確認してください`:''}</small></span><button data-revoke="${escapeHtml(d.id)}" class="outline-button">解除</button></div>`).join('') : '<p>端末はまだ登録されていません。</p>';
+    $('device-management').innerHTML = devices.devices.length ? devices.devices.map(d=>`<div class="setting-device"><span><b>${escapeHtml(d.label)}</b><small>${d.online?'● 接続中':'○ 未接続'}${d.planner?' · REI計画担当':''}${d.agent_name?` · OpenClaw: ${escapeHtml(d.agent_name)}`:''} · REI ${escapeHtml(d.version||'版未報告')}${d.version&&d.version!==devices.hubVersion?' · 更新が必要':''}${d.pending_results?` · 結果送信待ち ${d.pending_results}件。端末の接続と仕事の状態を確認してください`:''}</small></span>${canManage?`<button data-revoke="${escapeHtml(d.id)}" class="outline-button">解除</button>`:''}</div>`).join('') : '<p>端末はまだ登録されていません。</p>';
     document.querySelectorAll('[data-revoke]').forEach(button=>button.onclick=async()=>{if(!confirm('この端末の接続を解除しますか？'))return;try{await request('/api/devices/revoke',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deviceId:button.dataset.revoke})});await refreshSettings();await refresh();}catch(e){$('settings-feedback').textContent=e.message;}});
     const selectedBatchDevice=$('mcp-batch-device').value;
     const deviceOptions=devices.devices.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.label)}${d.online?' · 接続中':' · 未接続'}</option>`).join('');
@@ -362,7 +367,7 @@ async function loadNetworkStatus() {
     if($('network-enable'))$('network-enable').onclick=async()=>{const button=$('network-enable');button.disabled=true;try{await request('/api/network/serve',{method:'POST'});await loadNetworkStatus();}catch(error){networkPanel.textContent=error.message;}};
   }catch(error){if(epoch!==state.authEpoch)return;networkPanel.textContent=error.message;if($('pairing-url').value.startsWith('https://'))$('pairing-url').value='';}
 }
-$('settings-open').onclick=async()=>{$('settings-screen').classList.remove('hidden');void loadNetworkStatus();await refreshSettings();};
+$('settings-open').onclick=async()=>{$('settings-screen').classList.remove('hidden');if(['owner','admin'].includes(state.data?.user?.role))void loadNetworkStatus();await refreshSettings();};
 $('settings-close').onclick=()=>{$('settings-screen').classList.add('hidden');};
 $('backup-create').onclick=async()=>{const button=$('backup-create');button.disabled=true;$('backup-result').textContent='データを保存しています…';try{const result=await request('/api/backup/create',{method:'POST'});$('backup-result').textContent=`保存先: ${result.folder}\nこのフォルダを外部ストレージにもコピーしてください。`;}catch(error){$('backup-result').textContent=error.message;}finally{button.disabled=false;}};
 $('pairing-form').onsubmit=async event=>{event.preventDefault();const epoch=state.authEpoch;$('settings-feedback').textContent='';try{const hub=new URL($('pairing-url').value.trim());if(hub.username||hub.password||hub.search||hub.hash||hub.pathname!=='/')throw new Error('接続URLは表示されたアドレスだけを入力してください');if(hub.protocol==='https:'){const status=await request('/api/network/status');if(epoch!==state.authEpoch)return;if(status.state!=='connected'||hub.origin!==status.url)throw new Error('現在のTailscale接続URLを確認できません。接続を再確認してください');}else if(hub.protocol!=='http:'||!['127.0.0.1','localhost'].includes(hub.hostname))throw new Error('遠隔接続にはTailscale Serveが表示したHTTPSのURLを入力してください');const data=await request('/api/devices/pairing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('pairing-label').value.trim()})});if(epoch!==state.authEpoch)return;$('pairing-result').classList.remove('hidden');$('pairing-result').textContent=`Mac・Linuxでは次の1行、Windows PowerShellでは3行を実行してください（Node.jsとOpenClaw CLIは事前に必要です）:\nMac・Linux: git clone https://github.com/ywada-ga/rei-ai-company.git && cd rei-ai-company && node connector.mjs join ${hub.origin}\nWindows: git clone https://github.com/ywada-ga/rei-ai-company.git\ncd rei-ai-company\nnode connector.mjs join ${hub.origin}\n\n既にREIのフォルダがある場合は、その中で node connector.mjs join ${hub.origin} を実行してください。\n\n質問されたら入力:\n接続コード（10分間有効）: ${data.code}\n\nTailscaleはこのPCと追加するPCの両方で同じネットワークにログインしてください。`;await refreshSettings();}catch(e){if(epoch===state.authEpoch)$('settings-feedback').textContent=e.message;}};

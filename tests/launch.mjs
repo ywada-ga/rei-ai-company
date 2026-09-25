@@ -13,11 +13,16 @@ const server=createServer((request,response)=>{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 try {
   const port=server.address().port;
-  const child=spawn(process.execPath,['launch.mjs'],{cwd:root,env:{...process.env,REI_PORT:String(port),REI_NO_BROWSER:'1'},stdio:['ignore','pipe','pipe']});
-  let output='';child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
-  const code=await new Promise(resolve=>child.on('close',resolve));
-  assert.equal(code,0,output);
-  assert.match(output,/起動中のREIを開きます/);
-  assert.match(output,new RegExp(`http://127\\.0\\.0\\.1:${port}/`));
+  async function verify(command,args,label) {
+    const child=spawn(command,args,{cwd:root,env:{...process.env,REI_PORT:String(port),REI_NO_BROWSER:'1'},stdio:['ignore','pipe','pipe']});
+    let output='';child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
+    const code=await new Promise(resolve=>child.on('close',resolve));
+    assert.equal(code,0,`${label}: ${output}`);
+    assert.match(output,/起動中のREIを開きます/);
+    assert.match(output,new RegExp(`http://127\\.0\\.0\\.1:${port}/`));
+  }
+  await verify(process.execPath,['launch.mjs'],'Node launcher');
+  if(process.platform==='darwin')await verify('zsh',['Start-REI.command'],'Mac launcher');
+  if(process.platform==='win32')await verify('cmd.exe',['/d','/c','Start-REI.cmd'],'Windows launcher');
   console.log('PASS launcher opens an existing REI without starting a second Hub');
 } finally {server.close();}

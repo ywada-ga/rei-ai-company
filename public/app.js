@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -36,12 +36,13 @@ function setView(view) {
   $('view-title').innerHTML = `${copy[0]} <span>${copy[1]}</span>`;
   $('view-subtitle').textContent = copy[2];
   render();
-  if (view === 'briefing' && !state.report) loadReport();
+  if (view === 'briefing' && Date.now()-state.reportLoadedAt>10000) void loadReport();
   if (view === 'missions') void loadTaskDetail();
 }
 async function refresh() {
-  try { state.data = await request('/api/bootstrap'); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); }
-  catch (error) { if(error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
+  const epoch=state.authEpoch;
+  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
+  catch (error) { if(epoch!==state.authEpoch||error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {
   if (!state.data) return;
@@ -123,21 +124,23 @@ function renderMissions() {
 }
 async function loadMoreTasks() {
   if(state.historyLoading)return;
+  const epoch=state.authEpoch;
   const cursor=state.olderTasks.at(-1)||state.data.tasks.at(-1);
   if(!cursor)return;
   state.historyLoading=true;
   const button=$('mission-load-more');if(button)button.disabled=true;
-  try {const page=await request('/api/tasks/history',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({beforeTime:Date.parse(cursor.createdAt),beforeId:cursor.id})});state.olderTasks.push(...page.tasks);state.hasMoreTasks=page.hasMore;renderMissions();}
-  catch(error){feedback(error.message,true);if(button)button.disabled=false;}
-  finally{state.historyLoading=false;}
+  try {const page=await request('/api/tasks/history',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({beforeTime:Date.parse(cursor.createdAt),beforeId:cursor.id})});if(epoch!==state.authEpoch)return;state.olderTasks.push(...page.tasks);state.hasMoreTasks=page.hasMore;renderMissions();}
+  catch(error){if(epoch===state.authEpoch){feedback(error.message,true);if(button)button.disabled=false;}}
+  finally{if(epoch===state.authEpoch)state.historyLoading=false;}
 }
 async function loadTaskDetail() {
+  const epoch=state.authEpoch;
   const id=state.selectedTask||state.data?.tasks[0]?.id;
   if(!id||state.taskDetailLoading===id)return;
   state.taskDetailLoading=id;
-  try {const detail=await request(`/api/tasks/detail/${id}`);if((state.selectedTask||state.data?.tasks[0]?.id)===id){state.taskDetail=detail;renderMissions();}}
-  catch(error){feedback(error.message,true);}
-  finally{if(state.taskDetailLoading===id)state.taskDetailLoading=null;}
+  try {const detail=await request(`/api/tasks/detail/${id}`);if(epoch===state.authEpoch&&(state.selectedTask||state.data?.tasks[0]?.id)===id){state.taskDetail=detail;renderMissions();}}
+  catch(error){if(epoch===state.authEpoch)feedback(error.message,true);}
+  finally{if(epoch===state.authEpoch&&state.taskDetailLoading===id)state.taskDetailLoading=null;}
 }
 function renderProjects() {
   const projects=state.data.projects||[];
@@ -156,10 +159,14 @@ function renderProjects() {
   if($('project-assign'))$('project-assign').onclick=()=>{select.value=project.id;$('command-input').focus();};
   if($('project-status'))$('project-status').onchange=async event=>{const value=event.target.value;try{await request('/api/projects/status',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,status:value})});await refresh();}catch(error){$('project-feedback').textContent=error.message;await refresh();}};
 }
-async function loadReport() {
-  $('briefing-content').innerHTML = '<div class="glass-panel loading">実行記録を照合しています...</div>';
-  try { state.report = await request('/api/report/today'); renderBriefing(); }
-  catch (error) { $('briefing-content').innerHTML = `<div class="glass-panel loading">${escapeHtml(error.message)}</div>`; }
+async function loadReport(silent=false) {
+  if(state.reportLoading)return;
+  const epoch=state.authEpoch;
+  state.reportLoading=true;
+  if(!silent)$('briefing-content').innerHTML = '<div class="glass-panel loading">実行記録を照合しています...</div>';
+  try { const report=await request('/api/report/today'); if(epoch!==state.authEpoch)return; state.report=report; state.reportLoadedAt=Date.now(); renderBriefing(); }
+  catch (error) { if(epoch!==state.authEpoch)return; state.reportLoadedAt=Date.now(); if(!silent||!state.report)$('briefing-content').innerHTML = `<div class="glass-panel loading">${escapeHtml(error.message)}</div>`; }
+  finally {if(epoch===state.authEpoch)state.reportLoading=false;}
 }
 function renderBriefing() {
   if (!state.report) return;
@@ -187,7 +194,7 @@ $('command-form').onsubmit = async event => {
     const result = await request('/api/command', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-AI-Company':'1' }, body:JSON.stringify({ text, department:state.selectedDepartment || 'operations', projectId:$('command-project').value||null }) });
     input.value = '';
     await refresh();
-    if (result.kind === 'report') { state.report = result.report; setView('briefing'); feedback('DAILY BRIEFING READY'); }
+    if (result.kind === 'report') { state.report = result.report; state.reportLoadedAt=Date.now(); setView('briefing'); feedback('DAILY BRIEFING READY'); }
     else { state.selectedTask = result.task.id; state.pendingReplyTaskId = result.task.id; setView('core'); feedback('レイが仕事を進めています'); }
   } catch (error) { feedback(error.message, true); }
   finally { button.disabled = false; }
@@ -220,8 +227,26 @@ $('voice-button').onclick = () => {
 };
 function showAuth() {
   const setupToken = new URLSearchParams(location.search).get('setup');
+  state.authEpoch++;
   state.data=null;
   state.taskDetail=null;
+  state.taskDetailLoading=null;
+  state.olderTasks=[];
+  state.hasMoreTasks=false;
+  state.historyLoading=false;
+  state.selectedTask=null;
+  state.selectedProject=null;
+  state.selectedDepartment=null;
+  state.pendingReplyTaskId=null;
+  state.report=null;
+  state.reportLoadedAt=0;
+  state.reportLoading=false;
+  state.mcpIntegrations=[];
+  for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
+  for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');
+  $('command-input').value='';
+  document.querySelectorAll('input[type="password"],textarea').forEach(input=>input.value='');
+  setView('core');
   $('settings-screen').classList.add('hidden');
   $('system-status').textContent='LOGIN REQUIRED';
   $('system-status').classList.add('offline');
@@ -246,6 +271,7 @@ function renderMcpPresetGrid() {
 }
 async function refreshSettings() {
   if (!state.data?.user) return;
+  const epoch=state.authEpoch;
   const role=state.data.user.role;
   $('signed-in-user').textContent = `${state.data.user.username} / ${{owner:'所有者',admin:'管理者',requester:'依頼者',viewer:'閲覧者'}[role]||role}`;
   $('backup-create').classList.toggle('hidden',role!=='owner');
@@ -256,16 +282,18 @@ async function refreshSettings() {
   if(['owner','admin'].includes(role)){
     try {
       const {users}=await request('/api/users/list');
+      if(epoch!==state.authEpoch)return;
       $('user-management').innerHTML=users.map(member=>`<div class="setting-device"><span><b>${escapeHtml(member.username)}</b><small>${member.disabled?'停止中 · ':''}${{owner:'所有者',admin:'管理者',requester:'依頼者',viewer:'閲覧者'}[member.role]||member.role}</small></span>${role==='owner'&&member.role!=='owner'?`<span class="user-controls"><select data-user-role="${escapeHtml(member.id)}" aria-label="${escapeHtml(member.username)}の権限"><option value="admin" ${member.role==='admin'?'selected':''}>管理者</option><option value="requester" ${member.role==='requester'?'selected':''}>依頼者</option><option value="viewer" ${member.role==='viewer'?'selected':''}>閲覧者</option></select><button data-user-disable="${escapeHtml(member.id)}" data-disabled="${member.disabled?'1':'0'}" class="outline-button">${member.disabled?'再開':'停止'}</button></span>`:''}</div>`).join('');
       document.querySelectorAll('[data-user-role]').forEach(select=>select.onchange=async()=>{try{await request('/api/users/role',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:select.dataset.userRole,role:select.value})});await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;await refreshSettings();}});
       document.querySelectorAll('[data-user-disable]').forEach(button=>button.onclick=async()=>{const disabled=button.dataset.disabled!=='1';if(disabled&&!confirm('この利用者を停止し、現在のログインを解除しますか？'))return;try{await request('/api/users/disable',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:button.dataset.userDisable,disabled})});await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
-    }catch(e){$('user-management').textContent=e.message;}
+    }catch(e){if(epoch!==state.authEpoch)return;$('user-management').textContent=e.message;}
   }else $('user-management').textContent='利用者の管理は管理者が行います。';
   const pending=state.data.tasks.filter(task=>task.status==='approval_pending');
   $('approval-management').innerHTML=pending.length?pending.map(task=>`<div class="setting-device"><span><b>${escapeHtml(task.text)}</b><small>依頼者の仕事</small></span><span><button data-approve="${escapeHtml(task.id)}" class="outline-button">承認</button><button data-reject="${escapeHtml(task.id)}" class="outline-button">却下</button></span></div>`).join(''):'<p>承認待ちはありません。</p>';
   document.querySelectorAll('[data-approve],[data-reject]').forEach(button=>button.onclick=async()=>{const route=button.dataset.approve?'approve':'reject',taskId=button.dataset.approve||button.dataset.reject;try{await request(`/api/tasks/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId})});await refresh();await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
   try {
     const [devices,chatwork,mcp] = await Promise.all([request('/api/devices'),request('/api/chatwork/status'),request('/api/mcp/list')]);
+    if(epoch!==state.authEpoch)return;
     if(!$('local-setup')){const panel=document.createElement('div');panel.id='local-setup';panel.className='setting-guide';$('device-management').before(panel);}
     const local=devices.localConnector;
     if(local?.status==='registered')$('local-setup').textContent=local.online?'✓ このPCのOpenClawはREIに接続中です。':'このPCは登録済みですが未接続です。REIのフォルダで npm run connector を実行してください。';
@@ -296,7 +324,7 @@ async function refreshSettings() {
     document.querySelectorAll('[data-mcp-check]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await request('/api/mcp/check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:button.dataset.mcpCheck})});await refreshSettings();$('settings-feedback').textContent='対象PCで接続を確認しています。しばらくして「接続状態を更新」を押してください。';}catch(e){$('settings-feedback').textContent=e.message;button.disabled=false;}});
     document.querySelectorAll('[data-mcp-remove]').forEach(button=>button.onclick=async()=>{if(!confirm('このMCP連携を解除しますか？'))return;try{await request('/api/mcp/remove',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:button.dataset.mcpRemove})});await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
     $('chatwork-status').textContent = chatwork.configured ? `接続設定済み · ルーム ${chatwork.roomId} · 人待ち ${chatwork.pending}件` : '未設定';
-  } catch(e) {$('settings-feedback').textContent=e.message;}
+  } catch(e) {if(epoch===state.authEpoch)$('settings-feedback').textContent=e.message;}
 }
 $('auth-form').onsubmit=async event=>{
   event.preventDefault();$('auth-error').textContent='';

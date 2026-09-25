@@ -47,7 +47,11 @@ try {
   process.env.REI_BACKUP_DIR='relative-backups';
   const invalidDirectory=await diagnose();
   assert.equal(invalidDirectory.code,1,invalidDirectory.output);
-  assert.match(invalidDirectory.output,/有効なバックアップを確認できません/);
+  assert.match(invalidDirectory.output,/REI_BACKUP_DIRには絶対パス/);
+  process.env.REI_BACKUP_DIR=path.join(data,'missing-drive','backups');
+  const missingDrive=await diagnose();
+  assert.equal(missingDrive.code,1,missingDrive.output);
+  assert.match(missingDrive.output,/REI_BACKUP_DIRの保存先が見つかりません/);
   delete process.env.REI_BACKUP_DIR;
   servedVersion='older';
   const outdated=await diagnose();

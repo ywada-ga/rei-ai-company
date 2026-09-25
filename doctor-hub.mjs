@@ -46,7 +46,7 @@ if(ownerCount===1) {
     if(!Number.isFinite(createdAt)||createdAt>Date.now()+300000)throw new Error('invalid backup time');
     const ageDays=Math.floor((Date.now()-createdAt)/86400000);
     result(ageDays<7,ageDays<7?'最新のバックアップを検証しました':`最新のバックアップは${ageDays}日前です。新しいバックアップを作成してください`);
-  } catch {result(false,'有効なバックアップを確認できません。REI画面でバックアップを作成してください');}
+  } catch(error) {result(false,String(error.message||'').startsWith('REI_BACKUP_DIR')?error.message:'有効なバックアップを確認できません。REI画面でバックアップを作成してください');}
   if(folder&&lstatSync(folder,{throwIfNoEntry:false})?.isDirectory()) {
     const stale=readdirSync(folder,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('.partial-')).filter(entry=>Date.now()-lstatSync(path.join(folder,entry.name)).mtimeMs>3600000);
     if(stale.length)result(false,`中断したバックアップが${stale.length}件残っています。内容を確認するまで削除しないでください`);

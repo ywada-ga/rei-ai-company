@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,13 @@ function backupConfig(root,command,name) {
 }
 function dataDir(root) {return process.env.REI_DATA_DIR||path.join(root,'data');}
 function writeInstructions(workspace,overwrite) {
+  const current=lstatSync(workspace,{throwIfNoEntry:false});
+  if(current&&!current.isDirectory())throw new Error('REI用の作業場所が通常のフォルダではありません');
   mkdirSync(workspace,{recursive:true,mode:0o700});
+  for(const name of Object.keys(instructions)) {
+    const status=lstatSync(path.join(workspace,name),{throwIfNoEntry:false});
+    if(status&&!status.isFile())throw new Error(`REI用の指示ファイルが通常のファイルではありません: ${name}`);
+  }
   for(const [name,content] of Object.entries(instructions)) {const file=path.join(workspace,name);if(overwrite||!existsSync(file))writeFileSync(file,content,{mode:0o600});}
   rmSync(path.join(workspace,'BOOTSTRAP.md'),{force:true});
 }

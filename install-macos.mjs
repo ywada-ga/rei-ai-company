@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const data=process.env.REI_DATA_DIR||path.join(root,'data');
-const agents=path.join(os.homedir(),'Library','LaunchAgents');
+const agents=process.env.REI_LAUNCH_AGENTS_DIR||path.join(os.homedir(),'Library','LaunchAgents');
 const escapeXml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const string=value=>`<string>${escapeXml(value)}</string>`;
 const environment=Object.fromEntries(['PATH','REI_DATA_DIR','REI_CONNECTOR_CONFIG','REI_PORT'].filter(key=>process.env[key]).map(key=>[key,process.env[key]]));

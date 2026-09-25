@@ -25,6 +25,7 @@ export function openStorage(root) {
     CREATE TABLE IF NOT EXISTS external_messages(id TEXT PRIMARY KEY, task_id TEXT REFERENCES tasks(id), direction TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL);
   `);
   if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='project_id'))db.exec('ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id)');
+  if(!all(db,'PRAGMA table_info(devices)').some(column=>column.name==='agent_name'))db.exec("ALTER TABLE devices ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''");
   db.exec('CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id,kind,created_at)');
   try { chmodSync(path.join(dir,'rei.sqlite'),0o600); } catch {}
   return db;

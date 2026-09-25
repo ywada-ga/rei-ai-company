@@ -63,7 +63,7 @@ function render() {
   $('human-pending-open').onclick=()=>{state.selectedTask=state.data.humanPending[0];setView('missions');};
   $('unit-list').innerHTML = workers.map(worker => {
     const connected = worker.connected;
-    return `<div class="unit-row"><span class="unit-glyph ${connected ? 'online' : ''}">${worker.kind === '人' ? '♧' : worker.kind === '端末' ? '▣' : '✳'}</span><span><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.machine)}</small></span><i class="unit-led ${connected ? 'online' : ''}"></i></div>`;
+    return `<div class="unit-row"><span class="unit-glyph ${connected ? 'online' : ''}">${worker.kind === '人' ? '♧' : worker.kind === '端末' ? '▣' : '✳'}</span><span><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.agentName?`OpenClaw: ${worker.agentName}`:worker.machine)}</small></span><i class="unit-led ${connected ? 'online' : ''}"></i></div>`;
   }).join('');
   renderFocus();
   renderMissions();
@@ -233,7 +233,7 @@ async function refreshSettings() {
   document.querySelectorAll('[data-approve],[data-reject]').forEach(button=>button.onclick=async()=>{const route=button.dataset.approve?'approve':'reject',taskId=button.dataset.approve||button.dataset.reject;try{await request(`/api/tasks/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId})});await refresh();await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
   try {
     const [devices,chatwork,mcp] = await Promise.all([request('/api/devices'),request('/api/chatwork/status'),request('/api/mcp/list')]);
-    $('device-management').innerHTML = devices.devices.length ? devices.devices.map(d=>`<div class="setting-device"><span><b>${escapeHtml(d.label)}</b><small>${d.online?'● 接続中':'○ 未接続'}${d.planner?' · REI計画担当':''}</small></span><button data-revoke="${escapeHtml(d.id)}" class="outline-button">解除</button></div>`).join('') : '<p>端末はまだ登録されていません。</p>';
+    $('device-management').innerHTML = devices.devices.length ? devices.devices.map(d=>`<div class="setting-device"><span><b>${escapeHtml(d.label)}</b><small>${d.online?'● 接続中':'○ 未接続'}${d.planner?' · REI計画担当':''}${d.agent_name?` · OpenClaw: ${escapeHtml(d.agent_name)}`:''}</small></span><button data-revoke="${escapeHtml(d.id)}" class="outline-button">解除</button></div>`).join('') : '<p>端末はまだ登録されていません。</p>';
     document.querySelectorAll('[data-revoke]').forEach(button=>button.onclick=async()=>{if(!confirm('この端末の接続を解除しますか？'))return;try{await request('/api/devices/revoke',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deviceId:button.dataset.revoke})});await refreshSettings();await refresh();}catch(e){$('settings-feedback').textContent=e.message;}});
     const selectedBatchDevice=$('mcp-batch-device').value;
     const deviceOptions=devices.devices.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.label)}${d.online?' · 接続中':' · 未接続'}</option>`).join('');

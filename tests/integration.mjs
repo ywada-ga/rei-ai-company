@@ -20,7 +20,8 @@ try {
   assert.ok(saved.folder.startsWith(data));
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
-  await api('connector/heartbeat',{capabilities:['openclaw']},auth);
+  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw']},auth);
+  assert.equal((await api('devices')).devices[0].agent_name,'rei');
   const mcp=await api('mcp/add',{label:'Test Calendar',url:'https://example.com/mcp',auth:'oauth',deviceId:enrolled.device.id});
   assert.match(mcp.name,/^rei_[a-f0-9]{12}$/);
   assert.equal((await api('mcp/list')).integrations[0].status,null);

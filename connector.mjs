@@ -100,7 +100,7 @@ async function main() {
   while(true) {
     try {
       if(Date.now()-lastHeartbeat>15000) {
-        const heartbeat=await api('connector/heartbeat',{capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
+        const heartbeat=await api('connector/heartbeat',{agentName:config.agent,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
         lastHeartbeat=Date.now();
         const integrations=heartbeat.integrations||[],signature=JSON.stringify(integrations);
         mcpDefinitions=integrations;

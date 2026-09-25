@@ -24,6 +24,15 @@ try {
   assert.equal((await api('mcp/list')).integrations[0].status,null);
   assert.equal((await api('connector/heartbeat',{capabilities:['openclaw'],mcpStatuses:[{name:mcp.name,status:'auth_required'}]},auth)).integrations[0].name,mcp.name);
   assert.equal((await api('mcp/list')).integrations[0].status,'auth_required');
+  await api('mcp/check',{name:mcp.name});
+  const check=(await api('connector/heartbeat',{capabilities:['openclaw']},auth)).checks[0];
+  assert.equal(check.name,mcp.name);
+  await api('connector/mcp-check-result',{name:mcp.name,requestId:check.request_id,status:'auth_required',toolCount:0,error:'OAuthが必要'},auth);
+  assert.equal((await api('mcp/list')).integrations[0].check_status,'auth_required');
+  await api('mcp/check',{name:mcp.name});
+  const nextCheck=(await api('connector/heartbeat',{capabilities:['openclaw']},auth)).checks[0];
+  await api('connector/mcp-check-result',{name:mcp.name,requestId:nextCheck.request_id,status:'success',toolCount:3,error:''},auth);
+  assert.equal((await api('mcp/list')).integrations[0].tool_count,3);
   const batch=await api('mcp/add-batch',{deviceId:enrolled.device.id,ids:['freee','moneyforward-accounting','misoca','kintone-docs']});
   assert.equal(batch.integrations.length,4);
   assert.ok(batch.integrations.every(item=>item.added));

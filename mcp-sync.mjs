@@ -38,3 +38,18 @@ export function syncMcp(configPath,integrations,command=runOpenClawCli) {
   });
 }
 function readJsonResult(output) {try{return JSON.parse(output);}catch{throw new Error('OpenClawのMCP状態を読み取れませんでした');}}
+const safeError=value=>String(value||'接続に失敗しました').replace(/https?:\/\/\S+/g,'[URL]').replace(/Bearer\s+\S+/gi,'Bearer [redacted]').slice(0,400);
+export function probeMcp(name,command=runOpenClawCli) {
+  if(!/^rei_[a-f0-9]{12}$/.test(name))throw new Error('MCP名が正しくありません');
+  let output;
+  try {output=command(['mcp','probe',name,'--json']);}
+  catch(error) {return {status:'error',toolCount:0,error:safeError(error.message)};}
+  if(output.status!==0)return {status:'error',toolCount:0,error:safeError(output.stderr||output.stdout||output.error?.message)};
+  let data;
+  try {data=JSON.parse(output.stdout);} catch {return {status:'error',toolCount:0,error:'OpenClawの検査結果を読み取れませんでした'};}
+  const server=data.servers?.[name];
+  if(!server)return {status:'error',toolCount:0,error:safeError(data.diagnostics?.[0]?.message||'MCPサーバーに接続できませんでした')};
+  if(Array.isArray(data.diagnostics)&&data.diagnostics.length)return {status:'error',toolCount:0,error:safeError(data.diagnostics.map(item=>item.message||item.error||item).join('; '))};
+  const toolCount=Number.isSafeInteger(server.tools)?server.tools:Array.isArray(data.tools)?data.tools.filter(tool=>String(tool).startsWith(`${name}__`)).length:0;
+  return {status:'success',toolCount,error:''};
+}

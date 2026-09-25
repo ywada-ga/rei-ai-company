@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { checkOpenClaw, spawnOpenClaw } from './openclaw-process.mjs';
-import { syncMcp } from './mcp-sync.mjs';
+import { syncMcp, probeMcp } from './mcp-sync.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(root,'data','connector.json');
@@ -104,6 +104,13 @@ async function main() {
         if(signature!==mcpSignature||Date.now()-lastMcpSync>60000) {
           try {mcpStatuses=syncMcp(configPath,integrations);mcpSignature=signature;lastMcpSync=Date.now();}
           catch(e) {console.error('MCP連携:',e.message);mcpStatuses=integrations.map(item=>({name:item.name,status:'error'}));lastMcpSync=Date.now();}
+        }
+        for(const check of heartbeat.checks||[]) {
+          const integration=integrations.find(item=>item.name===check.name);
+          if(!integration)continue;
+          const configured=mcpStatuses.find(item=>item.name===check.name)?.status;
+          const outcome=configured==='auth_required'?{status:'auth_required',toolCount:0,error:'対象PCでOpenClawのOAuth認証が必要です'}:configured==='error'?{status:'error',toolCount:0,error:'対象PCでMCP設定を確認できません'}:probeMcp(check.name);
+          await api('connector/mcp-check-result',{name:check.name,requestId:check.request_id,...outcome});
         }
       }
       if(pending.length) {

@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[] };
+const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -163,10 +163,13 @@ function showAuth() {
 function renderMcpPresetGrid() {
   const deviceId=$('mcp-batch-device').value;
   const groups=[...new Set(MCP_PRESETS.filter(item=>item.url).map(item=>item.category))];
-  $('mcp-preset-grid').innerHTML=groups.map(group=>`<div class="mcp-category"><h4>${escapeHtml(group)}</h4>${MCP_PRESETS.filter(item=>item.url&&item.category===group).map(item=>{
+  $('mcp-preset-grid').innerHTML=`<div class="mcp-search-row"><input id="mcp-search" type="search" aria-label="MCPを検索" placeholder="サービス名や用途で探す"></div>`+groups.map(group=>`<div class="mcp-category"><h4>${escapeHtml(group)}</h4>${MCP_PRESETS.filter(item=>item.url&&item.category===group).map(item=>{
     const installed=state.mcpIntegrations.some(connected=>connected.device_id===deviceId&&connected.url===item.url);
     return `<label class="mcp-preset-option ${installed?'installed':''}"><input type="checkbox" name="mcp-preset" value="${escapeHtml(item.id)}" ${installed?'disabled':''}><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.note)}</small><a href="${escapeHtml(item.docs)}" target="_blank" rel="noopener noreferrer">公式手順 ↗</a></span><em>${installed?'追加済み':item.auth==='none'?'認証なし':'OAuth'}</em></label>`;
   }).join('')}</div>`).join('');
+  const search=$('mcp-search');search.value=state.mcpSearch;
+  const filter=()=>{state.mcpSearch=search.value.trim().toLocaleLowerCase();document.querySelectorAll('.mcp-category').forEach(category=>{let visible=0;category.querySelectorAll('.mcp-preset-option').forEach(option=>{const match=option.textContent.toLocaleLowerCase().includes(state.mcpSearch);option.classList.toggle('hidden',!match);if(match)visible++;});category.classList.toggle('hidden',visible===0);});};
+  search.oninput=filter;filter();
 }
 async function refreshSettings() {
   if (!state.data?.user) return;
@@ -185,9 +188,17 @@ async function refreshSettings() {
     if(devices.devices.some(d=>d.id===selectedBatchDevice))$('mcp-batch-device').value=selectedBatchDevice;
     state.mcpIntegrations=mcp.integrations;
     renderMcpPresetGrid();
-    $('mcp-management').innerHTML=mcp.integrations.length?mcp.integrations.map(item=>{const status={configured:'OpenClawに登録済み（接続未検証）',auth_required:'認証待ち',error:'設定エラー'}[item.status]||'端末への反映待ち';return `<div class="setting-device"><span><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.device_label)} · ${status}</small>${item.auth==='oauth'?`<small>対象PCで実行: <code>openclaw mcp login ${escapeHtml(item.name)}</code></small>`:''}</span>${state.data.user.role==='owner'?`<button data-mcp-remove="${escapeHtml(item.name)}" class="outline-button">解除</button>`:''}</div>`;}).join(''):'<p class="setting-guide">MCP連携はまだありません。</p>';
+    $('mcp-management').innerHTML=mcp.integrations.length?`<button id="mcp-refresh" class="outline-button" type="button">接続状態を更新</button>${mcp.integrations.map(item=>{
+      const status={configured:'OpenClawに登録済み',auth_required:'認証待ち',error:'設定エラー'}[item.status]||'端末への反映待ち';
+      const pending=item.check_requested_at&&(!item.checked_at||item.checked_at<item.check_requested_at);
+      const stale=pending&&Date.now()-item.check_requested_at>90000;
+      const check=pending?'端末からの接続確認待ち':item.check_status==='success'?`接続成功 · ${item.tool_count}ツール`:item.check_status==='auth_required'?'接続確認: 認証待ち':item.check_status==='error'?`接続失敗: ${escapeHtml(item.check_error)}`:'';
+      return `<div class="setting-device"><span><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.device_label)} · ${status}</small>${check?`<small>${check}</small>`:''}${item.auth==='oauth'?`<small>対象PCで実行: <code>openclaw mcp login ${escapeHtml(item.name)}</code></small>`:''}</span>${state.data.user.role==='owner'?`<span><button data-mcp-check="${escapeHtml(item.name)}" class="outline-button" ${pending&&!stale?'disabled':''}>${stale?'再確認':'接続を確認'}</button><button data-mcp-remove="${escapeHtml(item.name)}" class="outline-button">解除</button></span>`:''}</div>`;
+    }).join('')}`:'<p class="setting-guide">MCP連携はまだありません。</p>';
     $('mcp-form').classList.toggle('hidden',state.data.user.role!=='owner');
     $('mcp-batch-form').classList.toggle('hidden',state.data.user.role!=='owner');
+    if($('mcp-refresh'))$('mcp-refresh').onclick=refreshSettings;
+    document.querySelectorAll('[data-mcp-check]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await request('/api/mcp/check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:button.dataset.mcpCheck})});await refreshSettings();$('settings-feedback').textContent='対象PCで接続を確認しています。しばらくして「接続状態を更新」を押してください。';}catch(e){$('settings-feedback').textContent=e.message;button.disabled=false;}});
     document.querySelectorAll('[data-mcp-remove]').forEach(button=>button.onclick=async()=>{if(!confirm('このMCP連携を解除しますか？'))return;try{await request('/api/mcp/remove',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:button.dataset.mcpRemove})});await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
     $('chatwork-status').textContent = chatwork.configured ? `接続設定済み · ルーム ${chatwork.roomId} · 人待ち ${chatwork.pending}件` : '未設定';
   } catch(e) {$('settings-feedback').textContent=e.message;}

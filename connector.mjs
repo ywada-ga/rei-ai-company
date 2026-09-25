@@ -1,8 +1,9 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
+import { checkOpenClaw, spawnOpenClaw } from './openclaw-process.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(root,'data','connector.json');
@@ -27,7 +28,7 @@ async function join() {
   try {
     const hub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
     validateHub(hub);
-    const available=spawnSync('openclaw',['--version'],{encoding:'utf8'});
+    const available=checkOpenClaw();
     if(available.status!==0)throw new Error('このMacにOpenClawがありません。先にOpenClawをセットアップしてください');
     const code=(await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
     const response=await fetch(new URL('/api?route=connector%2Fpair',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
@@ -36,10 +37,11 @@ async function join() {
     mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
     writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'main'},null,2),{mode:0o600});
     chmodSync(configPath,0o600);
-    if(process.platform==='darwin') {
-      const installed=spawnSync(process.execPath,[path.join(root,'install-macos.mjs'),'connector'],{cwd:root,encoding:'utf8'});
+    if(process.platform==='darwin'||process.platform==='win32') {
+      const installer=process.platform==='darwin'?'install-macos.mjs':'install-windows.mjs';
+      const installed=spawnSync(process.execPath,[path.join(root,installer),'connector'],{cwd:root,encoding:'utf8'});
       if(installed.status!==0)throw new Error(`端末は登録されましたが自動起動に失敗しました: ${installed.stderr||installed.stdout}`);
-      console.log('接続完了。このMacのOpenClawがREIの仕事を受け取れます。');
+      console.log('接続完了。このPCのOpenClawがREIの仕事を受け取れます。');
     } else console.log('接続情報を保存しました。npm run connector で起動してください。');
   } finally {rl.close();}
 }
@@ -68,7 +70,7 @@ function runOpenClaw(agent,job,devices) {
     : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。依頼: ${job.text}`;
   return new Promise((resolve,reject)=>{
     const key=`agent:${agent}:rei-${job.kind}-${job.id}`;
-    const child=spawn('openclaw',['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe']});
+    const child=spawnOpenClaw(agent,key,instruction);
     let out='',err='';const timer=setTimeout(()=>child.kill('SIGTERM'),195000);
     child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)child.kill('SIGTERM');});
     child.stderr.on('data',chunk=>{err+=chunk;if(err.length>100_000)child.kill('SIGTERM');});

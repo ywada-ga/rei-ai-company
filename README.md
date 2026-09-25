@@ -1,11 +1,11 @@
 # REI — ローカルで動くAI会社の司令室
 
-REIは、1台の「中心PC」に仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。Web画面は中心PC上で動きます。クラウドやVercel、外部データベースは不要です。
+REIは、1台の「中心PC」に仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOSまたはWindowsを使えます。Web画面は中心PC上で動きます。クラウドやVercel、外部データベースは不要です。
 
 ## 必要なもの
 
 - Node.js 24以降
-- 実行に参加する各PCのOpenClawと、利用可能なエージェント
+- 実行に参加する各PCのOpenClaw CLIと、利用可能なエージェント（Windows HubアプリだけではCLIが使えるとは限りません）
 - 遠隔の複数PCの場合、同じTailscaleネットワークへの参加（手動方式ではSSH接続も可）
 - 人に依頼する場合だけChatwork APIトークンとルームID
 
@@ -32,14 +32,16 @@ node install-macos.mjs hub
 node install-macos.mjs connector
 ```
 
-## Mac miniをかんたんに追加する（遠隔も可）
+WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start` と `node connector.mjs join` を使えます。Windowsのログイン時にREI本体を自動起動する場合は `node install-windows.mjs hub` を実行します。Windowsの参加端末では `join` がConnectorを自動起動に登録します。OpenClaw CLIは[公式Windows手順](https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md)で用意してください。
 
-1. 中心PCと各Mac miniに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
+## Mac mini・Windows PCをかんたんに追加する（遠隔も可）
+
+1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
 2. 中心PCで `tailscale serve --bg 4178` を一度実行します。表示された `https://...ts.net` のURLは同じTailscaleネットワーク内だけで開けます。初回はTailscale側でHTTPSを有効にする案内が出る場合があります。
-3. REIの **端末・設定 → かんたん端末追加** にMacの名前とそのURLを入力します。10分間だけ使える接続コードが表示されます。
-4. Mac miniでは、表示された1行のコマンドを実行し、接続URLとコードを入力します。OpenClawがあることを確認してから、Connectorをログイン時の自動起動に登録します。
+3. REIの **端末・設定 → かんたん端末追加** にPCの名前とそのURLを入力します。10分間だけ使える接続コードが表示されます。
+4. 参加PCでは、画面に表示されたコマンドを実行し、接続URLとコードを入力します。OpenClaw CLIがあることを確認してから、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。
 
-各MacにはNode.js 24以降とOpenClawが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。
+各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
 
 ## Mac miniをSSHで追加する（手動方式）
 

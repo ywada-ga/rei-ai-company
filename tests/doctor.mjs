@@ -10,7 +10,7 @@ const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
 const currentVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const dir=mkdtempSync(path.join(os.tmpdir(),'rei-doctor-'));
 const bin=path.join(dir,'bin');mkdirSync(bin);
-const fake='#!/usr/bin/env node\nif(process.argv.includes("--version"))console.log("1.0");else if(process.argv.includes("list"))console.log(JSON.stringify([{id:"rei"}]));else process.exit(2);\n';
+const fake='#!/usr/bin/env node\nif(process.argv.includes("--version"))console.log("1.0");else if(process.argv.includes("list"))console.log(JSON.stringify([{id:"rei"}]));else if(process.argv.includes("config"))console.log(JSON.stringify({list:[{id:"rei",tools:{deny:process.env.REI_TEST_UNSAFE==="1"?[]:["message","sessions_send","gateway"]}}]}));else process.exit(2);\n';
 for(const name of ['openclaw','openclaw.mjs']){const file=path.join(bin,name);writeFileSync(file,fake);chmodSync(file,0o755);}
 let hubVersion=currentVersion;
 const server=createServer((req,res)=>{const status=new URL(req.url,'http://localhost').searchParams.get('route')==='connector/status';const ok=!status||req.headers.authorization==='Bearer secret-do-not-print';res.writeHead(ok?200:401,{'content-type':'application/json'});res.end(JSON.stringify({ok,hubVersion}));});
@@ -30,7 +30,13 @@ try {
   assert.match(healthy.output,/中心PCのREIに接続できます/);
   assert.match(healthy.output,/端末トークンは中心PCで有効です/);
   assert.match(healthy.output,/REIの版は一致しています/);
+  assert.match(healthy.output,/直接送信・管理操作は制限されています/);
   assert.doesNotMatch(healthy.output,/secret-do-not-print/);
+  env.REI_TEST_UNSAFE='1';
+  const unsafe=await doctor();
+  assert.equal(unsafe.code,1);
+  assert.match(unsafe.output,/直接送信・管理操作の制限を確認してください/);
+  delete env.REI_TEST_UNSAFE;
   hubVersion='0.3.0';
   const outdated=await doctor();
   assert.equal(outdated.code,1);

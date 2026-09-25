@@ -39,7 +39,17 @@ else {
     try {
       const agents=runOpenClawCli(['agents','list','--json']);
       const list=agents.status===0?JSON.parse(agents.stdout):[];
-      result(Array.isArray(list)&&list.some(agent=>agent.id===config.agent),`OpenClawの担当AI「${config.agent}」`);
+      const found=Array.isArray(list)&&list.some(agent=>agent.id===config.agent);
+      result(found,`OpenClawの担当AI「${config.agent}」`);
+      if(found) {
+        const settings=runOpenClawCli(['config','get','agents']);
+        if(settings.status!==0)throw new Error('agent settings unavailable');
+        const configured=JSON.parse(settings.stdout);
+        const entry=Array.isArray(configured.list)?configured.list.find(agent=>agent.id===config.agent):configured.entries?.[config.agent];
+        const denied=entry?.tools?.deny;
+        const restricted=Array.isArray(denied)&&['message','sessions_send','gateway'].every(tool=>denied.includes(tool));
+        result(restricted,restricted?'REI担当AIの直接送信・管理操作は制限されています':'REI担当AIの直接送信・管理操作の制限を確認してください');
+      }
     } catch {result(false,'OpenClawの担当AIを確認できません');}
   } catch {result(false,'REIの接続設定を読み取れません。保存済みファイルは変更していません');}
 }

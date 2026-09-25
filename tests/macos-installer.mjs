@@ -1,5 +1,6 @@
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, statSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, statSync, copyFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,5 +23,32 @@ if(process.platform==='darwin') {
     assert.match(plist,/<key>REI_PORT<\/key><string>4188<\/string>/);
     assert.equal(statSync(path.join(agents,`ai.rei.${mode}.plist`)).mode&0o777,0o600);
   }
-  console.log('PASS macOS LaunchAgent registration preserves restored settings');
+  const project=path.join(temp,'joined-pc');mkdirSync(project);
+  for(const file of ['connector.mjs','openclaw-process.mjs','rei-agent.mjs','mcp-sync.mjs','install-macos.mjs'])copyFileSync(path.join(root,file),path.join(project,file));
+  const fakeOpenClaw=`#!/usr/bin/env node
+const fs=require('node:fs');
+const args=process.argv.slice(2),key=args.slice(0,2).join(' ');
+const state=fs.existsSync(process.env.REI_FAKE_AGENT_STATE)?JSON.parse(fs.readFileSync(process.env.REI_FAKE_AGENT_STATE,'utf8')):null;
+if(args[0]==='--version')console.log('test');
+else if(key==='agents list')console.log(JSON.stringify(state?[{id:'main',workspace:'/other'},state]:[{id:'main',workspace:'/other'}]));
+else if(key==='config file')console.log(process.env.REI_FAKE_CONFIG_FILE);
+else if(key==='agents add'){const agent={id:'rei',workspace:args[args.indexOf('--workspace')+1]};fs.writeFileSync(process.env.REI_FAKE_AGENT_STATE,JSON.stringify(agent));console.log(JSON.stringify(agent));}
+else if(key==='config get')console.log(JSON.stringify({list:[{id:'main'},state?{id:'rei',tools:{deny:[]}}:null].filter(Boolean)}));
+else if(['agents set-identity','config set','config validate'].includes(key))console.log('ok');
+else process.exit(2);
+`;
+  const openclaw=path.join(bin,'openclaw');writeFileSync(openclaw,fakeOpenClaw);chmodSync(openclaw,0o755);
+  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try {
+    const configFile=path.join(temp,'openclaw.json');writeFileSync(configFile,'{}');
+    const child=spawn(process.execPath,['connector.mjs','join',`http://127.0.0.1:${server.address().port}`],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:path.join(temp,'joined-agents'),REI_FAKE_AGENT_STATE:path.join(temp,'agent.json'),REI_FAKE_CONFIG_FILE:configFile},stdio:['pipe','pipe','pipe']});
+    let output='',answered=false;child.stdout.on('data',chunk=>{output+=chunk;if(!answered&&output.includes('接続コード')){answered=true;child.stdin.end('TESTCODE\n');}});child.stderr.on('data',chunk=>output+=chunk);
+    const timer=setTimeout(()=>child.kill(),15000);
+    const code=await new Promise(resolve=>child.on('close',resolve));clearTimeout(timer);
+    assert.equal(code,0,output);
+    assert.equal(JSON.parse(readFileSync(path.join(project,'data','connector.json'),'utf8')).agent,'rei');
+    assert.match(readFileSync(path.join(temp,'joined-agents','ai.rei.connector.plist'),'utf8'),/connector\.mjs/);
+  } finally {server.close();}
+  console.log('PASS macOS LaunchAgent registration and guided join');
 } else console.log('SKIP macOS LaunchAgent registration on this OS');

@@ -1,0 +1,27 @@
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { openStorage, run } from '../storage.mjs';
+import { report } from '../workflow.mjs';
+
+const dir=mkdtempSync(path.join(os.tmpdir(),'rei-report-'));
+process.env.REI_DATA_DIR=dir;
+const db=openStorage(dir);
+const day=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const start=new Date(`${day}T00:00:00+09:00`).getTime();
+const yesterday=start-60_000,today=start+60_000;
+const deviceId='00000000-0000-4000-8000-000000000001';
+run(db,'INSERT INTO devices(id,label,token_hash) VALUES(?,?,?)',deviceId,'前日から稼働したPC','test-hash');
+run(db,'INSERT INTO tasks(id,kind,text,status,created_at,finished_at) VALUES(?,?,?,?,?,?)','root-today','root','前日から今日まで','completed',yesterday,today);
+run(db,'INSERT INTO tasks(id,kind,text,status,created_at,finished_at) VALUES(?,?,?,?,?,?)','root-old','root','前日だけ','completed',yesterday,yesterday);
+run(db,'INSERT INTO tasks(id,parent_id,kind,text,status,device_id,created_at,started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?)','device-today','root-today','execute','PCの工程','completed',deviceId,yesterday,yesterday,today);
+run(db,'INSERT INTO tasks(id,parent_id,kind,text,status,created_at,finished_at) VALUES(?,?,?,?,?,?,?)','human-today','root-today','human','人の回答','completed',yesterday,today);
+const result=report(db);
+assert.equal(result.total,1);
+assert.equal(result.completed,1);
+assert.equal(result.tasks[0].id,'root-today');
+assert.equal(result.devices[0].completed,1);
+assert.equal(result.people.completed,1);
+db.close();
+console.log('PASS overnight work appears in the day it completes');

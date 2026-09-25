@@ -17,13 +17,14 @@ cd rei
 npm start
 ```
 
-初回起動時にターミナルへ出る「REIの初期登録」URLを開き、所有者の名前と14文字以上のパスワードを設定します。続けてログインします。画面右上の **端末・設定** から「このPC」を登録し、発行されたトークンを一度だけ控えます。
+初回起動時にターミナルへ出る「REIの初期登録」URLを開き、所有者の名前と14文字以上のパスワードを設定します。続けてログインします。画面右上の **端末・設定** から「このPC」を登録し、発行されたトークンを一度だけ控えます。このPCの個人用OpenClawと仕事を分けるため、REI専用エージェントを作ります。
 
 ```bash
+npm run agent:setup
 npm run connector -- setup
 ```
 
-接続先は `http://127.0.0.1:4178`、次に端末トークンとOpenClawエージェント名（通常は `main`）を入力します。設定を保存したら別のターミナルで `npm run connector` を起動します。Web画面から仕事を依頼すると、REIが計画を作り、このPCのOpenClawで実行します。
+接続先は `http://127.0.0.1:4178`、次に端末トークンとOpenClawエージェント名 `rei` を入力します。設定を保存したら別のターミナルで `npm run connector` を起動します。Web画面から仕事を依頼すると、REIが計画を作り、このPCのOpenClawで実行します。
 
 macOSのログイン時に自動起動したい場合:
 
@@ -39,7 +40,7 @@ WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start`
 1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。
 2. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。REIが接続URLを検出して入力欄へ入れます。Tailscale側でHTTPSを有効にする案内が出た場合は、その案内を完了してください。
 3. REIの **端末・設定 → かんたん端末追加** にPCの名前を入力します。10分間だけ使える接続コードが表示されます。
-4. 参加PCでは、画面に表示されたコマンドを実行し、接続URLとコードを入力します。OpenClaw CLIがあることを確認してから、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。
+4. 参加PCでは、画面に表示されたコマンドを実行し、接続URLとコードを入力します。OpenClaw CLIを確認した後、個人用とは別の `rei` エージェントを作り、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。
 
 各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
 
@@ -57,7 +58,7 @@ ssh user@hub-mac
 ssh -N -L 127.0.0.1:4179:127.0.0.1:4178 user@hub-mac
 ```
 
-Mac miniのブラウザで `http://127.0.0.1:4179` を開けることを確認します。中心PCの画面でそのMac miniの端末トークンを発行します。Mac miniにもこのリポジトリとOpenClawを置き、`npm run connector -- setup` で接続先 `http://127.0.0.1:4179` と発行されたトークンを設定します。`npm run connector` で参加します。**3台それぞれに別のトークンを発行**してください。
+Mac miniのブラウザで `http://127.0.0.1:4179` を開けることを確認します。中心PCの画面でそのMac miniの端末トークンを発行します。Mac miniにもこのリポジトリとOpenClawを置き、`npm run agent:setup` で専用エージェントを作ります。`npm run connector -- setup` で接続先 `http://127.0.0.1:4179`、発行されたトークン、エージェント名 `rei` を設定します。`npm run connector` で参加します。**3台それぞれに別のトークンを発行**してください。
 
 SSH鍵による接続ができた後は、Mac miniごとに以下で自動起動できます。
 
@@ -102,7 +103,7 @@ Chatworkの設定前でも、所有者または管理者は **ミッション �
 - `data/chatwork.key`: Chatworkトークンの暗号鍵。Gitには含めません。バックアップする場合はDBと一緒に保管します。
 - このPCで作成済みの所有者認証情報は `data/owner-credentials.txt` に保存しました。公開リポジトリには含めません。ログイン後に設定画面でパスワードを変更できます。
 - Connectorは接続先がHTTPS、またはSSH転送したlocalhostの場合にだけ起動します。
-- MCP連携を追加した場合、対象PCのOpenClaw設定に `rei_` で始まる専用項目を追加します。それ以外の既存設定は変更しません。初期値では既存の `main` エージェントを利用します。実運用ではREI専用エージェントを設け、OpenClaw側のツール権限も設定してください。
+- MCP連携を追加した場合、対象PCのOpenClaw設定に `rei_` で始まる専用項目を追加します。それ以外の既存MCP設定は変更しません。かんたん端末追加では、個人用と別のワークスペース・会話履歴を持つ `rei` エージェントを作ります。REI経由以外のメッセージ送信とGateway管理のツールはこのエージェントでは無効にします。これだけでOS上のファイルアクセスを制限できるわけではないため、クライアント配布時は端末ごとにOpenClawのツール権限と作業場所を確認してください。
 - 長時間実行の通信が失われた仕事は、二重実行を避けるため「要確認」にします。
 
 ## バックアップと復元

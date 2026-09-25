@@ -18,7 +18,7 @@ try {
   await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
   const enrolled=await api('devices/enroll',{label:'test-openclaw',isPlanner:true});
   const configPath=path.join(data,'connector.json');
-  writeFileSync(configPath,JSON.stringify({hub:'http://127.0.0.1:4182',token:enrolled.token,agent:'main'}),{mode:0o600});
+  writeFileSync(configPath,JSON.stringify({hub:'http://127.0.0.1:4182',token:enrolled.token,agent:process.env.REI_TEST_AGENT||'main'}),{mode:0o600});
   connector=spawn(process.execPath,['connector.mjs'],{cwd:root,env:{...process.env,REI_CONNECTOR_CONFIG:configPath},stdio:['ignore','pipe','pipe']});
   connector.stdout.on('data',x=>process.stdout.write(x));connector.stderr.on('data',x=>process.stderr.write(x));
   const task=await api('command',{text:'REIの接続確認です。外部操作は不要です。最後に「接続成功」と短く返してください。',department:'operations'});

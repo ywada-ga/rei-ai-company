@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { checkOpenClaw, spawnOpenClaw } from './openclaw-process.mjs';
 import { syncMcp, probeMcp } from './mcp-sync.mjs';
+import { ensureReiAgent } from './rei-agent.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(root,'data','connector.json');
@@ -30,13 +31,14 @@ async function join() {
     const hub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
     validateHub(hub);
     const available=checkOpenClaw();
-    if(available.status!==0)throw new Error('このMacにOpenClawがありません。先にOpenClawをセットアップしてください');
+    if(available.status!==0)throw new Error('このPCにOpenClaw CLIがありません。先にOpenClawをセットアップしてください');
+    ensureReiAgent(root);
     const code=(await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
     const response=await fetch(new URL('/api?route=connector%2Fpair',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||`接続に失敗しました (HTTP ${response.status})`);
     mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
-    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'main'},null,2),{mode:0o600});
+    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'rei'},null,2),{mode:0o600});
     chmodSync(configPath,0o600);
     if(process.platform==='darwin'||process.platform==='win32') {
       const installer=process.platform==='darwin'?'install-macos.mjs':'install-windows.mjs';

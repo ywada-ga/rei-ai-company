@@ -2,13 +2,13 @@
 
 ```mermaid
 flowchart LR
-  U[利用者のブラウザ] -->|localhost / SSH転送| H[中心PCのREI Hub]
+  U[利用者のブラウザ] -->|localhost / Tailscale Serve| H[中心PCのREI Hub]
   H --> D[(SQLite<br/>仕事・権限・履歴)]
   H --> C[Chatwork API]
   A[中心PC Connector] -->|localhost| H
-  B[Mac mini 1 Connector] -->|SSH転送| H
-  E[Mac mini 2 Connector] -->|SSH転送| H
-  F[Mac mini 3 Connector] -->|SSH転送| H
+  B[Mac mini 1 Connector] -->|Tailscale HTTPS| H
+  E[Mac mini 2 Connector] -->|Tailscale HTTPS| H
+  F[Mac mini 3 Connector] -->|Tailscale HTTPS| H
   A --> OA[ローカルOpenClaw]
   B --> OB[ローカルOpenClaw]
   E --> OE[ローカルOpenClaw]
@@ -20,7 +20,7 @@ flowchart LR
 
 - **Hub:** 仕事の唯一の記録元。ログイン、権限、端末登録、割当、報告、Chatworkを管理する。既定は `127.0.0.1:4178` のみで待ち受ける。
 - **Connector:** 各PCで常駐。端末専用トークンでHubへ接続し、仕事を取得して、そのPCのOpenClawへ渡す。OpenClaw設定の変更や別PCへの直接接続は行わない。
-- **OpenClaw:** 計画担当と実行担当。初期は各端末の既存 `main` を利用できる。REI専用エージェントへの分離が望ましい。
+- **OpenClaw:** 計画担当と実行担当。各PCに専用の `rei` エージェントを作成し、個人用エージェントとワークスペース・会話履歴を分ける。REI専用エージェントは直接メッセージ送信とGateway管理ツールを無効にする。
 - **Chatwork:** 人へ渡す仕事の投稿・返信取得。APIトークンはHubのローカル暗号鍵で暗号化して保存。
 
 ## 仕事の流れ
@@ -57,7 +57,7 @@ sequenceDiagram
 
 SQLiteはWALモード。プロジェクト、仕事、子仕事、端末、利用者、イベントを持つ。プロジェクトの目的は計画担当と実行担当のOpenClawへ渡す。ブラウザにはHttpOnly・SameSite=StrictのセッションCookieを使う。所有者/管理者はプロジェクトを作成・変更し、仕事を直接依頼できる。依頼者の仕事は承認後に実行し、閲覧者は参照のみ。HubのREST APIが権限を検査する。
 
-この権限は**Hubへの依頼権限**であり、OpenClawが持つOS上の権限を細かく制限するものではない。顧客配布時はREI専用OpenClawエージェントのツール権限と、実行ディレクトリを個別に設定する。
+この権限は**Hubへの依頼権限**であり、OpenClawが持つOS上の権限を細かく制限するものではない。専用エージェントでも、許可されたツールからOSのファイルを操作できる。顧客配布時は端末ごとにOpenClawのツール権限と実行ディレクトリを個別に設定する。
 
 ## 配布形態
 

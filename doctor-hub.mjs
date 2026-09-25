@@ -32,6 +32,7 @@ try {
   const status=response.ok?await response.json():null;
   const ready=response.ok&&typeof status?.needsSetup==='boolean'&&(ownerCount===null||status.needsSetup===(ownerCount===0));
   result(ready,ready?'REI本体は正常に応答しています':response.ok?'REI本体の登録状態を確認してください':'REI本体が起動していません');
+  if(ready)result(status.version===version,status.version===version?`起動中のREIは最新版 ${version} です`:'起動中のREIがこのフォルダの版と異なります。仕事が終わってからREI本体を再起動してください');
 } catch {result(false,'REI本体に接続できません。自動起動または保存先を確認してください');}
 
 if(ownerCount===1) {

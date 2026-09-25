@@ -55,7 +55,7 @@ createSetupToken();
 async function api(req,res,route) {
   if(!['GET','POST'].includes(req.method))return error(res,405,'許可されていない操作です');
   if(req.method==='POST'&&!sameOrigin(req))return error(res,403,'送信元が一致しません');
-  if(route==='setup/status'&&req.method==='GET')return send(res,200,{needsSetup:!one(db,'SELECT id FROM users LIMIT 1')});
+  if(route==='setup/status'&&req.method==='GET')return send(res,200,{needsSetup:!one(db,'SELECT id FROM users LIMIT 1'),version:reiVersion});
   if(route==='setup/complete'&&req.method==='POST') {
     const data=await body(req),invite=one(db,'SELECT * FROM invites WHERE hash=? AND used=0 AND expires_at>?',hash(String(data.token||'')),Date.now());
     if(!invite)return error(res,403,'登録リンクが無効か期限切れです');

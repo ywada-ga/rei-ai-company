@@ -9,12 +9,14 @@ import { openStorage, one, run } from '../storage.mjs';
 import { createBackup } from '../backup.mjs';
 
 const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
+const version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const data=mkdtempSync(path.join(os.tmpdir(),'rei-hub-doctor-'));
 process.env.REI_DATA_DIR=data;
 const db=openStorage(data);
+let servedVersion=version;
 const server=createServer((request,response)=>{
   response.writeHead(200,{'content-type':'application/json'});
-  response.end(JSON.stringify({needsSetup:!one(db,"SELECT id FROM users WHERE role='owner' LIMIT 1")}));
+  response.end(JSON.stringify({needsSetup:!one(db,"SELECT id FROM users WHERE role='owner' LIMIT 1"),version:servedVersion}));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 async function diagnose() {
@@ -37,6 +39,11 @@ try {
   const healthy=await diagnose();
   assert.equal(healthy.code,0,healthy.output);
   assert.match(healthy.output,/最新のバックアップを検証しました/);
+  servedVersion='older';
+  const outdated=await diagnose();
+  assert.equal(outdated.code,1,outdated.output);
+  assert.match(outdated.output,/起動中のREIがこのフォルダの版と異なります/);
+  servedVersion=version;
   const interrupted=path.join(data,'backups','.partial-interrupted');
   mkdirSync(interrupted);
   const oldTime=new Date(Date.now()-2*3600000);

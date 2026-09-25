@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { checkOpenClaw, runOpenClawCli } from './openclaw-process.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
+const version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
 let problems=0;
 function result(ok,message) {console.log(`${ok?'OK':'要確認'}  ${message}`);if(!ok)problems++;}
@@ -29,6 +30,10 @@ else {
       if(response.ok) {
         const authorized=await fetch(new URL('/api?route=connector%2Fstatus',url),{headers:{authorization:`Bearer ${config.token}`},signal:AbortSignal.timeout(10000)});
         result(authorized.ok,authorized.ok?'端末トークンは中心PCで有効です':'端末トークンが無効です。中心PCで端末の登録状態を確認してください');
+        if(authorized.ok) {
+          const status=await authorized.json();
+          result(status.hubVersion===version,status.hubVersion===version?`REIの版は一致しています（${version}）`:`REIの版が異なります。このPCは${version}、中心PCは${status.hubVersion||'不明'}です`);
+        }
       }
     } catch {result(false,'中心PCのREIに接続できません。Tailscaleまたは中心PCの稼働状態を確認してください');}
     try {
@@ -43,7 +48,8 @@ result(!existsSync(`${pending}.tmp`),existsSync(`${pending}.tmp`)?'送信待ち�
 if(existsSync(pending)) {
   try {
     const records=JSON.parse(readFileSync(pending,'utf8'));
-    result(Array.isArray(records),Array.isArray(records)?`送信待ち結果 ${records.length}件`:'送信待ち結果の形式が正しくありません');
+    const valid=Array.isArray(records)&&records.every(item=>item&&typeof item.taskId==='string'&&typeof item.leaseId==='string'&&typeof item.success==='boolean'&&typeof item.result==='string'&&typeof item.error==='string');
+    result(valid&&records.length===0,!valid?'送信待ち結果の形式が正しくありません':records.length?`送信待ち結果 ${records.length}件。Hubの仕事と照合してください`:'送信待ち結果 0件');
   } catch {result(false,'送信待ち結果を読み取れません');}
 }
 console.log(problems?`診断完了: ${problems}件を確認してください`:'診断完了: 接続の基本項目は正常です');

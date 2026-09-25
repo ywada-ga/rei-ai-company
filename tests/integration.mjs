@@ -32,7 +32,9 @@ try {
   assert.equal(revokedStatus.status,401);
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
-  assert.equal((await api('connector/status',undefined,auth)).deviceId,enrolled.device.id);
+  const connectorStatus=await api('connector/status',undefined,auth);
+  assert.equal(connectorStatus.deviceId,enrolled.device.id);
+  assert.equal(connectorStatus.hubVersion,'0.4.0');
   assert.equal((await api('devices')).localConnector.status,'not_configured');
   writeFileSync(path.join(data,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:'invalid',agent:'rei'}));
   assert.equal((await api('devices')).localConnector.status,'needs_attention');

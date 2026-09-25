@@ -21,6 +21,7 @@ const result=report(db);
 assert.equal(result.total,1);
 assert.equal(result.completed,1);
 assert.equal(result.tasks[0].id,'root-today');
+assert.equal(result.tasks[0].activityAt,new Date(today).toISOString());
 assert.equal(result.devices[0].completed,1);
 assert.equal(result.people.completed,1);
 db.close();

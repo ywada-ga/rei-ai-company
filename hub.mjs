@@ -7,6 +7,7 @@ import { openStorage, one, all, run, transaction } from './storage.mjs';
 import { random, hash, encodePassword, checkPassword, cookies, sessionUser, connectorDevice, setCookie, sameOrigin } from './security.mjs';
 import { departments, event, createTask, claim, sweep, finishJob, report } from './workflow.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
+import { MCP_PRESETS } from './public/mcp-presets.js';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const db=openStorage(root);
@@ -101,6 +102,26 @@ async function api(req,res,route) {
   if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(taskJson);return send(res,200,{tasks});}
   if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices});}
   if(route==='mcp/list'&&req.method==='GET') {const integrations=all(db,'SELECT m.name,m.label,m.url,m.auth,m.device_id,d.label AS device_label,s.status,s.updated_at FROM mcp_integrations m JOIN devices d ON d.id=m.device_id LEFT JOIN device_mcp_status s ON s.name=m.name AND s.device_id=m.device_id ORDER BY m.created_at DESC');return send(res,200,{integrations});}
+  if(route==='mcp/add-batch'&&req.method==='POST') {
+    if(user.role!=='owner')return error(res,403,'所有者だけが連携を設定できます');
+    const data=await body(req),deviceId=String(data.deviceId||''),ids=data.ids;
+    if(!Array.isArray(ids)||ids.length<1||ids.length>25||new Set(ids).size!==ids.length)return error(res,400,'連携先を1〜25件選んでください');
+    const presets=ids.map(id=>MCP_PRESETS.find(preset=>preset.id===id&&preset.url));
+    if(presets.some(preset=>!preset))return error(res,400,'選択された連携先が見つかりません');
+    const device=one(db,'SELECT id FROM devices WHERE id=? AND revoked=0',deviceId);
+    if(!device)return error(res,400,'接続先のPCが見つかりません');
+    const existing=all(db,'SELECT name,url FROM mcp_integrations WHERE device_id=?',deviceId);
+    if(existing.length+presets.filter(preset=>!existing.some(item=>item.url===preset.url)).length>100)return error(res,400,'1台のPCに登録できるMCPは100件までです');
+    const added=transaction(db,()=>presets.map(preset=>{
+      const duplicate=one(db,'SELECT name FROM mcp_integrations WHERE device_id=? AND url=?',deviceId,preset.url);
+      if(duplicate)return {id:preset.id,name:duplicate.name,added:false};
+      const name=`rei_${crypto.randomBytes(6).toString('hex')}`;
+      run(db,'INSERT INTO mcp_integrations(name,label,url,auth,device_id,created_at) VALUES(?,?,?,?,?,?)',name,preset.label,preset.url,preset.auth,deviceId,Date.now());
+      event(db,null,user.username,'mcp_added',`${preset.label} / ${deviceId}`);
+      return {id:preset.id,name,added:true};
+    }));
+    return send(res,201,{integrations:added});
+  }
   if(route==='mcp/add'&&req.method==='POST') {
     if(user.role!=='owner')return error(res,403,'所有者だけが連携を設定できます');
     const data=await body(req),label=text(data.label,80),deviceId=String(data.deviceId||''),auth=String(data.auth||'oauth');
@@ -108,6 +129,8 @@ async function api(req,res,route) {
     const device=one(db,'SELECT id FROM devices WHERE id=? AND revoked=0',deviceId);if(!device)return error(res,400,'接続先のPCが見つかりません');
     let url;try{url=new URL(String(data.url||''));}catch{return error(res,400,'MCPのURLが正しくありません');}
     if(url.protocol!=='https:'||url.username||url.password||url.hash||url.href.length>1000)return error(res,400,'認証情報を含まないHTTPSのMCP URLを入力してください');
+    if(one(db,'SELECT name FROM mcp_integrations WHERE device_id=? AND url=?',device.id,url.toString()))return error(res,409,'このPCには同じMCP URLが登録済みです');
+    if(one(db,'SELECT COUNT(*) AS count FROM mcp_integrations WHERE device_id=?',device.id).count>=100)return error(res,400,'1台のPCに登録できるMCPは100件までです');
     const name=`rei_${crypto.randomBytes(6).toString('hex')}`;
     run(db,'INSERT INTO mcp_integrations(name,label,url,auth,device_id,created_at) VALUES(?,?,?,?,?,?)',name,label,url.toString(),auth,device.id,Date.now());
     event(db,null,user.username,'mcp_added',`${label} / ${device.id}`);

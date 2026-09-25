@@ -24,12 +24,18 @@ try {
   assert.equal((await api('mcp/list')).integrations[0].status,null);
   assert.equal((await api('connector/heartbeat',{capabilities:['openclaw'],mcpStatuses:[{name:mcp.name,status:'auth_required'}]},auth)).integrations[0].name,mcp.name);
   assert.equal((await api('mcp/list')).integrations[0].status,'auth_required');
+  const batch=await api('mcp/add-batch',{deviceId:enrolled.device.id,ids:['freee','moneyforward-accounting','misoca','kintone-docs']});
+  assert.equal(batch.integrations.length,4);
+  assert.ok(batch.integrations.every(item=>item.added));
+  assert.equal((await api('mcp/add-batch',{deviceId:enrolled.device.id,ids:['freee']})).integrations[0].added,false);
+  assert.equal((await api('connector/heartbeat',{capabilities:['openclaw']},auth)).integrations.length,5);
   const pairing=await api('devices/pairing',{label:'remote-mac'});
   const paired=await api('connector/pair',{code:pairing.code});
   assert.equal(paired.device.label,'remote-mac');
   await api('connector/heartbeat',{capabilities:['openclaw']},paired.token);
   assert.equal((await api('connector/heartbeat',{capabilities:['openclaw']},paired.token)).integrations.length,0);
   await api('mcp/remove',{name:mcp.name});
+  for(const item of batch.integrations)await api('mcp/remove',{name:item.name});
   assert.equal((await api('mcp/list')).integrations.length,0);
   const replay=await fetch('http://127.0.0.1:4181/api?route=connector%2Fpair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:pairing.code})});
   assert.equal(replay.status,403);

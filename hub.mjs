@@ -178,11 +178,13 @@ async function api(req,res,route) {
     if(one(db,'SELECT name FROM mcp_integrations WHERE device_id=? AND url=?',device.id,url.toString()))return error(res,409,'このPCには同じMCP URLが登録済みです');
     if(one(db,'SELECT COUNT(*) AS count FROM mcp_integrations WHERE device_id=?',device.id).count>=100)return error(res,400,'1台のPCに登録できるMCPは100件までです');
     const name=`rei_${crypto.randomBytes(6).toString('hex')}`;
-    run(db,'INSERT INTO mcp_integrations(name,label,url,auth,device_id,created_at) VALUES(?,?,?,?,?,?)',name,label,url.toString(),auth,device.id,Date.now());
-    event(db,null,user.username,'mcp_added',`${label} / ${device.id}`);
+    transaction(db,()=>{
+      run(db,'INSERT INTO mcp_integrations(name,label,url,auth,device_id,created_at) VALUES(?,?,?,?,?,?)',name,label,url.toString(),auth,device.id,Date.now());
+      event(db,null,user.username,'mcp_added',`${label} / ${device.id}`);
+    });
     return send(res,201,{name,label});
   }
-  if(route==='mcp/remove'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが連携を解除できます');const data=await body(req),name=String(data.name||'');if(!one(db,'SELECT name FROM mcp_integrations WHERE name=?',name))return error(res,404,'連携が見つかりません');transaction(db,()=>{run(db,'DELETE FROM device_mcp_status WHERE name=?',name);run(db,'DELETE FROM mcp_integrations WHERE name=?',name);});event(db,null,user.username,'mcp_removed',name);return send(res,200,{ok:true});}
+  if(route==='mcp/remove'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが連携を解除できます');const data=await body(req),name=String(data.name||'');if(!one(db,'SELECT name FROM mcp_integrations WHERE name=?',name))return error(res,404,'連携が見つかりません');transaction(db,()=>{run(db,'DELETE FROM device_mcp_status WHERE name=?',name);run(db,'DELETE FROM mcp_integrations WHERE name=?',name);event(db,null,user.username,'mcp_removed',name);});return send(res,200,{ok:true});}
   if(route==='devices/pairing'&&req.method==='POST') {
     if(!['owner','admin'].includes(user.role))return error(res,403,'端末を登録する権限がありません');
     const data=await body(req),label=text(data.label,80),code=crypto.randomBytes(12).toString('base64url');
@@ -193,7 +195,7 @@ async function api(req,res,route) {
   if(route==='devices/enroll'&&req.method==='POST') {
     if(!['owner','admin'].includes(user.role))return error(res,403,'端末を登録する権限がありません');
     const data=await body(req),label=text(data.label,80),raw=random(),id=uid(),planner=!!data.isPlanner||!one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0');
-    run(db,'INSERT INTO devices(id,label,token_hash,planner) VALUES(?,?,?,?)',id,label,hash(raw),planner?1:0);event(db,null,user.username,'device_enrolled',label);
+    transaction(db,()=>{run(db,'INSERT INTO devices(id,label,token_hash,planner) VALUES(?,?,?,?)',id,label,hash(raw),planner?1:0);event(db,null,user.username,'device_enrolled',label);});
     return send(res,201,{device:{id,label,isPlanner:planner},token:raw});
   }
   if(route==='devices/revoke'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'端末を解除する権限がありません');const data=await body(req),device=one(db,'SELECT * FROM devices WHERE id=? AND revoked=0',String(data.deviceId||''));if(!device)return error(res,404,'端末が見つかりません');transaction(db,()=>{run(db,'UPDATE devices SET revoked=1 WHERE id=?',device.id);const active=all(db,"SELECT id FROM tasks WHERE device_id=? AND status='running'",device.id);for(const task of active){run(db,'UPDATE tasks SET lease_until=? WHERE id=?',Date.now()-1,task.id);event(db,task.id,user.username,'device_revoked','担当PCを解除したため結果を確認');}event(db,null,user.username,'device_revoked',device.label);});sweep(db);return send(res,200,{ok:true});}

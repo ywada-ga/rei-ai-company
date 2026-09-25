@@ -39,6 +39,12 @@ try {
   await api('devices/revoke',{deviceId:firstPaired.device.id});
   const revokedStatus=await fetch('http://127.0.0.1:4181/api?route=connector%2Fstatus',{headers:{authorization:`Bearer ${firstPaired.token}`}});
   assert.equal(revokedStatus.status,401);
+  const faultDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  faultDb.exec("CREATE TRIGGER fail_enroll_event BEFORE INSERT ON events WHEN NEW.type='device_enrolled' BEGIN SELECT RAISE(ABORT,'enroll event failure'); END;");
+  const failedEnroll=await fetch('http://127.0.0.1:4181/api?route=devices%2Fenroll',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify({label:'failed-enroll',isPlanner:true})});
+  assert.equal(failedEnroll.status,500);
+  assert.equal(faultDb.prepare("SELECT COUNT(*) AS count FROM devices WHERE label='failed-enroll'").get().count,0);
+  faultDb.exec('DROP TRIGGER fail_enroll_event');
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
   const connectorStatus=await api('connector/status',undefined,auth);
@@ -61,6 +67,11 @@ try {
   await api('connector/heartbeat',{pendingResults:0,capabilities:['openclaw']},auth);
   assert.equal((await api('devices')).devices[0].pending_results,0);
   assert.equal((await api('devices')).devices[0].version,'');
+  faultDb.exec("CREATE TRIGGER fail_mcp_add_event BEFORE INSERT ON events WHEN NEW.type='mcp_added' BEGIN SELECT RAISE(ABORT,'mcp add event failure'); END;");
+  const failedMcpAdd=await fetch('http://127.0.0.1:4181/api?route=mcp%2Fadd',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify({label:'Failed Calendar',url:'https://example.com/failed-mcp',auth:'oauth',deviceId:enrolled.device.id})});
+  assert.equal(failedMcpAdd.status,500);
+  assert.equal(faultDb.prepare("SELECT COUNT(*) AS count FROM mcp_integrations WHERE label='Failed Calendar'").get().count,0);
+  faultDb.exec('DROP TRIGGER fail_mcp_add_event');
   const mcp=await api('mcp/add',{label:'Test Calendar',url:'https://example.com/mcp',auth:'oauth',deviceId:enrolled.device.id});
   assert.match(mcp.name,/^rei_[a-f0-9]{12}$/);
   assert.equal((await api('mcp/list')).integrations[0].status,null);
@@ -85,6 +96,12 @@ try {
   assert.equal(paired.device.label,'remote-mac');
   await api('connector/heartbeat',{capabilities:['openclaw']},paired.token);
   assert.equal((await api('connector/heartbeat',{capabilities:['openclaw']},paired.token)).integrations.length,0);
+  faultDb.exec("CREATE TRIGGER fail_mcp_remove_event BEFORE INSERT ON events WHEN NEW.type='mcp_removed' BEGIN SELECT RAISE(ABORT,'mcp remove event failure'); END;");
+  const failedMcpRemove=await fetch('http://127.0.0.1:4181/api?route=mcp%2Fremove',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify({name:mcp.name})});
+  assert.equal(failedMcpRemove.status,500);
+  assert.equal(faultDb.prepare('SELECT COUNT(*) AS count FROM mcp_integrations WHERE name=?').get(mcp.name).count,1);
+  faultDb.exec('DROP TRIGGER fail_mcp_remove_event');
+  faultDb.close();
   await api('mcp/remove',{name:mcp.name});
   for(const item of batch.integrations)await api('mcp/remove',{name:item.name});
   assert.equal((await api('mcp/list')).integrations.length,0);

@@ -94,7 +94,10 @@ try {
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);
   assert.equal(plan.job.project.objective,'最初の成果を作る');
+  await api('connector/heartbeat',{version:'0.3.0',capabilities:['openclaw','planning']},auth);
   await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);
+  assert.equal((await api('connector/claim',{},auth)).updateRequired,true);
+  await api('connector/heartbeat',{version:'0.4.0',capabilities:['openclaw','planning']},auth);
   const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');
   assert.equal(execute.job.project_id,project.id);
   assert.equal(execute.job.project.name,'新規事業');

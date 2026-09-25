@@ -133,6 +133,10 @@ try {
   assert.equal((await api('users/list')).users.find(user=>user.id===member.id).role,'viewer');
   const viewerCommand=await fetch('http://127.0.0.1:4181/api?route=command',{method:'POST',headers:{cookie:requesterCookie,'content-type':'application/json'},body:JSON.stringify({text:'実行できない指示'})});
   assert.equal(viewerCommand.status,403);
+  const viewerDetail=await fetch(`http://127.0.0.1:4181/api?route=tasks%2Fdetail%2F${gated.task.id}`,{headers:{cookie:requesterCookie}});
+  assert.equal((await viewerDetail.json()).canCancel,false);
+  const viewerCancel=await fetch('http://127.0.0.1:4181/api?route=tasks%2Fcancel',{method:'POST',headers:{cookie:requesterCookie,'content-type':'application/json'},body:JSON.stringify({taskId:gated.task.id})});
+  assert.equal(viewerCancel.status,403);
   await api('users/disable',{userId:member.id,disabled:true});
   assert.equal((await api('users/list')).users.find(user=>user.id===member.id).disabled,1);
   const stoppedSession=await fetch('http://127.0.0.1:4181/api?route=auth%2Fme',{headers:{cookie:requesterCookie}});

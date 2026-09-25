@@ -1,0 +1,27 @@
+import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { createBackup, verifyBackup, restoreBackup } from '../backup.mjs';
+
+const base=mkdtempSync(path.join(os.tmpdir(),'rei-backup-'));
+const source=path.join(base,'data');
+const { mkdirSync }=await import('node:fs');mkdirSync(source);
+const db=new DatabaseSync(path.join(source,'rei.sqlite'));
+db.exec('PRAGMA journal_mode=WAL; CREATE TABLE sample(value TEXT); INSERT INTO sample VALUES (\'saved\')');
+writeFileSync(path.join(source,'chatwork.key'),'test-key');
+writeFileSync(path.join(source,'owner-credentials.txt'),'excluded');
+const folder=await createBackup(source,path.join(base,'backups'));
+assert.deepEqual(verifyBackup(folder).files,['rei.sqlite','chatwork.key']);
+assert.equal(existsSync(path.join(folder,'owner-credentials.txt')),false);
+const destination=path.join(base,'restored');
+restoreBackup(folder,destination);
+const restored=new DatabaseSync(path.join(destination,'rei.sqlite'),{readOnly:true});
+assert.equal(restored.prepare('SELECT value FROM sample').get().value,'saved');
+restored.close();db.close();
+assert.equal(readFileSync(path.join(destination,'chatwork.key'),'utf8'),'test-key');
+assert.throws(()=>restoreBackup(folder,destination),/空のフォルダ/);
+writeFileSync(path.join(folder,'chatwork.key'),'tampered');
+assert.throws(()=>verifyBackup(folder),/検証に失敗/);
+console.log('PASS online backup, integrity, restore, tamper detection');

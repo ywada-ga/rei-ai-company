@@ -2,8 +2,8 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, selectedTask:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
-const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち' };
+const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
 async function request(url, options) {
@@ -37,9 +37,10 @@ function setView(view) {
   $('view-subtitle').textContent = copy[2];
   render();
   if (view === 'briefing' && !state.report) loadReport();
+  if (view === 'missions') void loadTaskDetail();
 }
 async function refresh() {
-  try { state.data = await request('/api/bootstrap'); render(); }
+  try { state.data = await request('/api/bootstrap'); render(); if(state.view==='missions')void loadTaskDetail(); }
   catch (error) { if(error.message!=='ログインしてください')feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {
@@ -93,7 +94,22 @@ function renderMissions() {
   $('mission-total').textContent = `${String(tasks.length).padStart(2,'0')} MISSIONS`;
   $('mission-list').innerHTML = tasks.length ? tasks.map((task,index) => `<button class="mission-row ${state.selectedTask === task.id ? 'selected' : ''}" data-task="${escapeHtml(task.id)}"><span class="mission-index">${String(index+1).padStart(2,'0')}</span><span><strong>${escapeHtml(task.text)}</strong><small>${formatTime(task.createdAt)} · ${escapeHtml(projectName(task.projectId))}</small></span><em class="status ${escapeHtml(task.status)}">${escapeHtml(labels[task.status] || task.status)}</em></button>`).join('') : `<div class="panel-empty tall"><span>◇</span><strong>ミッションはありません</strong><small>下の入力欄から最初の仕事を依頼してください。</small></div>`;
   const chosen = tasks.find(item => item.id === state.selectedTask) || tasks[0];
-  $('mission-detail').innerHTML = chosen ? `<div class="detail-header"><span>MISSION FILE / ${escapeHtml(chosen.id.slice(0,8).toUpperCase())}</span><em class="status ${escapeHtml(chosen.status)}">${escapeHtml(labels[chosen.status] || chosen.status)}</em></div><h3>${escapeHtml(chosen.text)}</h3><div class="detail-facts"><div><span>担当</span><b>OpenClaw · main</b></div><div><span>開始</span><b>${formatTime(chosen.startedAt)}</b></div><div><span>完了</span><b>${formatTime(chosen.finishedAt)}</b></div></div><div class="detail-result"><span>RESPONSE / RESULT</span><p>${escapeHtml(chosen.result || chosen.error || '実行結果を待っています。')}</p></div>` : `<div class="panel-empty tall"><span>⌕</span><strong>詳細を表示する仕事がありません</strong></div>`;
+  const detail=state.taskDetail?.task.id===chosen?.id?state.taskDetail:null;
+  const workerName=id=>state.data.workers.find(worker=>worker.id===id)?.name||'担当未定';
+  const children=detail?.children||[];
+  const events=detail?.events||[];
+  $('mission-detail').innerHTML = chosen ? `<div class="detail-header"><span>MISSION FILE / ${escapeHtml(chosen.id.slice(0,8).toUpperCase())}</span><em class="status ${escapeHtml(chosen.status)}">${escapeHtml(labels[chosen.status] || chosen.status)}</em></div><h3>${escapeHtml(chosen.text)}</h3><div class="detail-facts"><div><span>プロジェクト</span><b>${escapeHtml(projectName(chosen.projectId))}</b></div><div><span>開始</span><b>${formatTime(chosen.startedAt)}</b></div><div><span>完了</span><b>${formatTime(chosen.finishedAt)}</b></div></div><div class="detail-result"><span>RESPONSE / RESULT</span><p>${escapeHtml(chosen.result || chosen.error || '実行結果を待っています。')}</p></div><div class="mission-actions">${detail?.canCancel?'<button id="task-cancel" class="outline-button">実行前の仕事を中止</button>':''}<button id="task-reissue" class="outline-button">内容を再入力</button></div><div class="detail-steps"><h4>担当と進行状況</h4>${detail?children.map((child,index)=>`<div class="detail-step"><span>${String(index+1).padStart(2,'0')} / ${child.kind==='plan'?'計画':child.kind==='human'?'人への依頼':'実行'}</span><b>${escapeHtml(labels[child.status]||child.status)}</b><strong>${escapeHtml(child.text)}</strong><small>${escapeHtml(workerName(child.assignedDeviceId))}</small>${child.result||child.error?`<p>${escapeHtml(child.result||child.error)}</p>`:''}</div>`).join('')||'<p class="project-empty">工程はまだありません。</p>':'<p class="project-empty">工程を読み込んでいます。</p>'}</div><div class="detail-events"><h4>履歴</h4>${events.slice(-30).reverse().map(item=>`<div><time>${formatTime(item.createdAt)}</time><span>${escapeHtml(item.actor)} · ${escapeHtml(item.type)}</span><p>${escapeHtml(item.detail)}</p></div>`).join('')||'<p class="project-empty">履歴を読み込んでいます。</p>'}</div>` : `<div class="panel-empty tall"><span>⌕</span><strong>詳細を表示する仕事がありません</strong></div>`;
+  if($('task-cancel'))$('task-cancel').onclick=async()=>{if(!confirm('この仕事を実行前に中止しますか？'))return;try{await request('/api/tasks/cancel',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id})});state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);}};
+  if($('task-reissue'))$('task-reissue').onclick=()=>{$('command-input').value=chosen.text;$('command-project').value=chosen.projectId||'';$('command-input').focus();feedback('内容を確認してから送信してください');};
+  document.querySelectorAll('#mission-list [data-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.task;setView('missions');});
+}
+async function loadTaskDetail() {
+  const id=state.selectedTask||state.data?.tasks[0]?.id;
+  if(!id||state.taskDetailLoading===id)return;
+  state.taskDetailLoading=id;
+  try {const detail=await request(`/api/tasks/detail/${id}`);if((state.selectedTask||state.data?.tasks[0]?.id)===id){state.taskDetail=detail;renderMissions();}}
+  catch(error){feedback(error.message,true);}
+  finally{if(state.taskDetailLoading===id)state.taskDetailLoading=null;}
 }
 function renderProjects() {
   const projects=state.data.projects||[];
@@ -195,6 +211,7 @@ function renderMcpPresetGrid() {
 async function refreshSettings() {
   if (!state.data?.user) return;
   $('signed-in-user').textContent = `${state.data.user.username} / ${state.data.user.role}`;
+  $('backup-create').classList.toggle('hidden',state.data.user.role!=='owner');
   const pending=state.data.tasks.filter(task=>task.status==='approval_pending');
   $('approval-management').innerHTML=pending.length?pending.map(task=>`<div class="setting-device"><span><b>${escapeHtml(task.text)}</b><small>依頼者の仕事</small></span><span><button data-approve="${escapeHtml(task.id)}" class="outline-button">承認</button><button data-reject="${escapeHtml(task.id)}" class="outline-button">却下</button></span></div>`).join(''):'<p>承認待ちはありません。</p>';
   document.querySelectorAll('[data-approve],[data-reject]').forEach(button=>button.onclick=async()=>{const route=button.dataset.approve?'approve':'reject',taskId=button.dataset.approve||button.dataset.reject;try{await request(`/api/tasks/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId})});await refresh();await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
@@ -237,6 +254,7 @@ $('auth-form').onsubmit=async event=>{
 };
 $('settings-open').onclick=async()=>{$('settings-screen').classList.remove('hidden');await refreshSettings();};
 $('settings-close').onclick=()=>{$('settings-screen').classList.add('hidden');};
+$('backup-create').onclick=async()=>{const button=$('backup-create');button.disabled=true;$('backup-result').textContent='データを保存しています…';try{const result=await request('/api/backup/create',{method:'POST'});$('backup-result').textContent=`保存先: ${result.folder}\nこのフォルダを外部ストレージにもコピーしてください。`;}catch(error){$('backup-result').textContent=error.message;}finally{button.disabled=false;}};
 $('pairing-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{const hub=new URL($('pairing-url').value.trim());if(hub.protocol!=='https:'&&!['127.0.0.1','localhost'].includes(hub.hostname))throw new Error('遠隔接続にはTailscale Serveが表示したHTTPSのURLを入力してください');const data=await request('/api/devices/pairing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('pairing-label').value.trim()})});$('pairing-result').classList.remove('hidden');$('pairing-result').textContent=`Macでは次の1行、Windows PowerShellでは3行を実行してください（Node.jsとOpenClaw CLIは事前に必要です）:\nMac: git clone https://github.com/ywada-ga/rei-ai-company.git && cd rei-ai-company && node connector.mjs join\nWindows: git clone https://github.com/ywada-ga/rei-ai-company.git\ncd rei-ai-company\nnode connector.mjs join\n\n質問されたら入力:\n接続URL: ${hub.origin}\n接続コード（10分間有効）: ${data.code}\n\nTailscaleはこのPCと追加するPCの両方で同じネットワークにログインしてください。`;await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}};
 $('enroll-form').onsubmit=async event=>{event.preventDefault();$('settings-feedback').textContent='';try{const data=await request('/api/devices/enroll',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('device-label').value.trim(),isPlanner:$('device-planner').checked})});$('enroll-result').classList.remove('hidden');$('enroll-result').textContent=`${data.device.label} の接続トークン（この画面で一度だけ表示）: ${data.token}\n接続先: http://127.0.0.1:4178\n各Macで node connector.mjs setup を実行して入力してください。`;$('device-label').value='';await refreshSettings();await refresh();}catch(e){$('settings-feedback').textContent=e.message;}};
 $('mcp-preset').innerHTML=MCP_PRESETS.map(preset=>`<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.title)}</option>`).join('');

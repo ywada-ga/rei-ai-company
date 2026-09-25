@@ -21,6 +21,22 @@ export function createTask(db,text,department,userId,requiresApproval=false,proj
     return one(db,'SELECT * FROM tasks WHERE id=?',root);
   });
 }
+export function cancellable(db,root) {
+  if(!root||root.kind!=='root'||!['approval_pending','planning','running'].includes(root.status))return false;
+  const children=all(db,'SELECT kind,status FROM tasks WHERE parent_id=?',root.id);
+  return children.length>0&&children.every(child=>child.status==='ready'||child.status==='blocked'||(child.kind==='plan'&&child.status==='completed'));
+}
+export function cancelTask(db,root,actor) {
+  return transaction(db,()=>{
+    const current=one(db,'SELECT * FROM tasks WHERE id=?',root.id);
+    if(!cancellable(db,current))return false;
+    const time=now();
+    run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND status IN ('ready','blocked')",time,root.id);
+    run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE id=?",time,root.id);
+    event(db,root.id,actor,'cancelled','実行前に中止');
+    return true;
+  });
+}
 export function claim(db,device) {
   return transaction(db,()=>{
     const job=one(db,`SELECT * FROM tasks WHERE status='ready' AND ((kind='plan' AND ?=1) OR (kind='execute' AND (device_id=? OR device_id IS NULL))) ORDER BY CASE kind WHEN 'plan' THEN 0 ELSE 1 END,created_at LIMIT 1`,device.planner,device.id);

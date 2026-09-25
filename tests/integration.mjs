@@ -16,6 +16,8 @@ try {
   const api=async(route,data,auth)=>{const res=await fetch(`http://127.0.0.1:4181/api?route=${route}`,{method:data?'POST':'GET',headers:{...(data?{'content-type':'application/json'}:{}),...(cookie?{cookie}:{}),...(auth?{authorization:`Bearer ${auth}`}:{})},body:data?JSON.stringify(data):undefined});const body=await res.json();assert.ok(res.ok,`${route}: ${res.status} ${JSON.stringify(body)}`);if(res.headers.get('set-cookie'))cookie=res.headers.get('set-cookie').split(';')[0];return body;};
   await api('setup/complete',{token:setup,username:'owner',password:'smoke-test-password-123'});
   await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
+  const saved=await api('backup/create',{});
+  assert.ok(saved.folder.startsWith(data));
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
   await api('connector/heartbeat',{capabilities:['openclaw']},auth);
@@ -61,6 +63,16 @@ try {
   await api('connector/result',{taskId:execute.job.id,leaseId:execute.job.lease_id,success:true,result:'一つ目が完了'},auth);
   const bootstrap=await api('bootstrap');assert.equal(bootstrap.tasks[0].status,'completed');
   assert.equal(bootstrap.projects[0].completed,1);
+  const detail=await api(`tasks/detail/${created.task.id}`);
+  assert.equal(detail.children.length,2);
+  assert.ok(detail.events.some(item=>item.type==='planned'));
+  assert.equal(detail.canCancel,false);
+  const stopped=(await api('command',{text:'中止する仕事'})).task;
+  assert.equal((await api(`tasks/detail/${stopped.id}`)).canCancel,true);
+  await api('tasks/cancel',{taskId:stopped.id});
+  assert.equal((await api(`tasks/detail/${stopped.id}`)).task.status,'cancelled');
+  const cancelledAgain=await fetch('http://127.0.0.1:4181/api?route=tasks%2Fcancel',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:stopped.id})});
+  assert.equal(cancelledAgain.status,409);
   await api('projects/status',{projectId:project.id,status:'paused'});
   const paused=await fetch('http://127.0.0.1:4181/api?route=command',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({text:'保留中の依頼',projectId:project.id})});
   assert.equal(paused.status,400);
@@ -69,6 +81,8 @@ try {
   const invite=await api('users/invite',{role:'requester'});
   await api('setup/complete',{token:invite.token,username:'requester',password:'requester-password-123'});
   await api('auth/login',{username:'requester',password:'requester-password-123'});
+  const blockedBackup=await fetch('http://127.0.0.1:4181/api?route=backup%2Fcreate',{method:'POST',headers:{cookie,'content-type':'application/json'},body:'{}'});
+  assert.equal(blockedBackup.status,403);
   const forbidden=await fetch('http://127.0.0.1:4181/api?route=projects%2Fcreate',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({name:'不可',objective:'不可'})});
   assert.equal(forbidden.status,403);
   const gated=await api('command',{text:'承認が必要な依頼',department:'operations'});

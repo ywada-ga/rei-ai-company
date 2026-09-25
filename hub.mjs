@@ -5,9 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openStorage, one, all, run, transaction } from './storage.mjs';
 import { random, hash, encodePassword, checkPassword, cookies, sessionUser, connectorDevice, setCookie, sameOrigin } from './security.mjs';
-import { departments, event, createTask, claim, sweep, finishJob, report } from './workflow.mjs';
+import { departments, event, createTask, cancellable, cancelTask, claim, sweep, finishJob, report } from './workflow.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
+import { createBackup } from './backup.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const db=openStorage(root);
@@ -15,6 +16,7 @@ const port=Number(process.env.REI_PORT||4178);
 const host=process.env.REI_HOST||'127.0.0.1';
 if(host!=='127.0.0.1'&&host!=='::1'&&process.env.REI_ALLOW_INSECURE_LAN!=='1') throw new Error('外部待受には暗号化したトンネルを使用してください。直接LANに公開する場合はREI_ALLOW_INSECURE_LAN=1が必要です');
 const uid=()=>crypto.randomUUID();
+let backupInProgress=false;
 const isSecure=req=>req.socket.encrypted||req.headers['x-forwarded-proto']==='https';
 const send=(res,code,data)=>{res.writeHead(code,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(data));};
 const error=(res,code,message)=>send(res,code,{error:message});
@@ -85,6 +87,7 @@ async function api(req,res,route) {
   const user=sessionUser(db,req);if(!user)return error(res,401,'ログインしてください');
   if(route==='auth/me'&&req.method==='GET')return send(res,200,{user});
   if(route==='auth/password'&&req.method==='POST') {const data=await body(req),record=one(db,'SELECT * FROM users WHERE id=?',user.id),next=String(data.newPassword||'');if(!await checkPassword(String(data.currentPassword||''),record.salt,record.digest))return error(res,403,'現在のパスワードが違います');if(next.length<14||next.length>200)return error(res,400,'新しいパスワードは14文字以上にしてください');const encoded=await encodePassword(next);run(db,'UPDATE users SET salt=?,digest=? WHERE id=?',encoded.salt,encoded.digest,user.id);run(db,'DELETE FROM sessions WHERE user_id=? AND hash<>?',user.id,hash(cookies(req).rei_session));event(db,null,user.username,'password_changed','パスワードを変更');return send(res,200,{ok:true});}
+  if(route==='backup/create'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけがバックアップを作成できます');if(backupInProgress)return error(res,409,'バックアップを作成中です');backupInProgress=true;try{const folder=await createBackup();event(db,null,user.username,'backup_created',path.basename(folder));return send(res,201,{folder});}finally{backupInProgress=false;}}
   if(route==='bootstrap'&&req.method==='GET') {
     sweep(db);
     const devices=all(db,'SELECT id,label,planner,capabilities,last_seen FROM devices WHERE revoked=0 ORDER BY rowid');
@@ -105,6 +108,8 @@ async function api(req,res,route) {
   if(route==='projects/status'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'プロジェクトを変更する権限がありません');const data=await body(req),status=String(data.status||''),id=String(data.projectId||'');if(!['active','paused','completed'].includes(status))return error(res,400,'状態が正しくありません');const project=one(db,'SELECT * FROM projects WHERE id=?',id);if(!project)return error(res,404,'プロジェクトが見つかりません');run(db,'UPDATE projects SET status=?,updated_at=? WHERE id=?',status,Date.now(),id);event(db,null,user.username,'project_status',`${project.name}: ${status}`);return send(res,200,{project:projectJson(one(db,'SELECT * FROM projects WHERE id=?',id))});}
   if(route==='tasks/approve'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'承認する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='planning' WHERE id=?",task.id);run(db,"UPDATE tasks SET status='ready' WHERE parent_id=? AND kind='plan' AND status='blocked'",task.id);event(db,task.id,user.username,'approved','実行を承認');});return send(res,200,{ok:true});}
   if(route==='tasks/reject'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'却下する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE id=?",Date.now(),task.id);run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND kind='plan'",Date.now(),task.id);event(db,task.id,user.username,'rejected','実行を却下');});return send(res,200,{ok:true});}
+  if(route.startsWith('tasks/detail/')&&req.method==='GET') {const id=route.slice('tasks/detail/'.length);if(!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'仕事IDが正しくありません');const root=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root'",id);if(!root)return error(res,404,'仕事が見つかりません');const children=all(db,'SELECT * FROM tasks WHERE parent_id=? ORDER BY created_at,id',id);const events=all(db,'SELECT actor,type,detail,created_at,task_id FROM events WHERE task_id=? OR task_id IN (SELECT id FROM tasks WHERE parent_id=?) ORDER BY created_at,id LIMIT 300',id,id).map(item=>({actor:item.actor,type:item.type,detail:item.detail,taskId:item.task_id,createdAt:new Date(item.created_at).toISOString()}));const canCancel=(['owner','admin'].includes(user.role)||root.created_by===user.id)&&cancellable(db,root);return send(res,200,{task:taskJson(root),children:children.map(taskJson),events,canCancel});}
+  if(route==='tasks/cancel'&&req.method==='POST') {const data=await body(req),root=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root'",String(data.taskId||''));if(!root)return error(res,404,'仕事が見つかりません');if(!['owner','admin'].includes(user.role)&&root.created_by!==user.id)return error(res,403,'中止する権限がありません');if(!cancelTask(db,root,user.username))return error(res,409,'すでに実行中か、中止できない状態です');return send(res,200,{ok:true});}
   if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(taskJson);return send(res,200,{tasks});}
   if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices});}
   if(route==='mcp/list'&&req.method==='GET') {const integrations=all(db,'SELECT m.name,m.label,m.url,m.auth,m.device_id,d.label AS device_label,s.status,s.updated_at,c.requested_at AS check_requested_at,c.checked_at,c.status AS check_status,c.tool_count,c.error AS check_error FROM mcp_integrations m JOIN devices d ON d.id=m.device_id LEFT JOIN device_mcp_status s ON s.name=m.name AND s.device_id=m.device_id LEFT JOIN mcp_checks c ON c.name=m.name ORDER BY m.created_at DESC');return send(res,200,{integrations});}

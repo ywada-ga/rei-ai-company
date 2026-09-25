@@ -147,9 +147,8 @@
 
 - 中心PCではTailscaleの公式Standalone版が未導入。パッケージ取得までは確認したが、macOSの管理者認証が必要で自動インストールは止まった。REIの端末設定画面に公式手順と必要な操作を表示した。
 
-1. Mac mini 3台で使うTailscaleの参加設定と、それぞれのOpenClawの利用可能なエージェント名。
+1. 中心PCとMac mini 3台でTailscaleにログインし、Mac miniでOpenClaw CLIとAIモデルの認証設定を用意すること。REI専用エージェント名を事前に調べる必要はなく、接続時に `rei` を自動作成する。
 2. ChatworkのルームIDとAPIトークン。これはREIの設定画面に所有者が入力できる。
-3. Codex Pulseのリポジトリまたは公開URL。画面設計の参考先を特定するため。
 
 ## 配布前に追加で検証すること
 

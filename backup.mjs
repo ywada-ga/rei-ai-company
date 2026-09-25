@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','pending-results.json'];
+const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','pending-results.json','pending-results.json.tmp'];
 const dataDir=()=>process.env.REI_DATA_DIR||path.join(root,'data');
 const sha256=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
 function regularFile(file) {return existsSync(file)&&lstatSync(file).isFile();}

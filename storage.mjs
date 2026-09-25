@@ -20,6 +20,7 @@ export function openStorage(root) {
     CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, parent_id TEXT REFERENCES tasks(id), kind TEXT NOT NULL, text TEXT NOT NULL, department TEXT NOT NULL DEFAULT 'operations', status TEXT NOT NULL, device_id TEXT REFERENCES devices(id), result TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', lease_id TEXT, lease_until INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, created_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, started_at INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS tasks_queue ON tasks(status,kind,created_at);
     CREATE INDEX IF NOT EXISTS tasks_parent ON tasks(parent_id);
+    CREATE INDEX IF NOT EXISTS tasks_history ON tasks(kind,created_at DESC,id DESC);
     CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, task_id TEXT REFERENCES tasks(id), actor TEXT NOT NULL, type TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS external_messages(id TEXT PRIMARY KEY, task_id TEXT REFERENCES tasks(id), direction TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL);

@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, taskDetail:null, taskDetailLoading:null, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -40,7 +40,7 @@ function setView(view) {
   if (view === 'missions') void loadTaskDetail();
 }
 async function refresh() {
-  try { state.data = await request('/api/bootstrap'); render(); if(state.view==='missions')void loadTaskDetail(); }
+  try { state.data = await request('/api/bootstrap'); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); }
   catch (error) { if(error.message!=='ログインしてください')feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {
@@ -87,18 +87,21 @@ function renderFocus() {
     $('focus-content').innerHTML = `<div class="focus-idle"><span>◇</span><strong>部署を選択</strong><p>中央のネットワークから部署を選ぶと、担当領域と仕事を確認できます。</p></div>`;
     return;
   }
-  const tasks = state.data.tasks.filter(item => item.department === department.id);
+  const recentIds=new Set(state.data.tasks.map(task=>task.id));
+  const tasks = [...state.data.tasks,...state.olderTasks.filter(task=>!recentIds.has(task.id))].filter(item => item.department === department.id);
   $('focus-content').innerHTML = `<div class="focus-active"><span>SELECTED SECTOR</span><h3>${escapeHtml(department.name)}</h3><p>${escapeHtml(department.detail)}</p><div><small>ASSIGNED MISSIONS</small><b>${String(tasks.length).padStart(2,'0')}</b></div><button id="focus-missions">仕事一覧を見る ↗</button></div>`;
   $('focus-missions').onclick = () => setView('missions');
 }
 function renderMissions() {
   if(document.activeElement?.closest('.human-reply-form,.reconcile-form,.reassign-form'))return;
-  const tasks = state.data.tasks;
+  const recentIds=new Set(state.data.tasks.map(task=>task.id));
+  const tasks = [...state.data.tasks,...state.olderTasks.filter(task=>!recentIds.has(task.id))];
   const projectName=id=>state.data.projects.find(project=>project.id===id)?.name||'単発の依頼';
-  $('mission-total').textContent = `${String(tasks.length).padStart(2,'0')} MISSIONS`;
-  $('mission-list').innerHTML = tasks.length ? tasks.map((task,index) => `<button class="mission-row ${state.selectedTask === task.id ? 'selected' : ''}" data-task="${escapeHtml(task.id)}"><span class="mission-index">${String(index+1).padStart(2,'0')}</span><span><strong>${escapeHtml(task.text)}</strong><small>${formatTime(task.createdAt)} · ${escapeHtml(projectName(task.projectId))}</small></span><em class="status ${escapeHtml(task.status)}">${state.data.humanPending.includes(task.id)?'人待ち':escapeHtml(labels[task.status] || task.status)}</em></button>`).join('') : `<div class="panel-empty tall"><span>◇</span><strong>ミッションはありません</strong><small>下の入力欄から最初の仕事を依頼してください。</small></div>`;
-  const chosen = tasks.find(item => item.id === state.selectedTask) || tasks[0];
-  const detail=state.taskDetail?.task.id===chosen?.id?state.taskDetail:null;
+  $('mission-total').textContent = `${String(tasks.length).padStart(2,'0')}${state.hasMoreTasks?'+':''} MISSIONS`;
+  $('mission-list').innerHTML = (tasks.length ? tasks.map((task,index) => `<button class="mission-row ${state.selectedTask === task.id ? 'selected' : ''}" data-task="${escapeHtml(task.id)}"><span class="mission-index">${String(index+1).padStart(2,'0')}</span><span><strong>${escapeHtml(task.text)}</strong><small>${formatTime(task.createdAt)} · ${escapeHtml(projectName(task.projectId))}</small></span><em class="status ${escapeHtml(task.status)}">${state.data.humanPending.includes(task.id)?'人待ち':escapeHtml(labels[task.status] || task.status)}</em></button>`).join('') : `<div class="panel-empty tall"><span>◇</span><strong>ミッションはありません</strong><small>下の入力欄から最初の仕事を依頼してください。</small></div>`)+(state.hasMoreTasks?'<button id="mission-load-more" class="outline-button">過去の仕事をさらに表示</button>':'');
+  const selected = tasks.find(item => item.id === state.selectedTask) || tasks[0];
+  const detail=state.taskDetail?.task.id===selected?.id?state.taskDetail:null;
+  const chosen=detail?.task||selected;
   const workerName=id=>state.data.workers.find(worker=>worker.id===id)?.name||'担当未定';
   const children=detail?.children||[];
   const events=detail?.events||[];
@@ -115,6 +118,17 @@ function renderMissions() {
   document.querySelectorAll('.reconcile-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.reconcile,resolution:form.querySelector('select').value,note:form.querySelector('textarea').value.trim()})});form.querySelector('textarea').blur();state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('.reassign-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/reassign',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.reassign,deviceId:form.querySelector('select').value})});form.querySelector('select').blur();state.taskDetail=null;await refresh();feedback('未着手の仕事を別のPCへ移しました');}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('#mission-list [data-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.task;setView('missions');});
+  if($('mission-load-more'))$('mission-load-more').onclick=loadMoreTasks;
+}
+async function loadMoreTasks() {
+  if(state.historyLoading)return;
+  const cursor=state.olderTasks.at(-1)||state.data.tasks.at(-1);
+  if(!cursor)return;
+  state.historyLoading=true;
+  const button=$('mission-load-more');if(button)button.disabled=true;
+  try {const page=await request('/api/tasks/history',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({beforeTime:Date.parse(cursor.createdAt),beforeId:cursor.id})});state.olderTasks.push(...page.tasks);state.hasMoreTasks=page.hasMore;renderMissions();}
+  catch(error){feedback(error.message,true);if(button)button.disabled=false;}
+  finally{state.historyLoading=false;}
 }
 async function loadTaskDetail() {
   const id=state.selectedTask||state.data?.tasks[0]?.id;

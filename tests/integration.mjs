@@ -223,5 +223,18 @@ try {
     api('connector/result',{taskId:secondClaim.job.id,leaseId:secondClaim.job.lease_id,success:true,result:'B完了'},paired.token)
   ]);
   assert.equal((await api(`tasks/detail/${parallel.id}`)).task.status,'completed');
+  const historyDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  const inserted=historyDb.prepare("INSERT INTO tasks(id,kind,text,status,result,created_at) VALUES(?,'root',?,'completed',?,?)");
+  for(let index=0;index<105;index++)inserted.run(`00000000-0000-4000-8000-${String(index).padStart(12,'0')}`,`履歴${index}`,'x'.repeat(6000),Date.now());
+  historyDb.close();
+  const latest=await api('bootstrap');
+  assert.equal(latest.tasks.length,100);
+  assert.equal(latest.hasOlderTasks,true);
+  assert.ok(latest.tasks.every(task=>task.result.length<=500));
+  const cursor=latest.tasks.at(-1);
+  const older=await api('tasks/history',{beforeTime:Date.parse(cursor.createdAt),beforeId:cursor.id});
+  assert.ok(older.tasks.length>0);
+  assert.equal(new Set([...latest.tasks,...older.tasks].map(task=>task.id)).size,latest.tasks.length+older.tasks.length);
+  assert.equal((await api(`tasks/detail/${latest.tasks[0].id}`)).task.result.length,6000);
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
 } finally {child.kill('SIGTERM');}

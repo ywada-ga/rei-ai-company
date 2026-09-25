@@ -24,6 +24,7 @@ export async function createBackup(source=dataDir(),destination=path.join(source
   const database=path.join(source,'rei.sqlite');
   if(!optionalSourceFile(database))throw new Error('REIのデータベースが見つかりません');
   const present=allowed.slice(1).filter(file=>optionalSourceFile(path.join(source,file)));
+  const sourceHashes=Object.fromEntries(present.map(file=>[file,sha256(path.join(source,file))]));
   const existing=lstatSync(destination,{throwIfNoEntry:false});
   if(existing&&!existing.isDirectory())throw new Error('バックアップ先には通常のフォルダを指定してください');
   mkdirSync(destination,{recursive:true,mode:0o700});
@@ -43,6 +44,8 @@ export async function createBackup(source=dataDir(),destination=path.join(source
       chmodSync(path.join(staging,file),0o600);
     }
     const files=Object.fromEntries(allowed.filter(file=>regularFile(path.join(staging,file))).map(file=>[file,sha256(path.join(staging,file))]));
+    const stillPresent=allowed.slice(1).filter(file=>optionalSourceFile(path.join(source,file)));
+    if(JSON.stringify(stillPresent)!==JSON.stringify(present)||present.some(file=>sha256(path.join(source,file))!==sourceHashes[file]||files[file]!==sourceHashes[file]))throw new Error('バックアップ中に設定または送信待ち結果が変わりました。再試行してください');
     const manifest={format:1,createdAt:new Date().toISOString(),files};
     writeFileSync(path.join(staging,'manifest.json'),JSON.stringify(manifest,null,2),{mode:0o600,flag:'wx'});
     verifyBackup(staging);

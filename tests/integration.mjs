@@ -329,6 +329,12 @@ try {
   const reconciled=await api(`tasks/detail/${uncertain.id}`);
   assert.equal(reconciled.task.status,'completed');
   assert.ok(reconciled.events.some(item=>item.type==='reconciled'));
+  const replayAfterReconcile=await api('connector/result',{taskId:uncertainStep.id,leaseId:uncertainStep.lease_id,success:true,result:'通信断後に端末から届いた成果'},paired.token);
+  assert.equal(replayAfterReconcile.ok,true);
+  assert.equal(replayAfterReconcile.alreadyRecorded,true);
+  const conflictingReplay=await api('connector/result',{taskId:uncertainStep.id,leaseId:uncertainStep.lease_id,success:true,result:'別の成果'},paired.token);
+  assert.equal(conflictingReplay.ok,false);
+  assert.equal((await api(`tasks/detail/${uncertain.id}`)).children.find(step=>step.id===uncertainStep.id).result,'端末で成果物を確認した');
   const secondReconcile=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freconcile',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:uncertainStep.id,resolution:'completed',note:'重複'})});
   assert.equal(secondReconcile.status,409);
   await api('connector/heartbeat',{agentName:'rei',version:currentVersion,capabilities:['openclaw','planning','execution']},auth);

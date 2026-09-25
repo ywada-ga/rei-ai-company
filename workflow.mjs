@@ -105,14 +105,22 @@ export function finishRoot(db,rootId) {
 }
 export function finishJob(db,device,input) {
   const result=String(input.result||'').slice(0,100000);
+  const lateResult=(input.success?result:String(input.error||'').slice(0,4000))||'端末から結果が返りましたが、内容は空でした';
+  const lateFingerprint=crypto.createHash('sha256').update(JSON.stringify([!!input.success,lateResult])).digest('hex');
   const job=one(db,'SELECT * FROM tasks WHERE id=? AND device_id=? AND lease_id=?',input.taskId,device.id,input.leaseId);
-  if(!job) return {ok:false,duplicate:true};
+  if(!job) {
+    const receipt=one(db,'SELECT r.fingerprint FROM late_result_receipts r JOIN tasks t ON t.id=r.task_id WHERE r.task_id=? AND r.lease_id=? AND t.device_id=?',input.taskId,input.leaseId,device.id);
+    return receipt?.fingerprint===lateFingerprint?{ok:true,alreadyRecorded:true}:{ok:false,duplicate:true};
+  }
+  if(job.kind==='execute') {
+    const receipt=one(db,'SELECT fingerprint FROM late_result_receipts WHERE task_id=?',job.id);
+    if(receipt)return receipt.fingerprint===lateFingerprint?{ok:true,needsReview:job.status==='needs_review',alreadyRecorded:true}:{ok:false,duplicate:true};
+    if(one(db,"SELECT id FROM events WHERE task_id=? AND type='late_result' LIMIT 1",job.id))return job.result===lateResult?{ok:true,needsReview:job.status==='needs_review',alreadyRecorded:true}:{ok:false,duplicate:true};
+  }
   if(job.status==='needs_review'&&job.kind==='execute') {
-    const lateResult=(input.success?result:String(input.error||'').slice(0,4000))||'端末から結果が返りましたが、内容は空でした';
-    const recorded=one(db,"SELECT id FROM events WHERE task_id=? AND type='late_result' LIMIT 1",job.id);
-    if(recorded)return job.result===lateResult?{ok:true,needsReview:true,alreadyRecorded:true}:{ok:false,duplicate:true};
     transaction(db,()=>{
       run(db,'UPDATE tasks SET result=? WHERE id=?',lateResult,job.id);
+      run(db,'INSERT INTO late_result_receipts(task_id,lease_id,fingerprint) VALUES(?,?,?)',job.id,job.lease_id,lateFingerprint);
       event(db,job.id,device.label,'late_result','通信断の後に結果を受信。実施状況の確認が必要');
     });
     return {ok:true,needsReview:true};

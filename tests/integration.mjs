@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,13 @@ try {
   await api('devices/revoke',{deviceId:firstPaired.device.id});
   const enrolled=await api('devices/enroll',{label:'test-mac',isPlanner:true});
   const auth=enrolled.token;
+  assert.equal((await api('devices')).localConnector.status,'not_configured');
+  writeFileSync(path.join(data,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:'invalid',agent:'rei'}));
+  assert.equal((await api('devices')).localConnector.status,'needs_attention');
+  writeFileSync(path.join(data,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:auth,agent:'rei'}));
+  assert.equal((await api('devices')).localConnector.status,'registered');
   await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw']},auth);
+  assert.equal((await api('devices')).localConnector.online,true);
   assert.equal((await api('devices')).devices[0].agent_name,'rei');
   const mcp=await api('mcp/add',{label:'Test Calendar',url:'https://example.com/mcp',auth:'oauth',deviceId:enrolled.device.id});
   assert.match(mcp.name,/^rei_[a-f0-9]{12}$/);

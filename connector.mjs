@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
@@ -28,6 +28,7 @@ async function setup() {
 async function join() {
   const rl=createInterface({input:process.stdin,output:process.stdout});
   try {
+    if(existsSync(configPath))throw new Error('このPCには既にREIの接続設定があります。既存設定を確認してから再登録してください');
     const hub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
     validateHub(hub);
     const available=checkOpenClaw();
@@ -38,7 +39,7 @@ async function join() {
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||`接続に失敗しました (HTTP ${response.status})`);
     mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
-    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'rei'},null,2),{mode:0o600});
+    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'rei'},null,2),{mode:0o600,flag:'wx'});
     chmodSync(configPath,0o600);
     if(['darwin','win32','linux'].includes(process.platform)) {
       const installer={darwin:'install-macos.mjs',win32:'install-windows.mjs',linux:'install-linux.mjs'}[process.platform];

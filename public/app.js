@@ -265,6 +265,14 @@ async function refreshSettings() {
   document.querySelectorAll('[data-approve],[data-reject]').forEach(button=>button.onclick=async()=>{const route=button.dataset.approve?'approve':'reject',taskId=button.dataset.approve||button.dataset.reject;try{await request(`/api/tasks/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId})});await refresh();await refreshSettings();}catch(e){$('settings-feedback').textContent=e.message;}});
   try {
     const [devices,chatwork,mcp] = await Promise.all([request('/api/devices'),request('/api/chatwork/status'),request('/api/mcp/list')]);
+    if(!$('local-setup')){const panel=document.createElement('div');panel.id='local-setup';panel.className='setting-guide';$('device-management').before(panel);}
+    const local=devices.localConnector;
+    if(local?.status==='registered')$('local-setup').textContent=local.online?'✓ このPCのOpenClawはREIに接続中です。':'このPCは登録済みですが未接続です。REIのフォルダで npm run connector を実行してください。';
+    else if(local?.status==='needs_attention')$('local-setup').textContent='このPCに以前の接続設定があります。上書きせず、端末の接続設定を確認してください。';
+    else if(['owner','admin'].includes(role)) {
+      $('local-setup').innerHTML='<strong>このPCのOpenClawをREIへ接続</strong><p>最初の1台は、ここから始められます。既存のOpenClawとは別にREI専用エージェントを作ります。</p><button id="local-pair" class="outline-button" type="button">このPCの接続コードを作る</button><div id="local-pair-result" class="secret-result hidden"></div>';
+      $('local-pair').onclick=async()=>{const button=$('local-pair');button.disabled=true;try{const paired=await request('/api/devices/pairing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:'このPC'})});const result=$('local-pair-result');result.classList.remove('hidden');result.textContent=`このPCのREIフォルダで実行:\nnode connector.mjs join http://127.0.0.1:4178\n\n質問されたら接続コードを入力（10分間有効）:\n${paired.code}\n\n接続後、端末の状態を更新してください。`;button.disabled=false;}catch(error){$('settings-feedback').textContent=error.message;button.disabled=false;}};
+    } else $('local-setup').textContent='このPCの接続設定は所有者または管理者が行えます。';
     $('device-management').innerHTML = devices.devices.length ? devices.devices.map(d=>`<div class="setting-device"><span><b>${escapeHtml(d.label)}</b><small>${d.online?'● 接続中':'○ 未接続'}${d.planner?' · REI計画担当':''}${d.agent_name?` · OpenClaw: ${escapeHtml(d.agent_name)}`:''}</small></span><button data-revoke="${escapeHtml(d.id)}" class="outline-button">解除</button></div>`).join('') : '<p>端末はまだ登録されていません。</p>';
     document.querySelectorAll('[data-revoke]').forEach(button=>button.onclick=async()=>{if(!confirm('この端末の接続を解除しますか？'))return;try{await request('/api/devices/revoke',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({deviceId:button.dataset.revoke})});await refreshSettings();await refresh();}catch(e){$('settings-feedback').textContent=e.message;}});
     const selectedBatchDevice=$('mcp-batch-device').value;

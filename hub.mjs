@@ -18,6 +18,17 @@ const host=process.env.REI_HOST||'127.0.0.1';
 if(host!=='127.0.0.1'&&host!=='::1'&&process.env.REI_ALLOW_INSECURE_LAN!=='1') throw new Error('外部待受には暗号化したトンネルを使用してください。直接LANに公開する場合はREI_ALLOW_INSECURE_LAN=1が必要です');
 const uid=()=>crypto.randomUUID();
 let backupInProgress=false;
+function localConnectorStatus() {
+  const config=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
+  if(!existsSync(config))return {status:'not_configured'};
+  try {
+    const saved=JSON.parse(readFileSync(config,'utf8'));
+    if(typeof saved.token!=='string'||!saved.token)return {status:'needs_attention'};
+    const device=one(db,'SELECT id,revoked,last_seen FROM devices WHERE token_hash=?',hash(saved.token));
+    if(!device||device.revoked)return {status:'needs_attention'};
+    return {status:'registered',deviceId:device.id,online:Date.now()-device.last_seen<30000};
+  } catch {return {status:'needs_attention'};}
+}
 const isSecure=req=>req.socket.encrypted||req.headers['x-forwarded-proto']==='https';
 const send=(res,code,data)=>{res.writeHead(code,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(data));};
 const error=(res,code,message)=>send(res,code,{error:message});
@@ -122,7 +133,7 @@ async function api(req,res,route) {
   if(route==='tasks/reconcile'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'結果を確認する権限がありません');const data=await body(req),id=String(data.taskId||''),resolution=String(data.resolution||''),note=text(data.note,8000);if(!['completed','failed'].includes(resolution))return error(res,400,'確認結果が正しくありません');const accepted=transaction(db,()=>{const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind IN ('execute','human') AND status='needs_review'",id);if(!task)return false;run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_id=NULL,lease_until=0 WHERE id=?',resolution,resolution==='completed'?note:'',resolution==='failed'?note:'',Date.now(),id);event(db,id,user.username,'reconciled',`${resolution}: ${note.slice(0,300)}`);finishRoot(db,task.parent_id);return true;});if(!accepted)return error(res,409,'確認待ちの工程が見つかりません');return send(res,200,{ok:true});}
   if(route==='tasks/history'&&req.method==='POST') {const data=await body(req),before=Number(data.beforeTime),id=String(data.beforeId||'');if(!Number.isSafeInteger(before)||before<=0||!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'履歴の位置が正しくありません');const rows=all(db,"SELECT * FROM tasks WHERE kind='root' AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 101",before,before,id);return send(res,200,{tasks:rows.slice(0,100).map(task=>taskJson(task,true)),hasMore:rows.length>100});}
   if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(task=>taskJson(task,true));return send(res,200,{tasks});}
-  if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked,agent_name FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices});}
+  if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked,agent_name FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices,localConnector:localConnectorStatus()});}
   if(route==='mcp/list'&&req.method==='GET') {const integrations=all(db,'SELECT m.name,m.label,m.url,m.auth,m.device_id,d.label AS device_label,s.status,s.updated_at,c.requested_at AS check_requested_at,c.checked_at,c.status AS check_status,c.tool_count,c.error AS check_error FROM mcp_integrations m JOIN devices d ON d.id=m.device_id LEFT JOIN device_mcp_status s ON s.name=m.name AND s.device_id=m.device_id LEFT JOIN mcp_checks c ON c.name=m.name ORDER BY m.created_at DESC');return send(res,200,{integrations});}
   if(route==='mcp/check'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが接続を確認できます');const data=await body(req),name=String(data.name||'');const integration=one(db,'SELECT m.name FROM mcp_integrations m JOIN devices d ON d.id=m.device_id WHERE m.name=? AND d.revoked=0',name);if(!integration)return error(res,404,'連携が見つかりません');const requestId=uid(),requestedAt=Date.now();run(db,"INSERT INTO mcp_checks(name,request_id,requested_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET request_id=excluded.request_id,requested_at=excluded.requested_at,checked_at=0,status='queued',tool_count=0,error=''",name,requestId,requestedAt);return send(res,202,{ok:true});}
   if(route==='mcp/add-batch'&&req.method==='POST') {

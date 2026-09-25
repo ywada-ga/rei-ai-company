@@ -17,14 +17,16 @@ cd rei
 npm start
 ```
 
-初回起動時にターミナルへ出る「REIの初期登録」URLを開き、所有者の名前と14文字以上のパスワードを設定します。続けてログインします。画面右上の **端末・設定** から「このPC」を登録し、発行されたトークンを一度だけ控えます。既存のOpenClawを別用途でも使う場合は、REI専用エージェントを作ります。
+初回起動時にターミナルへ出る「REIの初期登録」URLを開き、所有者の名前と14文字以上のパスワードを設定します。続けてログインします。画面右上の **端末・設定 → このPCの接続コードを作る** を押し、表示された1行をREIのフォルダで実行して接続コードを入力します。既存のOpenClawとは別にREI専用エージェントが作られ、Connectorが自動起動に登録されます。
+
+手動で端末トークンとエージェントを設定したい場合は、**端末・設定 → 手動で端末を追加する** から登録し、次を実行します。
 
 ```bash
 npm run agent:setup
 npm run connector -- setup
 ```
 
-接続先は `http://127.0.0.1:4178`、次に端末トークンとOpenClawエージェント名 `rei` を入力します。**既存のOpenClawをREI専用に変えてよい場合**は、上の `npm run agent:setup` の代わりに `npm run agent:reuse-main` を実行し、エージェント名に `main` を入力します。元のOpenClaw設定は `data/private-backups/` に退避します。どちらも設定を保存したら別のターミナルで `npm run connector` を起動します。Web画面から仕事を依頼すると、REIが計画を作り、このPCのOpenClawで実行します。
+接続先は `http://127.0.0.1:4178`、次に端末トークンとOpenClawエージェント名 `rei` を入力します。**既存のOpenClawをREI専用に変えてよい場合**は、上の `npm run agent:setup` の代わりに `npm run agent:reuse-main` を実行し、エージェント名に `main` を入力します。元のOpenClaw設定は `data/private-backups/` に退避します。手動設定では別のターミナルで `npm run connector` を起動します。Web画面から仕事を依頼すると、REIが計画を作り、このPCのOpenClawで実行します。
 
 macOSのログイン時に自動起動したい場合:
 

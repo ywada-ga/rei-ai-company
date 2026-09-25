@@ -1,6 +1,6 @@
 import { DatabaseSync, backup } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, constants } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync, constants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,7 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','mcp-sync.json.tmp','pending-results.json','pending-results.json.tmp'];
 const dataDir=()=>process.env.REI_DATA_DIR||path.join(root,'data');
 const sha256=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
-function regularFile(file) {return existsSync(file)&&lstatSync(file).isFile();}
+function regularFile(file) {return lstatSync(file,{throwIfNoEntry:false})?.isFile()||false;}
 function optionalSourceFile(file) {
   const status=lstatSync(file,{throwIfNoEntry:false});
   if(!status)return false;
@@ -22,7 +22,7 @@ function checkDatabase(file) {
 }
 export async function createBackup(source=dataDir(),destination=path.join(source,'backups')) {
   const database=path.join(source,'rei.sqlite');
-  if(!regularFile(database))throw new Error('REIのデータベースが見つかりません');
+  if(!optionalSourceFile(database))throw new Error('REIのデータベースが見つかりません');
   const existing=lstatSync(destination,{throwIfNoEntry:false});
   if(existing&&!existing.isDirectory())throw new Error('バックアップ先には通常のフォルダを指定してください');
   mkdirSync(destination,{recursive:true,mode:0o700});

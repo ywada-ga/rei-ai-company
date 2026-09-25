@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, symlinkSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -16,6 +16,10 @@ writeFileSync(path.join(source,'pending-results.json'),'[{"taskId":"pending-repo
 writeFileSync(path.join(source,'pending-results.json.tmp'),'[{"taskId":"possibly-newer-report"}]');
 writeFileSync(path.join(source,'owner-credentials.txt'),'excluded');
 const folder=await createBackup(source,path.join(base,'backups'));
+const linkedDatabase=path.join(base,'linked-database');
+mkdirSync(linkedDatabase);
+symlinkSync(path.join(source,'rei.sqlite'),path.join(linkedDatabase,'rei.sqlite'),'file');
+await assert.rejects(()=>createBackup(linkedDatabase,path.join(base,'backups')),/バックアップ対象が通常のファイルではありません: rei.sqlite/);
 assert.deepEqual(verifyBackup(folder).files,['rei.sqlite','chatwork.key','mcp-sync.json.tmp','pending-results.json','pending-results.json.tmp']);
 assert.equal(existsSync(path.join(folder,'owner-credentials.txt')),false);
 const destination=path.join(base,'restored');
@@ -35,6 +39,10 @@ symlinkSync(redirected,link,'dir');
 assert.throws(()=>restoreBackup(folder,link),/空のフォルダ/);
 await assert.rejects(()=>createBackup(source,link),/通常のフォルダ/);
 assert.equal(existsSync(path.join(redirected,'rei.sqlite')),false);
+const linkedBackup=await createBackup(source,path.join(base,'backups'));
+unlinkSync(path.join(linkedBackup,'rei.sqlite'));
+symlinkSync(path.join(source,'rei.sqlite'),path.join(linkedBackup,'rei.sqlite'),'file');
+assert.throws(()=>verifyBackup(linkedBackup),/検証に失敗しました: rei.sqlite/);
 symlinkSync(path.join(source,'owner-credentials.txt'),path.join(source,'connector.json'),'file');
 await assert.rejects(()=>createBackup(source,path.join(base,'backups')),/バックアップ対象が通常のファイルではありません: connector.json/);
 writeFileSync(path.join(folder,'chatwork.key'),'tampered');

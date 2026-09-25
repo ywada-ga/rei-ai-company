@@ -9,7 +9,7 @@ import { random, hash, encodePassword, checkPassword, cookies, sessionUser, conn
 import { departments, event, createTask, cancellable, cancelTask, retryPlan, claim, sweep, finishJob, finishRoot, report } from './workflow.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
-import { createBackup } from './backup.mjs';
+import { createBackup, createBackupIfDue } from './backup.mjs';
 import { networkStatus, enableServe } from './network.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -241,4 +241,15 @@ const server=http.createServer(async(req,res)=>{
   } catch(e) {console.error('REI:',e.message);return error(res,e.status||500,e.status?e.message:'処理に失敗しました');}
 });
 server.listen(port,host,()=>console.log(`REI Hub: http://${host}:${port}`));
+async function dailyBackup() {
+  if(backupInProgress||!one(db,"SELECT id FROM users WHERE role='owner' LIMIT 1"))return;
+  backupInProgress=true;
+  try {
+    const folder=await createBackupIfDue();
+    if(folder)event(db,null,'system','backup_created',path.basename(folder));
+  } catch(e) {console.error('REI自動バックアップ:',e.message);}
+  finally {backupInProgress=false;}
+}
+setTimeout(()=>void dailyBackup(),60000).unref();
+setInterval(()=>void dailyBackup(),3600000).unref();
 setInterval(()=>{try{sweep(db);void sendPendingHuman(db,root).catch(e=>console.error('REI Chatwork送信:',e.message));void pollChatwork(db,root).catch(e=>console.error('REI Chatwork取得:',e.message));}catch(e){console.error('REI background:',e.message);}},30000).unref();

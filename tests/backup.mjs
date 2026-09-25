@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync, syml
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { createBackup, verifyBackup, restoreBackup } from '../backup.mjs';
+import { createBackup, createBackupIfDue, verifyBackup, restoreBackup } from '../backup.mjs';
 
 const base=mkdtempSync(path.join(os.tmpdir(),'rei-backup-'));
 const source=path.join(base,'data');
@@ -16,6 +16,17 @@ writeFileSync(path.join(source,'pending-results.json'),'[{"taskId":"pending-repo
 writeFileSync(path.join(source,'pending-results.json.tmp'),'[{"taskId":"possibly-newer-report"}]');
 writeFileSync(path.join(source,'owner-credentials.txt'),'excluded');
 const folder=await createBackup(source,path.join(base,'backups'));
+assert.equal(await createBackupIfDue(source,path.join(base,'backups')),null);
+const due=await createBackupIfDue(source,path.join(base,'backups'),Date.now()+86400001);
+assert.ok(due&&due!==folder);
+assert.equal(verifyBackup(due).files.includes('rei.sqlite'),true);
+const automatic=path.join(base,'automatic-backups');
+const firstAutomatic=await createBackupIfDue(source,automatic);
+assert.equal(await createBackupIfDue(source,automatic),null);
+writeFileSync(path.join(firstAutomatic,'chatwork.key'),'damaged');
+const replacement=await createBackupIfDue(source,automatic);
+assert.ok(replacement&&replacement!==firstAutomatic);
+assert.equal(verifyBackup(replacement).files.includes('rei.sqlite'),true);
 assert.equal(readdirSync(path.join(base,'backups')).some(name=>name.startsWith('.partial-')),false);
 const invalidSource=path.join(base,'invalid-database');
 mkdirSync(invalidSource);

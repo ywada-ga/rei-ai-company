@@ -50,6 +50,18 @@ export async function createBackup(source=dataDir(),destination=path.join(source
   } catch(error) {rmSync(staging,{recursive:true,force:true});throw error;}
   return folder;
 }
+export async function createBackupIfDue(source=dataDir(),destination=path.join(source,'backups'),now=Date.now()) {
+  const status=lstatSync(destination,{throwIfNoEntry:false});
+  if(status&&!status.isDirectory())throw new Error('バックアップ先には通常のフォルダを指定してください');
+  const latest=status?readdirSync(destination,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&entry.name.startsWith('rei-')).map(entry=>entry.name).sort().at(-1):null;
+  if(latest) {
+    try {
+      const createdAt=Date.parse(verifyBackup(path.join(destination,latest)).createdAt);
+      if(Number.isFinite(createdAt)&&createdAt<=now&&now-createdAt<86400000)return null;
+    } catch { /* A damaged latest backup must not suppress a fresh backup. */ }
+  }
+  return createBackup(source,destination);
+}
 export function verifyBackup(folder) {
   const manifestFile=path.join(folder,'manifest.json');
   if(!regularFile(manifestFile)||lstatSync(manifestFile).size>10000)throw new Error('バックアップの目録が不正です');

@@ -52,9 +52,11 @@ export function retryPlan(db,rootId,actor) {
 }
 export function claim(db,device,hubVersion='') {
   return transaction(db,()=>{
-    const plannerOnline=one(db,"SELECT id FROM devices WHERE planner=1 AND revoked=0 AND last_seen>? AND version=? LIMIT 1",now()-30000,hubVersion);
-    const canPlan=!!device.planner||(!plannerOnline&&JSON.parse(device.capabilities||'[]').includes('planning'));
-    const job=one(db,`SELECT * FROM tasks WHERE status='ready' AND ((kind='plan' AND ?=1) OR (kind='execute' AND (device_id=? OR device_id IS NULL))) ORDER BY CASE kind WHEN 'plan' THEN 0 ELSE 1 END,created_at LIMIT 1`,canPlan?1:0,device.id);
+    const plannerOnline=all(db,"SELECT capabilities FROM devices WHERE planner=1 AND revoked=0 AND last_seen>? AND version=?",now()-30000,hubVersion).some(candidate=>JSON.parse(candidate.capabilities||'[]').includes('planning'));
+    const capabilities=JSON.parse(device.capabilities||'[]');
+    const canPlan=capabilities.includes('planning')&&(!!device.planner||!plannerOnline);
+    const canExecute=capabilities.includes('execution');
+    const job=one(db,`SELECT * FROM tasks WHERE status='ready' AND ((kind='plan' AND ?=1) OR (kind='execute' AND ?=1 AND (device_id=? OR device_id IS NULL))) ORDER BY CASE kind WHEN 'plan' THEN 0 ELSE 1 END,created_at LIMIT 1`,canPlan?1:0,canExecute?1:0,device.id);
     if(!job) return null;
     const lease=id(),time=now();
     run(db,"UPDATE tasks SET status='running',device_id=?,lease_id=?,lease_until=?,attempts=attempts+1,started_at=CASE WHEN started_at=0 THEN ? ELSE started_at END WHERE id=?",device.id,lease,time+240000,time,job.id);

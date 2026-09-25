@@ -94,7 +94,10 @@ try {
   assert.equal(outdatedClaim.job,null);
   assert.equal(outdatedClaim.updateRequired,true);
   assert.equal(outdatedClaim.hubVersion,currentVersion);
-  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning']},auth);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','execution']},auth);
+  assert.equal((await api('bootstrap')).gateway.reachable,false);
+  assert.equal((await api('connector/claim',{},auth)).job,null);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning','execution']},auth);
   assert.equal((await api('bootstrap')).gateway.reachable,true);
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
@@ -104,6 +107,9 @@ try {
   await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);
   assert.equal((await api('connector/claim',{},auth)).updateRequired,true);
   await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning']},auth);
+  assert.equal((await api('bootstrap')).gateway.reachable,false);
+  assert.equal((await api('connector/claim',{},auth)).job,null);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning','execution']},auth);
   const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');
   assert.equal(execute.job.project_id,project.id);
   assert.equal(execute.job.project.name,'新規事業');
@@ -183,7 +189,7 @@ try {
   await api('auth/logout',{});
   await api('auth/login',{username:'owner',password:'new-smoke-password-123'});
   assert.equal((await api('auth/me')).user.username,'owner');
-  await api('connector/heartbeat',{agentName:'rei',version:currentVersion,capabilities:['openclaw','planning']},paired.token);
+  await api('connector/heartbeat',{agentName:'rei',version:currentVersion,capabilities:['openclaw','planning','execution']},paired.token);
   assert.equal((await api('connector/claim',{},paired.token)).job,null);
   const testDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   testDb.prepare('UPDATE devices SET last_seen=0 WHERE id=?').run(enrolled.device.id);
@@ -209,6 +215,9 @@ try {
   const outdatedReassign=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freassign',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:strandedStep.id,deviceId:paired.device.id})});
   assert.equal(outdatedReassign.status,400);
   assert.equal((await api(`tasks/detail/${stranded.id}`)).children.find(step=>step.id===strandedStep.id).assignedDeviceId,enrolled.device.id);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning']},paired.token);
+  const unableReassign=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freassign',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:strandedStep.id,deviceId:paired.device.id})});
+  assert.equal(unableReassign.status,400);
   await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning','execution']},paired.token);
   await api('tasks/reassign',{taskId:strandedStep.id,deviceId:paired.device.id});
   const reassigned=(await api('connector/claim',{},paired.token)).job;

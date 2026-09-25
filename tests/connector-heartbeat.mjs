@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 
 const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
+const currentVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const dir=mkdtempSync(path.join(os.tmpdir(),'rei-heartbeat-'));
 const bin=path.join(dir,'bin');mkdirSync(bin);
 const fake=`#!/usr/bin/env node
@@ -39,6 +40,6 @@ try {
   assert.equal(code,0,output);
   assert.equal(reported,true,output);
   assert.ok(heartbeats>=2,`実行中の心拍が不足しています: ${heartbeats}`);
-  assert.equal(reportedVersion,'0.4.0');
+  assert.equal(reportedVersion,currentVersion);
   console.log('PASS connector stays online during a long job');
 } finally {server.close();}

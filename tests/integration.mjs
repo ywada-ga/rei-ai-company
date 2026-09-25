@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
+const currentVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const data=mkdtempSync(path.join(os.tmpdir(),'rei-smoke-'));
 const child=spawn(process.execPath,['hub.mjs'],{cwd:root,env:{...process.env,REI_DATA_DIR:data,REI_PORT:'4181'},stdio:['ignore','pipe','pipe']});
 let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
@@ -34,7 +35,7 @@ try {
   const auth=enrolled.token;
   const connectorStatus=await api('connector/status',undefined,auth);
   assert.equal(connectorStatus.deviceId,enrolled.device.id);
-  assert.equal(connectorStatus.hubVersion,'0.4.0');
+  assert.equal(connectorStatus.hubVersion,currentVersion);
   assert.equal((await api('devices')).localConnector.status,'not_configured');
   writeFileSync(path.join(data,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:'invalid',agent:'rei'}));
   assert.equal((await api('devices')).localConnector.status,'needs_attention');
@@ -45,7 +46,7 @@ try {
   assert.equal((await api('devices')).devices[0].agent_name,'rei');
   assert.equal((await api('devices')).devices[0].pending_results,2);
   assert.equal((await api('devices')).devices[0].version,'0.3.0');
-  assert.equal((await api('devices')).hubVersion,'0.4.0');
+  assert.equal((await api('devices')).hubVersion,currentVersion);
   assert.equal((await api('bootstrap')).workers[0].pendingResults,2);
   assert.equal((await api('bootstrap')).workers[0].version,'0.3.0');
   await api('connector/heartbeat',{pendingResults:0,capabilities:['openclaw']},auth);
@@ -88,8 +89,8 @@ try {
   const outdatedClaim=await api('connector/claim',{},auth);
   assert.equal(outdatedClaim.job,null);
   assert.equal(outdatedClaim.updateRequired,true);
-  assert.equal(outdatedClaim.hubVersion,'0.4.0');
-  await api('connector/heartbeat',{version:'0.4.0',capabilities:['openclaw','planning']},auth);
+  assert.equal(outdatedClaim.hubVersion,currentVersion);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning']},auth);
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);
@@ -97,7 +98,7 @@ try {
   await api('connector/heartbeat',{version:'0.3.0',capabilities:['openclaw','planning']},auth);
   await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);
   assert.equal((await api('connector/claim',{},auth)).updateRequired,true);
-  await api('connector/heartbeat',{version:'0.4.0',capabilities:['openclaw','planning']},auth);
+  await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning']},auth);
   const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');
   assert.equal(execute.job.project_id,project.id);
   assert.equal(execute.job.project.name,'新規事業');

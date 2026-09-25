@@ -48,6 +48,8 @@ Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `n
 
 各PCにはNode.js 24以降とOpenClaw CLIが必要です。TailscaleへのログインとOpenClawの設定は最初の一度だけ必要です。接続コードは使用後に失効します。中心PCのREIは引き続き `127.0.0.1` にだけ待ち受け、Tailscale Serveが暗号化した入口を担当します。[Tailscale Serveの公式説明](https://tailscale.com/docs/features/tailscale-serve)も参照してください。Windowsで中心PCを運用する場合、Serveの有効化は[管理者ターミナル](https://tailscale.com/docs/reference/examples/serve)から行います。
 
+REIはTailscaleの設定を確認し、このPCのREIへHTTPSで転送されるルートだけを接続URLとして表示します。公開用の[Tailscale Funnel](https://tailscale.com/docs/reference/tailscale-cli/funnel)が同じ入口で有効な場合は警告し、端末追加用URLを自動入力しません。Funnelを無効にしてから再確認してください。入口を別のサービスが使用中なら、その設定は自動で上書きしません。
+
 計画担当のPCが30秒以上応答しない場合、計画機能のある接続中の別PCが新しい計画を引き継ぎます。途中で通信が切れた実行作業は二重実行を避けるため自動でやり直さず、画面に「要確認」と表示します。
 
 ## Mac miniをSSHで追加する（手動方式）

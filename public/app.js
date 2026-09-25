@@ -319,6 +319,8 @@ async function loadNetworkStatus() {
     else if(status.state==='login_required')networkPanel.innerHTML='<strong>① Tailscaleへログイン</strong><p>このPCのTailscaleアプリを開いてログインしてください。</p><button id="network-refresh" class="outline-button" type="button">接続を再確認</button>';
     else if(status.state==='ready')networkPanel.innerHTML='<strong>② このPCの接続を有効にする</strong><p>Tailscale内だけでREIを開けるようにします。</p><button id="network-enable" class="outline-button" type="button">安全な接続を有効にする</button>';
     else if(status.state==='connected'){networkPanel.innerHTML=`<strong>✓ このPCの接続準備ができました</strong><p>接続URL: <code>${escapeHtml(status.url)}</code></p><p>追加するPCにもTailscaleを入れ、同じアカウントでログインしてください。</p>`;if(!$('pairing-url').value)$('pairing-url').value=status.url;}
+    else if(status.state==='public'){networkPanel.innerHTML='<strong>公開用のTailscale Funnelが有効です</strong><p>REIをインターネットに公開する設定です。Tailscale側でFunnelを無効にしてから、接続を再確認してください。</p><button id="network-refresh" class="outline-button" type="button">接続を再確認</button>';$('pairing-url').value='';}
+    else if(status.state==='conflict')networkPanel.innerHTML='<strong>Tailscaleの入口は別のサービスに使用中です</strong><p>既存のServe設定を確認してください。REIはその設定を自動で上書きしません。</p><button id="network-refresh" class="outline-button" type="button">接続を再確認</button>';
     else networkPanel.innerHTML='<strong>接続状態を読めませんでした</strong><button id="network-refresh" class="outline-button" type="button">もう一度確認</button>';
     if($('network-refresh'))$('network-refresh').onclick=loadNetworkStatus;
     if($('network-enable'))$('network-enable').onclick=async()=>{const button=$('network-enable');button.disabled=true;try{await request('/api/network/serve',{method:'POST'});await loadNetworkStatus();}catch(error){networkPanel.textContent=error.message;}};

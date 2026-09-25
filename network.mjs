@@ -20,11 +20,23 @@ export function networkStatus(command=runTailscale,port=Number(process.env.REI_P
   const host=String(status.Self.DNSName).replace(/\.$/,'');
   if(!/^[a-z0-9.-]+\.ts\.net$/i.test(host))return {state:'error',url:null};
   const serve=command(['serve','status','--json']);
-  const active=serve.status===0&&new RegExp(`(?:127\\.0\\.0\\.1|localhost):${port}\\b`).test(serve.stdout||'');
+  if(serve.status!==0)return {state:'error',url:null};
+  let config;
+  try {config=JSON.parse(serve.stdout);}catch{return {state:'error',url:null};}
+  const hostPort=`${host}:443`,handler=config?.Web?.[hostPort]?.Handlers?.['/'];
+  let active=false;
+  try {
+    const target=new URL(handler?.Proxy);
+    active=target.protocol==='http:'&&['127.0.0.1','localhost'].includes(target.hostname)&&Number(target.port)===port&&target.pathname==='/'&&config?.TCP?.['443']?.HTTPS===true;
+  } catch {}
+  if(config?.AllowFunnel?.[hostPort]===true)return {state:'public',url:null};
+  if(handler&&!active)return {state:'conflict',url:null};
   return {state:active?'connected':'ready',url:active?`https://${host}`:null};
 }
 export function enableServe(command=runTailscale,port=Number(process.env.REI_PORT||4178)) {
   const current=networkStatus(command,port);
+  if(current.state==='public')throw new Error('公開用のTailscale Funnelが有効です。Funnelを無効にしてから再確認してください');
+  if(current.state==='conflict')throw new Error('Tailscaleの入口は別のサービスに使われています。既存の設定を確認してください');
   if(current.state!=='ready'&&current.state!=='connected')throw new Error('先にTailscaleをインストールしてログインしてください');
   if(current.state==='connected')return current;
   const result=command(['serve','--bg',String(port)]);

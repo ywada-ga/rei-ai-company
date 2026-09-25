@@ -14,13 +14,14 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function setup() {
   const rl=createInterface({input:process.stdin,output:process.stdout});
   try {
+    if(existsSync(configPath))throw new Error('このPCには既にREIの接続設定があります。既存設定を確認してから再登録してください');
     const hub=(await rl.question('REI Hub URL（このPCなら http://127.0.0.1:4178）: ')).trim();
     const token=(await rl.question('端末登録で発行されたトークン: ')).trim();
     const agent=(await rl.question('OpenClawエージェント名（空欄で main）: ')).trim()||'main';
     validateHub(hub);
     if(!token)throw new Error('トークンが必要です');
     mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
-    writeFileSync(configPath,JSON.stringify({hub,token,agent},null,2),{mode:0o600});
+    writeFileSync(configPath,JSON.stringify({hub,token,agent},null,2),{mode:0o600,flag:'wx'});
     chmodSync(configPath,0o600);
     console.log(`設定を保存しました: ${configPath}`);
   } finally {rl.close();}

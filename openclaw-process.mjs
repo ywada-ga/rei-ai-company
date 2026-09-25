@@ -25,9 +25,16 @@ export function runOpenClawCli(args) {
   return spawnSync('openclaw',args,{encoding:'utf8',timeout:30000,maxBuffer:1024*1024});
 }
 
-export function spawnOpenClaw(agent,key,instruction) {
-  if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),'agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
-  return spawn('openclaw',['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout','180'],{stdio:['ignore','pipe','pipe']});
+export function jobTimeoutSeconds(value=process.env.REI_JOB_TIMEOUT_SECONDS) {
+  const seconds=value===undefined?1800:Number(value);
+  if(!Number.isSafeInteger(seconds)||seconds<60||seconds>7200)throw new Error('REI_JOB_TIMEOUT_SECONDSは60〜7200秒で指定してください');
+  return seconds;
+}
+
+export function spawnOpenClaw(agent,key,instruction,timeoutSeconds=jobTimeoutSeconds()) {
+  const args=['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout',String(timeoutSeconds)];
+  if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+  return spawn('openclaw',args,{stdio:['ignore','pipe','pipe']});
 }
 
 export function parseOpenClawResult(output) {

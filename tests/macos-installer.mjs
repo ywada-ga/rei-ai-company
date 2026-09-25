@@ -14,13 +14,14 @@ if(process.platform==='darwin') {
   const fake=path.join(bin,'launchctl');
   writeFileSync(fake,'#!/bin/sh\nif [ "$1" = bootstrap ] && [ -n "$REI_TEST_FAIL_PORT" ] && /usr/bin/grep -Fq "$REI_TEST_FAIL_PORT" "$3"; then exit 1; fi\nexit 0\n');chmodSync(fake,0o755);
   for(const mode of ['hub','connector']) {
-    const result=spawnSync(process.execPath,['install-macos.mjs',mode],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:agents,REI_DATA_DIR:data,REI_CONNECTOR_CONFIG:path.join(data,'connector.json'),REI_PORT:'4188'}});
+    const result=spawnSync(process.execPath,['install-macos.mjs',mode],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:agents,REI_DATA_DIR:data,REI_CONNECTOR_CONFIG:path.join(data,'connector.json'),REI_PORT:'4188',REI_JOB_TIMEOUT_SECONDS:'3600'}});
     assert.equal(result.status,0,result.stderr);
     const plist=readFileSync(path.join(agents,`ai.rei.${mode}.plist`),'utf8');
     assert.match(plist,new RegExp(`<string>${mode}\\.mjs</string>`));
     assert.match(plist,/<key>REI_DATA_DIR<\/key><string>.*restored-data<\/string>/);
     assert.match(plist,/<key>REI_CONNECTOR_CONFIG<\/key><string>.*connector\.json<\/string>/);
     assert.match(plist,/<key>REI_PORT<\/key><string>4188<\/string>/);
+    assert.match(plist,/<key>REI_JOB_TIMEOUT_SECONDS<\/key><string>3600<\/string>/);
     assert.equal(statSync(path.join(agents,`ai.rei.${mode}.plist`)).mode&0o777,0o600);
   }
   const failedUpdate=spawnSync(process.execPath,['install-macos.mjs','hub'],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:agents,REI_DATA_DIR:data,REI_PORT:'4199',REI_TEST_FAIL_PORT:'<string>4199</string>'}});

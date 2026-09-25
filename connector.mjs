@@ -3,12 +3,13 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync, existsSy
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult } from './openclaw-process.mjs';
+import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult, jobTimeoutSeconds } from './openclaw-process.mjs';
 import { syncMcp, probeMcp } from './mcp-sync.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
+const jobTimeout=jobTimeoutSeconds();
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
 const pendingPath=path.join(path.dirname(configPath),'pending-results.json');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -82,12 +83,13 @@ function runOpenClaw(agent,job,devices) {
     : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。${projectContext}依頼: ${job.text}`;
   return new Promise((resolve,reject)=>{
     const key=`agent:${agent}:rei-${job.kind}-${job.id}`;
-    const child=spawnOpenClaw(agent,key,instruction);
-    let out='',err='';const timer=setTimeout(()=>child.kill('SIGTERM'),195000);
+    const child=spawnOpenClaw(agent,key,instruction,jobTimeout);
+    let out='',err='',timedOut=false,killTimer;
+    const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},jobTimeout*1000+15000);
     child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)child.kill('SIGTERM');});
     child.stderr.on('data',chunk=>{err+=chunk;if(err.length>100_000)child.kill('SIGTERM');});
-    child.on('error',e=>{clearTimeout(timer);reject(e);});
-    child.on('close',code=>{clearTimeout(timer);if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
+    child.on('error',e=>{clearTimeout(timer);clearTimeout(killTimer);reject(e);});
+    child.on('close',code=>{clearTimeout(timer);clearTimeout(killTimer);if(timedOut)return reject(new Error(`OpenClawが${jobTimeout}秒以内に完了しませんでした`));if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
   });
 }
 async function main() {

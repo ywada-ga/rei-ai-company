@@ -28,21 +28,29 @@ export async function sendPendingHuman(db,root) {
   const cfg=config(db,root);if(!cfg)return;
   const pending=all(db,"SELECT * FROM tasks WHERE kind='human' AND status='waiting_human' ORDER BY created_at LIMIT 5");
   for(const task of pending) {
-    if(!run(db,"UPDATE tasks SET status='sending' WHERE id=? AND status='waiting_human'",task.id).changes)continue;
-    event(db,task.id,'chatwork','sending','Chatworkへ依頼を送信中');
+    const claimed=transaction(db,()=>{
+      if(!run(db,"UPDATE tasks SET status='sending' WHERE id=? AND status='waiting_human'",task.id).changes)return false;
+      event(db,task.id,'chatwork','sending','Chatworkへ依頼を送信中');
+      return true;
+    });
+    if(!claimed)continue;
     const message=`[REI:${task.id}]\n依頼: ${task.text}\n回答するときはこの [REI:${task.id}] を含めてください。`;
     try {
       const response=await fetch(`https://api.chatwork.com/v2/rooms/${cfg.room}/messages`,{method:'POST',headers:{'x-chatworktoken':cfg.token,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({body:message}),signal:AbortSignal.timeout(15000)});
       if(!response.ok)throw new Error(`Chatwork HTTP ${response.status}`);
       const data=await response.json();
       if(!/^\d+$/.test(String(data.message_id||'')))throw new Error('Chatworkの投稿IDを確認できません');
-      run(db,"INSERT OR IGNORE INTO external_messages(id,task_id,direction,body,created_at) VALUES(?,?,?,?,?)",String(data.message_id),task.id,'out',message,Date.now());
-      run(db,"UPDATE tasks SET status='waiting_reply' WHERE id=?",task.id);
-      event(db,task.id,'chatwork','sent',String(data.message_id));
+      transaction(db,()=>{
+        run(db,"INSERT INTO external_messages(id,task_id,direction,body,created_at) VALUES(?,?,?,?,?)",String(data.message_id),task.id,'out',message,Date.now());
+        run(db,"UPDATE tasks SET status='waiting_reply' WHERE id=?",task.id);
+        event(db,task.id,'chatwork','sent',String(data.message_id));
+      });
     } catch(e) {
-      run(db,"UPDATE tasks SET status='needs_review',error=?,finished_at=? WHERE id=?",`Chatwork送信結果を確認できません: ${e.message}`,Date.now(),task.id);
-      event(db,task.id,'chatwork','needs_review',e.message);
-      finishRoot(db,task.parent_id);
+      transaction(db,()=>{
+        run(db,"UPDATE tasks SET status='needs_review',error=?,finished_at=? WHERE id=?",`Chatwork送信結果を確認できません: ${e.message}`,Date.now(),task.id);
+        event(db,task.id,'chatwork','needs_review',e.message);
+        finishRoot(db,task.parent_id);
+      });
     }
   }
 }

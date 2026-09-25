@@ -35,12 +35,12 @@ else process.exit(2);
 `;
   writeFileSync(path.join(bin,'openclaw'),fakeOpenClaw);chmodSync(path.join(bin,'openclaw'),0o755);
   writeFileSync(path.join(bin,'systemctl'),'#!/bin/sh\nprintf "%s\\n" "$*" >> "$REI_SYSTEMCTL_LOG"\n');chmodSync(path.join(bin,'systemctl'),0o755);
-  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
+  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE12345678');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {
     writeFileSync(path.join(project,'openclaw.json'),'{}');
     const child=spawn(process.execPath,['connector.mjs','join',`http://127.0.0.1:${server.address().port}`],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_CONNECTOR_CONFIG:path.join(project,'data','connector.json'),REI_SYSTEMD_DIR:path.join(project,'units'),REI_SYSTEMCTL_LOG:path.join(project,'systemctl.log'),REI_FAKE_AGENT_STATE:path.join(project,'agent.json'),REI_FAKE_CONFIG_FILE:path.join(project,'openclaw.json')},stdio:['pipe','pipe','pipe']});
-    let output='',answered=false;child.stdout.on('data',chunk=>{output+=chunk;if(!answered&&output.includes('接続コード')){answered=true;child.stdin.end('TESTCODE\n');}});child.stderr.on('data',chunk=>output+=chunk);
+    let output='',answered=false;child.stdout.on('data',chunk=>{output+=chunk;if(!answered&&output.includes('接続コード')){answered=true;child.stdin.end('TESTCODE12345678\n');}});child.stderr.on('data',chunk=>output+=chunk);
     const timer=setTimeout(()=>child.kill(),15000);
     const code=await new Promise(resolve=>child.on('close',resolve));clearTimeout(timer);
     assert.equal(code,0,output);

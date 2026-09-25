@@ -35,5 +35,9 @@ try {
   await api('tasks/approve',{taskId:gated.task.id});
   const approved=(await api('bootstrap')).tasks.find(t=>t.id===gated.task.id);
   assert.equal(approved.status,'planning');
+  await api('auth/password',{currentPassword:'smoke-test-password-123',newPassword:'new-smoke-password-123'});
+  await api('auth/logout',{});
+  await api('auth/login',{username:'owner',password:'new-smoke-password-123'});
+  assert.equal((await api('auth/me')).user.username,'owner');
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
 } finally {child.kill('SIGTERM');}

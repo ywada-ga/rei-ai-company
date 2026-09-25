@@ -65,6 +65,7 @@ async function api(req,res,route) {
 
   const user=sessionUser(db,req);if(!user)return error(res,401,'ログインしてください');
   if(route==='auth/me'&&req.method==='GET')return send(res,200,{user});
+  if(route==='auth/password'&&req.method==='POST') {const data=await body(req),record=one(db,'SELECT * FROM users WHERE id=?',user.id),next=String(data.newPassword||'');if(!await checkPassword(String(data.currentPassword||''),record.salt,record.digest))return error(res,403,'現在のパスワードが違います');if(next.length<14||next.length>200)return error(res,400,'新しいパスワードは14文字以上にしてください');const encoded=await encodePassword(next);run(db,'UPDATE users SET salt=?,digest=? WHERE id=?',encoded.salt,encoded.digest,user.id);run(db,'DELETE FROM sessions WHERE user_id=? AND hash<>?',user.id,hash(cookies(req).rei_session));event(db,null,user.username,'password_changed','パスワードを変更');return send(res,200,{ok:true});}
   if(route==='bootstrap'&&req.method==='GET') {
     sweep(db);
     const devices=all(db,'SELECT id,label,planner,capabilities,last_seen FROM devices WHERE revoked=0 ORDER BY rowid');

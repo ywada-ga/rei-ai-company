@@ -12,7 +12,7 @@ REIは、1台の「中心PC」に仕事・権限・履歴を保存し、各PCの
 ## 1台で始める
 
 ```bash
-git clone <公開後のGitHub URL> rei
+git clone https://github.com/ywada-ga/rei-ai-company.git rei
 cd rei
 npm start
 ```
@@ -64,12 +64,14 @@ node install-macos.mjs connector
 ## 権限
 
 所有者と管理者は仕事を直接依頼できます。依頼者の仕事は承認待ちになり、所有者か管理者の承認後に実行されます。閲覧者は状況を見るだけです。所有者は設定画面から招待リンクを発行できます。端末ごとのトークンは解除時に失効します。
+利用者は設定画面で自分のパスワードを変更できます。
 
 ## データと安全上の境界
 
 - `data/rei.sqlite`: 仕事、利用者、端末、履歴。Gitには含めません。
 - `data/connector.json`: 端末トークン。Gitには含めません。権限 `0600`。
 - `data/chatwork.key`: Chatworkトークンの暗号鍵。Gitには含めません。バックアップする場合はDBと一緒に保管します。
+- このPCで作成済みの所有者認証情報は `data/owner-credentials.txt` に保存しました。公開リポジトリには含めません。ログイン後に設定画面でパスワードを変更できます。
 - Connectorは接続先がHTTPS、またはSSH転送したlocalhostの場合にだけ起動します。
 - OpenClawの既存設定は変更しません。初期値では既存の `main` エージェントを利用します。実運用ではREI専用エージェントを設け、OpenClaw側のツール権限も設定してください。
 - 長時間実行の通信が失われた仕事は、二重実行を避けるため「要確認」にします。

@@ -210,5 +210,18 @@ try {
   assert.ok(reconciled.events.some(item=>item.type==='reconciled'));
   const secondReconcile=await fetch('http://127.0.0.1:4181/api?route=tasks%2Freconcile',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:uncertainStep.id,resolution:'completed',note:'重複'})});
   assert.equal(secondReconcile.status,409);
+  await api('connector/heartbeat',{agentName:'rei',capabilities:['openclaw','planning','execution']},auth);
+  const parallel=(await api('command',{text:'独立した二つの仕事'})).task;
+  const parallelPlan=(await api('connector/claim',{},auth)).job;
+  await api('connector/result',{taskId:parallelPlan.id,leaseId:parallelPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'独立した仕事A'},{prompt:'独立した仕事B'}]})},auth);
+  const [firstClaim,secondClaim]=await Promise.all([api('connector/claim',{},auth),api('connector/claim',{},paired.token)]);
+  assert.equal(firstClaim.job.kind,'execute');
+  assert.equal(secondClaim.job.kind,'execute');
+  assert.notEqual(firstClaim.job.id,secondClaim.job.id);
+  await Promise.all([
+    api('connector/result',{taskId:firstClaim.job.id,leaseId:firstClaim.job.lease_id,success:true,result:'A完了'},auth),
+    api('connector/result',{taskId:secondClaim.job.id,leaseId:secondClaim.job.lease_id,success:true,result:'B完了'},paired.token)
+  ]);
+  assert.equal((await api(`tasks/detail/${parallel.id}`)).task.status,'completed');
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
 } finally {child.kill('SIGTERM');}

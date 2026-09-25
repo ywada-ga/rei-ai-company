@@ -120,8 +120,17 @@ export function finishJob(db,device,input) {
   if(job.status==='needs_review'&&job.kind==='execute') {
     transaction(db,()=>{
       run(db,'UPDATE tasks SET result=? WHERE id=?',lateResult,job.id);
-      run(db,'INSERT INTO late_result_receipts(task_id,lease_id,fingerprint) VALUES(?,?,?)',job.id,job.lease_id,lateFingerprint);
+      run(db,'INSERT INTO late_result_receipts(task_id,lease_id,fingerprint,report,success) VALUES(?,?,?,?,?)',job.id,job.lease_id,lateFingerprint,lateResult,input.success?1:0);
       event(db,job.id,device.label,'late_result','通信断の後に結果を受信。実施状況の確認が必要');
+    });
+    return {ok:true,needsReview:true};
+  }
+  if(job.kind==='execute'&&['completed','failed'].includes(job.status)&&one(db,"SELECT id FROM events WHERE task_id=? AND type='reconciled' LIMIT 1",job.id)) {
+    transaction(db,()=>{
+      run(db,'INSERT INTO late_result_receipts(task_id,lease_id,fingerprint,report,success) VALUES(?,?,?,?,?)',job.id,job.lease_id,lateFingerprint,lateResult,input.success?1:0);
+      run(db,"UPDATE tasks SET status='needs_review',result=?,error='端末から遅れて結果が届きました。確認結果と照合してください' WHERE id=?",job.result||job.error,job.id);
+      run(db,"UPDATE tasks SET status='needs_review',error='確認後に端末から結果が届きました',finished_at=? WHERE id=?",now(),job.parent_id);
+      event(db,job.id,device.label,'late_result','確認後に端末から結果を受信。再確認が必要');
     });
     return {ok:true,needsReview:true};
   }

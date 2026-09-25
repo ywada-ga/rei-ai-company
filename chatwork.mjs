@@ -57,8 +57,10 @@ export async function pollChatwork(db,root) {
     const externalId=String(message.message_id||'');
     if(!externalId||one(db,'SELECT id FROM external_messages WHERE id=?',externalId))continue;
     if(!message.account?.account_id||String(message.account.account_id)===accountId)continue;
-    const body=String(message.body||''),taskId=body.match(/\[REI:([0-9a-f-]{36})\]/i)?.[1];
-    if(!taskId)continue;
+    const body=String(message.body||'');
+    const taskIds=[...new Set([...body.matchAll(/\[REI:([0-9a-f-]{36})\]/gi)].map(match=>match[1].toLowerCase()))];
+    if(taskIds.length!==1)continue;
+    const taskId=taskIds[0];
     const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='human' AND status='waiting_reply'",taskId);
     if(!task)continue;
     run(db,'INSERT OR IGNORE INTO external_messages(id,task_id,direction,body,created_at) VALUES(?,?,?,?,?)',externalId,task.id,'in',body,Date.now());

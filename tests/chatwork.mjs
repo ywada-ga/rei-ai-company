@@ -25,6 +25,16 @@ assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',root).status,'complete
 const nextRoot='00000000-0000-4000-8000-000000000003',nextChild='00000000-0000-4000-8000-000000000004';
 run(db,"INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)",nextRoot,'root','次の人に確認','running',Date.now());
 run(db,"INSERT INTO tasks(id,parent_id,kind,text,status,created_at) VALUES(?,?,?,?,?,?)",nextChild,nextRoot,'human','次の状況を教えてください','waiting_human',Date.now());
+const ambiguousRoot='00000000-0000-4000-8000-00000000000b',ambiguousChild='00000000-0000-4000-8000-00000000000c';
+run(db,"INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)",ambiguousRoot,'root','別の人への確認','running',Date.now());
+run(db,"INSERT INTO tasks(id,parent_id,kind,text,status,created_at) VALUES(?,?,?,?,?,?)",ambiguousChild,ambiguousRoot,'human','別件の回答','waiting_reply',Date.now());
+const waitingRoot='00000000-0000-4000-8000-00000000000d',waitingChild='00000000-0000-4000-8000-00000000000e';
+run(db,"INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)",waitingRoot,'root','もう一件の確認','running',Date.now());
+run(db,"INSERT INTO tasks(id,parent_id,kind,text,status,created_at) VALUES(?,?,?,?,?,?)",waitingChild,waitingRoot,'human','別件の回答','waiting_reply',Date.now());
+globalThis.fetch=async()=>({ok:true,status:200,json:async()=>[{message_id:'3',body:`[REI:${ambiguousChild}] と [REI:${waitingChild}] の両方について`,account:{account_id:88}}]});
+assert.equal((await pollChatwork(db,dir)).received,0);
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',ambiguousChild).status,'waiting_reply');
+assert.equal(one(db,'SELECT status FROM tasks WHERE id=?',waitingChild).status,'waiting_reply');
 let sent=0;
 globalThis.fetch=async()=>{sent++;await new Promise(resolve=>setTimeout(resolve,10));return {ok:true,json:async()=>({message_id:'5'})};};
 await Promise.all([sendPendingHuman(db,dir),sendPendingHuman(db,dir)]);

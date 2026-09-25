@@ -50,9 +50,9 @@ export function retryPlan(db,rootId,actor) {
     return true;
   });
 }
-export function claim(db,device) {
+export function claim(db,device,hubVersion='') {
   return transaction(db,()=>{
-    const plannerOnline=one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0 AND last_seen>? LIMIT 1',now()-30000);
+    const plannerOnline=one(db,"SELECT id FROM devices WHERE planner=1 AND revoked=0 AND last_seen>? AND (version='' OR version=?) LIMIT 1",now()-30000,hubVersion);
     const canPlan=!!device.planner||(!plannerOnline&&JSON.parse(device.capabilities||'[]').includes('planning'));
     const job=one(db,`SELECT * FROM tasks WHERE status='ready' AND ((kind='plan' AND ?=1) OR (kind='execute' AND (device_id=? OR device_id IS NULL))) ORDER BY CASE kind WHEN 'plan' THEN 0 ELSE 1 END,created_at LIMIT 1`,canPlan?1:0,device.id);
     if(!job) return null;

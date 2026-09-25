@@ -102,6 +102,7 @@ async function main() {
     const result=await response.json();if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);return result;
   }
   let lastHeartbeat=0;
+  let versionWarningShown=false;
   let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
   let pending=loadPending();
   const heartbeatPayload=()=>({agentName:config.agent,version:reiVersion,pendingResults:pending.length,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
@@ -137,7 +138,14 @@ async function main() {
         if(process.argv.includes('--once'))break;
         continue;
       }
-      const {job,devices}=await api('connector/claim');
+      const {job,devices,updateRequired,hubVersion}=await api('connector/claim');
+      if(updateRequired) {
+        if(!versionWarningShown)console.error(`REIの版が異なります。このPCは${reiVersion}、中心PCは${hubVersion}です。仕事を始める前にこのPCを更新してください。`);
+        versionWarningShown=true;
+        if(process.argv.includes('--once')){process.exitCode=1;break;}
+        await sleep(10000);continue;
+      }
+      versionWarningShown=false;
       if(!job) {if(process.argv.includes('--once'))break;await sleep(3000);continue;}
       console.log(`${job.kind} ${job.id}: ${job.text.slice(0,80)}`);
       const renewal=setInterval(()=>void api('connector/renew',{taskId:job.id,leaseId:job.lease_id}).catch(e=>console.error('リース更新:',e.message)),30000);

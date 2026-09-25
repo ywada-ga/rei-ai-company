@@ -84,6 +84,12 @@ try {
   assert.equal((await api('bootstrap')).projects[0].name,'新規事業');
   const created=await api('command',{text:'テスト用の仕事をして',department:'operations',projectId:project.id});
   assert.equal(created.task.projectId,project.id);
+  await api('connector/heartbeat',{version:'0.3.0',capabilities:['openclaw','planning']},auth);
+  const outdatedClaim=await api('connector/claim',{},auth);
+  assert.equal(outdatedClaim.job,null);
+  assert.equal(outdatedClaim.updateRequired,true);
+  assert.equal(outdatedClaim.hubVersion,'0.4.0');
+  await api('connector/heartbeat',{version:'0.4.0',capabilities:['openclaw','planning']},auth);
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);

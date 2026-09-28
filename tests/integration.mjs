@@ -18,7 +18,17 @@ const child=spawn(process.execPath,['hub.mjs'],{cwd:root,env:{...process.env,REI
 let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
 let lastRequest='Hub startup';
 const fetchOriginal=globalThis.fetch;
-globalThis.fetch=(input,options)=>{lastRequest=String(input);return fetchOriginal(input,options);};
+globalThis.fetch=async(input,options)=>{
+  lastRequest=String(input);
+  try{return await fetchOriginal(input,options);}
+  catch(error) {
+    // Windows CI occasionally resets an idle loopback connection. A GET can be
+    // repeated safely; never repeat a request that may have changed Hub state.
+    if((options?.method||'GET').toUpperCase()!=='GET'||error?.cause?.code!=='ECONNRESET')throw error;
+    console.error(`Retrying read after loopback reset: ${lastRequest}`);
+    return fetchOriginal(input,options);
+  }
+};
 try {
   for(let i=0;i<100&&!output.includes('REI Hub:');i++)await new Promise(r=>setTimeout(r,100));
   assert.match(output,/REI Hub:/);

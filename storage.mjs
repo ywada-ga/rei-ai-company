@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
-export const SCHEMA_VERSION=2;
+export const SCHEMA_VERSION=3;
 
 export function openStorage(root) {
   const dir=process.env.REI_DATA_DIR||path.join(root,'data');
@@ -26,6 +26,8 @@ export function openStorage(root) {
     CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, objective TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS project_notes(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, content TEXT NOT NULL, created_by TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS project_notes_recent ON project_notes(project_id,created_at DESC,id DESC);
+    CREATE TABLE IF NOT EXISTS playbooks(id TEXT PRIMARY KEY, title TEXT NOT NULL, purpose TEXT NOT NULL, prompt TEXT NOT NULL, created_by TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS playbooks_recent ON playbooks(created_at DESC,id DESC);
     CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, parent_id TEXT REFERENCES tasks(id), kind TEXT NOT NULL, text TEXT NOT NULL, department TEXT NOT NULL DEFAULT 'operations', status TEXT NOT NULL, device_id TEXT REFERENCES devices(id), result TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', lease_id TEXT, lease_until INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, created_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, started_at INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS tasks_queue ON tasks(status,kind,created_at);
     CREATE INDEX IF NOT EXISTS tasks_parent ON tasks(parent_id);

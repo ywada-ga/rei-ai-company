@@ -37,6 +37,11 @@ try {
   const api=async(route,data,auth)=>{const res=await fetch(`${base}/api?route=${route}`,{method:data?'POST':'GET',headers:{...(data?{'content-type':'application/json'}:{}),...(cookie?{cookie}:{}),...(auth?{authorization:`Bearer ${auth}`}:{})},body:data?JSON.stringify(data):undefined});const body=await res.json();assert.ok(res.ok,`${route}: ${res.status} ${JSON.stringify(body)}`);if(res.headers.get('set-cookie'))cookie=res.headers.get('set-cookie').split(';')[0];return body;};
   await api('setup/complete',{token:setup,username:'owner',password:'smoke-test-password-123'});
   await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
+  const playbook=(await api('playbooks/create',{title:'LP制作',purpose:'LPの初稿を作る時',prompt:'商品情報を整理して構成案を作成'})).playbook;
+  assert.equal(playbook.author,'owner');
+  assert.equal((await api('playbooks')).playbooks[0].prompt,'商品情報を整理して構成案を作成');
+  const anonymousPlaybooks=await fetch(`${base}/api?route=playbooks`);
+  assert.equal(anonymousPlaybooks.status,401);
   const saved=await api('backup/create',{});
   assert.ok(saved.folder.startsWith(data));
   const firstPairing=await api('devices/pairing',{label:'first-paired'});
@@ -245,6 +250,7 @@ try {
   await api('setup/complete',{token:invite.token,username:'requester',password:'requester-password-123'});
   await api('auth/login',{username:'requester',password:'requester-password-123'});
   const requesterCookie=cookie;
+  assert.equal((await api('playbooks')).playbooks[0].id,playbook.id);
   const forbiddenUsers=await fetch(`${base}/api?route=users%2Flist`,{headers:{cookie}});
   assert.equal(forbiddenUsers.status,403);
   const blockedBackup=await fetch(`${base}/api?route=backup%2Fcreate`,{method:'POST',headers:{cookie,'content-type':'application/json'},body:'{}'});
@@ -263,6 +269,10 @@ try {
   auditDb.exec('DROP TRIGGER fail_user_role_event');
   await api('users/role',{userId:member.id,role:'viewer'});
   assert.equal((await api('users/list')).users.find(user=>user.id===member.id).role,'viewer');
+  const viewerPlaybooks=await fetch(`${base}/api?route=playbooks`,{headers:{cookie:requesterCookie}});
+  assert.equal(viewerPlaybooks.status,200);
+  const forbiddenPlaybook=await fetch(`${base}/api?route=playbooks%2Fcreate`,{method:'POST',headers:{cookie:requesterCookie,'content-type':'application/json'},body:JSON.stringify({title:'不可',purpose:'閲覧のみ',prompt:'保存できない'})});
+  assert.equal(forbiddenPlaybook.status,403);
   const viewerCommand=await fetch(`${base}/api?route=command`,{method:'POST',headers:{cookie:requesterCookie,'content-type':'application/json'},body:JSON.stringify({text:'実行できない指示'})});
   assert.equal(viewerCommand.status,403);
   const viewerDetail=await fetch(`${base}/api?route=tasks%2Fdetail%2F${gated.task.id}`,{headers:{cookie:requesterCookie}});

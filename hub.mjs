@@ -52,6 +52,7 @@ function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.ki
 function projectJson(p) {return {id:p.id,name:p.name,objective:p.objective,status:p.status,createdAt:new Date(p.created_at).toISOString(),updatedAt:new Date(p.updated_at).toISOString(),total:p.total||0,completed:p.completed||0,failed:p.failed||0,attention:p.attention||0};}
 function projectNoteJson(n) {return {id:n.id,projectId:n.project_id,title:n.title,content:n.content,author:n.username,createdAt:new Date(n.created_at).toISOString()};}
 function projectNotes(id,limit=50) {return all(db,'SELECT n.*,u.username FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.project_id=? ORDER BY n.created_at DESC,n.id DESC LIMIT ?',id,limit).map(projectNoteJson);}
+function playbookJson(p) {return {id:p.id,title:p.title,purpose:p.purpose,prompt:p.prompt,author:p.username,createdAt:new Date(p.created_at).toISOString()};}
 function projects() {return all(db,"SELECT p.*,COUNT(t.id) AS total,COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END),0) AS completed,COALESCE(SUM(CASE WHEN t.status='failed' THEN 1 ELSE 0 END),0) AS failed,COALESCE(SUM(CASE WHEN t.status='needs_review' THEN 1 ELSE 0 END),0) AS attention FROM projects p LEFT JOIN tasks t ON t.project_id=p.id AND t.kind='root' GROUP BY p.id ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,p.updated_at DESC").map(projectJson);}
 function readyConnector() {
   const devices=all(db,'SELECT capabilities FROM devices WHERE revoked=0 AND last_seen>? AND version=?',Date.now()-30000,reiVersion);
@@ -143,6 +144,17 @@ async function api(req,res,route) {
     return send(res,200,{user,departments,workers,tasks,hasOlderTasks:recent.length>100,projects:projects(),humanPending,gateway:{reachable:readyConnector(),version:reiVersion,agent:'rei'}});
   }
   if(route==='report/today'&&req.method==='GET') {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,data);}
+  if(route==='playbooks'&&req.method==='GET') {
+    const total=one(db,'SELECT COUNT(*) AS count FROM playbooks').count;
+    const playbooks=all(db,'SELECT p.*,u.username FROM playbooks p JOIN users u ON u.id=p.created_by ORDER BY p.created_at DESC,p.id DESC LIMIT 100').map(playbookJson);
+    return send(res,200,{playbooks,remaining:Math.max(0,total-playbooks.length)});
+  }
+  if(route==='playbooks/create'&&req.method==='POST') {
+    if(user.role==='viewer')return error(res,403,'手順を追加する権限がありません');
+    const data=await body(req),title=text(data.title,120),purpose=text(data.purpose,1000),prompt=text(data.prompt,8000),id=uid(),now=Date.now();
+    transaction(db,()=>{run(db,'INSERT INTO playbooks(id,title,purpose,prompt,created_by,created_at) VALUES(?,?,?,?,?,?)',id,title,purpose,prompt,user.id,now);event(db,null,user.username,'playbook_created',title);});
+    return send(res,201,{playbook:playbookJson(one(db,'SELECT p.*,u.username FROM playbooks p JOIN users u ON u.id=p.created_by WHERE p.id=?',id))});
+  }
   if(route==='command'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'指示する権限がありません');
     const data=await body(req),message=text(data.text),department=departments.some(d=>d.id===data.department)?data.department:'operations',projectId=data.projectId?String(data.projectId):null;

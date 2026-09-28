@@ -40,3 +40,4 @@
   #mission-feed, #unit-list { height: auto; flex: 1; min-height: 0; overflow-y: auto; }
   .list-view { min-height: 0; }
 }
+.project-share{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 18px}.project-share .outline-button{margin:0}.project-share span{color:#9ad6d2;font-size:11px}

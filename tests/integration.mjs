@@ -330,7 +330,7 @@ try {
   const recovered=await api(`tasks/detail/${retryable.id}`);
   assert.equal(recovered.task.status,'completed');
   assert.ok(recovered.events.some(item=>item.type==='plan_retried'));
-  const acknowledged=(await api('command',{text:'失敗の確認と終了'})).task;
+  const acknowledged=(await api('command',{text:'失敗の確認と終了',projectId:project.id})).task;
   const acknowledgedPlan=(await api('connector/claim',{},paired.token)).job;
   await api('connector/result',{taskId:acknowledgedPlan.id,leaseId:acknowledgedPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'失敗する実行工程',deviceId:paired.device.id}]})},paired.token);
   const acknowledgedStep=(await api('connector/claim',{},paired.token)).job;
@@ -338,10 +338,16 @@ try {
   const acknowledgeDetail=await api(`tasks/detail/${acknowledged.id}`);
   assert.equal(acknowledgeDetail.task.status,'needs_review');
   assert.equal(acknowledgeDetail.canAcknowledgeFailure,true);
+  const projectBeforeAcknowledge=(await api('bootstrap')).projects.find(item=>item.id===project.id);
+  assert.equal(projectBeforeAcknowledge.failed,0);
+  assert.equal(projectBeforeAcknowledge.attention,1);
   const missingNote=await fetch(`${base}/api?route=tasks%2Facknowledge-failure`,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({taskId:acknowledged.id,note:' '})});
   assert.equal(missingNote.status,400);
   await api('tasks/acknowledge-failure',{taskId:acknowledged.id,note:'接続設定を修正し、別の依頼で読み取り成功を確認した'});
   const closedFailure=await api(`tasks/detail/${acknowledged.id}`);
+  const projectAfterAcknowledge=(await api('bootstrap')).projects.find(item=>item.id===project.id);
+  assert.equal(projectAfterAcknowledge.failed,1);
+  assert.equal(projectAfterAcknowledge.attention,0);
   assert.equal(closedFailure.task.status,'failed');
   assert.match(closedFailure.task.result,/失敗: 外部接続が使えなかった/);
   assert.match(closedFailure.task.result,/失敗を確認: 接続設定を修正/);

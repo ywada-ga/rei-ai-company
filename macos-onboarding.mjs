@@ -29,7 +29,13 @@ function saveMode(mode) {
 async function host() {
   const agents=process.env.REI_LAUNCH_AGENTS_DIR||path.join(os.homedir(),'Library','LaunchAgents');
   const service=path.join(agents,'ai.rei.hub.plist');
-  if(!existsSync(service)) {
+  let repair=!existsSync(service);
+  if(!repair) {
+    const program=spawnSync('/usr/bin/plutil',['-extract','ProgramArguments.0','raw','-o','-',service],{encoding:'utf8'});
+    const loaded=spawnSync('launchctl',['print',`gui/${process.getuid()}/ai.rei.hub`],{encoding:'utf8'});
+    repair=program.status!==0||!existsSync(program.stdout.trim())||loaded.status!==0;
+  }
+  if(repair) {
     const installed=spawnSync(process.execPath,[path.join(root,'install-macos.mjs'),'hub'],{cwd:root,env:process.env,encoding:'utf8',timeout:30000});
     if(installed.status!==0)throw new Error(`中心PCの自動起動を登録できませんでした: ${(installed.stderr||installed.stdout||installed.error?.message||'原因不明').trim()}`);
     const port=Number(process.env.REI_PORT||4178);

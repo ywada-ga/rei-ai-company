@@ -5,7 +5,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult, jobTimeoutSeconds } from './openclaw-process.mjs';
-import { probeMcp } from './mcp-sync.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
 import { certificateForInvite, parseLanInvite, pinnedFetch } from './lan.mjs';
 
@@ -15,14 +14,14 @@ const jobTimeout=jobTimeoutSeconds();
 const configPath=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
 const pendingPath=path.join(path.dirname(configPath),'pending-results.json');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function syncMcpWithoutBlocking(configPath,integrations) {
+function runMcpWithoutBlocking(workerData) {
   return new Promise((resolve,reject)=>{
-    const worker=new Worker(new URL('./mcp-sync-worker.mjs',import.meta.url),{workerData:{configPath,integrations}});
+    const worker=new Worker(new URL('./mcp-sync-worker.mjs',import.meta.url),{workerData});
     let answered=false;
     worker.once('message',message=>{
       answered=true;
       if(message.error)reject(new Error(message.error));
-      else resolve(message.statuses);
+      else resolve(message);
     });
     worker.once('error',reject);
     worker.once('exit',code=>{if(!answered)reject(new Error(`MCP確認処理が終了しました (${code})`));});
@@ -141,6 +140,19 @@ async function main() {
   let lastMcpSync=0,mcpSignature='',mcpStatuses=[],mcpDefinitions=[];
   let pending=loadPending();
   const heartbeatPayload=()=>({agentName:config.agent,version:reiVersion,pendingResults:pending.length,capabilities:['openclaw','planning','execution',...mcpStatuses.filter(item=>item.status==='configured').map(item=>`mcp:${mcpDefinitions.find(definition=>definition.name===item.name)?.label||item.name}`)],mcpStatuses});
+  async function whileCheckingMcp(work) {
+    let heartbeatInFlight=false;
+    const keepHeartbeat=setInterval(()=>{
+      if(heartbeatInFlight)return;
+      heartbeatInFlight=true;
+      void api('connector/heartbeat',heartbeatPayload())
+        .then(()=>{lastHeartbeat=Date.now();})
+        .catch(e=>console.error('MCP確認中の心拍:',e.message))
+        .finally(()=>{heartbeatInFlight=false;});
+    },10000);
+    try {return await work();}
+    finally {clearInterval(keepHeartbeat);}
+  }
   async function submitPending() {
     const item=pending[0];
     const ack=await api('connector/result',item);
@@ -157,24 +169,14 @@ async function main() {
         const integrations=heartbeat.integrations||[],signature=JSON.stringify(integrations);
         mcpDefinitions=integrations;
         if(signature!==mcpSignature||Date.now()-lastMcpSync>60000) {
-          let heartbeatInFlight=false;
-          const keepHeartbeat=setInterval(()=>{
-            if(heartbeatInFlight)return;
-            heartbeatInFlight=true;
-            void api('connector/heartbeat',heartbeatPayload())
-              .then(()=>{lastHeartbeat=Date.now();})
-              .catch(e=>console.error('MCP確認中の心拍:',e.message))
-              .finally(()=>{heartbeatInFlight=false;});
-          },10000);
-          try {mcpStatuses=await syncMcpWithoutBlocking(configPath,integrations);mcpSignature=signature;lastMcpSync=Date.now();}
+          try {mcpStatuses=(await whileCheckingMcp(()=>runMcpWithoutBlocking({action:'sync',configPath,integrations}))).statuses;mcpSignature=signature;lastMcpSync=Date.now();}
           catch(e) {console.error('MCP連携:',e.message);mcpStatuses=integrations.map(item=>({name:item.name,status:'error'}));mcpSignature=signature;lastMcpSync=Date.now();}
-          finally {clearInterval(keepHeartbeat);}
         }
         for(const check of heartbeat.checks||[]) {
           const integration=integrations.find(item=>item.name===check.name);
           if(!integration)continue;
           const configured=mcpStatuses.find(item=>item.name===check.name)?.status;
-          const outcome=configured==='auth_required'?{status:'auth_required',toolCount:0,error:'対象PCでOpenClawのOAuth認証が必要です'}:configured==='error'?{status:'error',toolCount:0,error:'対象PCでMCP設定を確認できません'}:probeMcp(check.name);
+          const outcome=configured==='auth_required'?{status:'auth_required',toolCount:0,error:'対象PCでOpenClawのOAuth認証が必要です'}:configured==='error'?{status:'error',toolCount:0,error:'対象PCでMCP設定を確認できません'}:(await whileCheckingMcp(()=>runMcpWithoutBlocking({action:'probe',name:check.name}))).probe;
           await api('connector/mcp-check-result',{name:check.name,requestId:check.request_id,...outcome});
         }
       }

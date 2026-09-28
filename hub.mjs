@@ -180,6 +180,17 @@ async function api(req,res,route) {
     const tasks=all(db,"SELECT * FROM tasks WHERE project_id=? AND kind='root' ORDER BY created_at DESC,id DESC LIMIT 20",id).map(task=>taskJson(task,true));
     return send(res,200,{project,tasks,remaining:Math.max(0,project.total-tasks.length),notes:projectNotes(id,5),generatedAt:new Date().toISOString()});
   }
+  if(route==='projects/tasks/search'&&req.method==='POST') {
+    const data=await body(req),projectId=String(data.projectId||''),query=String(data.query||'').trim();
+    if(!/^[a-f0-9-]{36}$/.test(projectId))return error(res,400,'プロジェクトIDが正しくありません');
+    const project=projects().find(item=>item.id===projectId);
+    if(!project)return error(res,404,'プロジェクトが見つかりません');
+    if(!query||query.length>100)return error(res,400,'検索語を1〜100文字で入力してください');
+    const where="FROM tasks t WHERE t.project_id=? AND t.kind='root' AND (instr(lower(t.text),lower(?))>0 OR instr(lower(t.result),lower(?))>0 OR instr(lower(t.error),lower(?))>0)";
+    const args=[projectId,query,query,query],total=one(db,`SELECT COUNT(*) AS count ${where}`,...args).count;
+    const tasks=all(db,`SELECT t.* ${where} ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,...args).map(task=>taskJson(task,true));
+    return send(res,200,{project,tasks,remaining:Math.max(0,total-tasks.length),query});
+  }
   if(route.startsWith('projects/notes/')&&req.method==='GET') {
     const id=route.slice('projects/notes/'.length);
     if(!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'プロジェクトIDが正しくありません');

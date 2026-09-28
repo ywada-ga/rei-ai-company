@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectWorkQuery:'', projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -198,6 +198,7 @@ async function loadTaskDetail() {
 function renderProjects() {
   const previousProject=$('project-detail').querySelector('[data-project-id]')?.dataset.projectId;
   const draftTitle=$('project-note-title')?.value||'',draftContent=$('project-note-content')?.value||'';
+  const draftWorkQuery=$('project-work-search')?.value??state.projectWorkQuery;
   const projects=state.data.projects||[];
   if(projects.length&&!projects.some(project=>project.id===state.selectedProject))state.selectedProject=projects[0].id;
   const select=$('command-project'),selected=select.value;
@@ -207,12 +208,13 @@ function renderProjects() {
   $('project-total').textContent=`${String(projects.length).padStart(2,'0')} PROJECTS`;
   $('project-list').innerHTML=projects.length?projects.map(project=>`<button class="project-row ${state.selectedProject===project.id?'selected':''}" data-project="${escapeHtml(project.id)}"><span class="project-glyph">◈</span><span><strong>${escapeHtml(project.name)}</strong><small>${project.completed}/${project.total}件完了 · ${project.status==='active'?'稼働中':project.status==='paused'?'保留':'完了'}</small></span><em>${project.total?Math.round(project.completed/project.total*100):0}%</em></button>`).join(''):'<div class="panel-empty tall"><span>◈</span><strong>プロジェクトはまだありません</strong><small>目的を設定すると、複数の依頼をまとめて追跡できます。</small></div>';
   const project=projects.find(item=>item.id===state.selectedProject)||projects[0];
-  const work=state.projectWork?.project.id===project?.id?state.projectWork:null;
+  const work=state.projectWork?.project.id===project?.id&&(state.projectWork.query||'')===state.projectWorkQuery?state.projectWork:null;
   const tasks=work?.tasks||[];
-  const workMarkup=work?(tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):'<p class="project-empty">このプロジェクトの仕事はまだありません。</p>')+(work.remaining?`<p class="project-empty">このほか${work.remaining}件の仕事があります。</p>`:''):'<p class="project-empty">仕事を読み込み中…</p>';
-  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>最近の仕事</h4>${workMarkup}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
-  if(project?.id===previousProject&&$('project-note-title')){$('project-note-title').value=draftTitle;$('project-note-content').value=draftContent;}
-  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;state.projectNotesQuery='';renderProjects();void loadProjectNotes();void loadProjectWork();});
+  const workMarkup=work?(tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):`<p class="project-empty">${state.projectWorkQuery?'一致する仕事はありません':'このプロジェクトの仕事はまだありません。'}</p>`)+(work.remaining?`<p class="project-empty">${state.projectWorkQuery?'ほかの一致する仕事':'古い仕事'}が${work.remaining}件あります。</p>`:''):'<p class="project-empty">仕事を読み込み中…</p>';
+  const workSearchMarkup=`<form id="project-work-search-form" class="project-work-search"><label>仕事を検索<input id="project-work-search" maxlength="100" value="${escapeHtml(state.projectWorkQuery)}" placeholder="依頼・結果・失敗内容"></label><button type="submit" class="outline-button">検索</button>${state.projectWorkQuery?'<button id="project-work-search-clear" type="button" class="outline-button">解除</button>':''}</form>`;
+  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>仕事の履歴</h4>${workSearchMarkup}${workMarkup}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
+  if(project?.id===previousProject&&$('project-note-title')){$('project-note-title').value=draftTitle;$('project-note-content').value=draftContent;$('project-work-search').value=draftWorkQuery;}
+  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;state.projectNotesQuery='';state.projectWorkQuery='';renderProjects();void loadProjectNotes();void loadProjectWork();});
   document.querySelectorAll('[data-project-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.projectTask;setView('missions');});
   if($('project-assign'))$('project-assign').onclick=()=>{select.value=project.id;$('command-input').focus();};
   if($('project-share'))$('project-share').onclick=async()=>{
@@ -229,6 +231,8 @@ function renderProjects() {
   };
   if($('project-note-search-form'))$('project-note-search-form').onsubmit=event=>{event.preventDefault();state.projectNotesQuery=$('project-note-search').value.trim();if(!state.projectNotesQuery)return;void loadProjectNotes();};
   if($('project-note-search-clear'))$('project-note-search-clear').onclick=()=>{state.projectNotesQuery='';void loadProjectNotes();};
+  if($('project-work-search-form'))$('project-work-search-form').onsubmit=event=>{event.preventDefault();state.projectWorkQuery=$('project-work-search').value.trim();if(!state.projectWorkQuery)return;void loadProjectWork();};
+  if($('project-work-search-clear'))$('project-work-search-clear').onclick=()=>{state.projectWorkQuery='';$('project-work-search').value='';void loadProjectWork();};
   if($('project-status'))$('project-status').onchange=async event=>{const value=event.target.value;try{await request('/api/projects/status',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,status:value})});await refresh();}catch(error){$('project-feedback').textContent=error.message;await refresh();}};
 }
 function projectNotesMarkup(project){
@@ -247,9 +251,9 @@ async function loadProjectWork(){
   const id=state.selectedProject,epoch=state.authEpoch;
   const current=state.data?.projects.find(project=>project.id===id);
   const cached=state.projectWork?.project;
-  if(!id||cached?.id===id&&cached.total===current?.total&&cached.completed===current?.completed&&cached.failed===current?.failed&&cached.attention===current?.attention&&Date.now()-state.projectWorkLoadedAt<30000)return;
+  if(!id||cached?.id===id&&(state.projectWork?.query||'')===state.projectWorkQuery&&cached.total===current?.total&&cached.completed===current?.completed&&cached.failed===current?.failed&&cached.attention===current?.attention&&Date.now()-state.projectWorkLoadedAt<30000)return;
   const sequence=++state.projectWorkRequest;
-  try{const data=await request(`/api/projects/brief/${id}`);if(epoch!==state.authEpoch||sequence!==state.projectWorkRequest||state.selectedProject!==id)return;state.projectWork=data;state.projectWorkLoadedAt=Date.now();renderProjects();}
+  try{const query=state.projectWorkQuery,data=query?await request('/api/projects/tasks/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:id,query})}):await request(`/api/projects/brief/${id}`);if(epoch!==state.authEpoch||sequence!==state.projectWorkRequest||state.selectedProject!==id||query!==state.projectWorkQuery)return;state.projectWork=data;state.projectWorkLoadedAt=Date.now();renderProjects();}
   catch(error){if(epoch===state.authEpoch&&sequence===state.projectWorkRequest){state.projectWorkLoadedAt=Date.now();const status=$('project-feedback');if(status)status.textContent=error.message;}}
 }
 function projectBriefText({project,tasks,remaining,notes=[],generatedAt}) {
@@ -386,6 +390,7 @@ function showAuth() {
   state.projectWork=null;
   state.projectWorkLoadedAt=0;
   state.projectWorkRequest++;
+  state.projectWorkQuery='';
   state.projectNotes=null;
   state.projectNotesLoading=false;
   state.projectNotesQuery='';

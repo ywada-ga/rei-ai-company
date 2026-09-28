@@ -164,7 +164,7 @@ Macアプリを中心PCとして開いたとき、Hubのログイン時自動起
 - Mac mini向けの開発用アプリと画面の接続案内を追加。現在の同一LAN接続ではSSHやTailscaleの追加インストールは不要。Mac miniでアプリの参加選択画面まで確認した。実際の登録・心拍・仕事実行は未確認。
 ## 実機で接続するために必要な情報
 
-- SynapseConnectのMCP接続先をREIの候補に追加し、このPCのREIに登録してOpenClaw設定への反映を確認。OAuthのサインイン画面まで到達した。アカウント認証、公開ツール数の確認、REIからのナレッジ参照は未完了。ObsidianとNotionの自動取り込みはSynapseConnect側の別設定であり、このMCP登録には含まれない。
+- SynapseConnectのMCP接続先をREIの候補に追加し、このPCのREIへ登録。OAuth認証後、OpenClawの検査で27ツールが公開され、REI画面でも「接続成功・27ツール」を確認した。REIから実際の棚を検索して回答へ引用する通し検証は未完了。ObsidianとNotionの自動取り込みはSynapseConnect側の別設定であり、このMCP登録には含まれない。
 
 1. Mac miniが中心PCと同じLANにある間に、REIアプリへ接続URLと10分間有効なコードを入力し、登録と心拍を実機確認すること。アプリ同梱のOpenClawが専用エージェント `rei` を自動作成する。仕事を実行するにはAIモデルの認証設定が必要。
 2. Chatworkの実連携にはルームIDとAPIトークンが必要。REIの設定画面に所有者が入力できる。

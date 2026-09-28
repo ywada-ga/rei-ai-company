@@ -170,6 +170,8 @@ try {
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);
   assert.equal(plan.job.project.objective,'最初の成果を作る');
+  assert.deepEqual(plan.job.project.notes,[{title:'引き継ぎ',content:'公開前に担当者が確認する'}]);
+  assert.deepEqual(plan.job.project.recentWork,[]);
   await api('connector/heartbeat',{version:'0.3.0',capabilities:['openclaw','planning']},auth);
   await api('connector/result',{taskId:plan.job.id,leaseId:plan.job.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'一つ目を実行',deviceId:enrolled.device.id}]})},auth);
   assert.equal((await api('connector/claim',{},auth)).updateRequired,true);
@@ -180,6 +182,7 @@ try {
   const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');
   assert.equal(execute.job.project_id,project.id);
   assert.equal(execute.job.project.name,'新規事業');
+  assert.equal(execute.job.project.notes[0].title,'引き継ぎ');
   await api('connector/result',{taskId:execute.job.id,leaseId:execute.job.lease_id,success:true,result:'一つ目が完了'},auth);
   const replayedResult=await api('connector/result',{taskId:execute.job.id,leaseId:execute.job.lease_id,success:true,result:'一つ目が完了'},auth);
   assert.equal(replayedResult.alreadyRecorded,true);
@@ -360,6 +363,9 @@ try {
   assert.ok(recovered.events.some(item=>item.type==='plan_retried'));
   const acknowledged=(await api('command',{text:'失敗の確認と終了',projectId:project.id})).task;
   const acknowledgedPlan=(await api('connector/claim',{},paired.token)).job;
+  assert.equal(acknowledgedPlan.project.recentWork[0].text,'テスト用の仕事をして');
+  assert.equal(acknowledgedPlan.project.recentWork[0].status,'completed');
+  assert.match(acknowledgedPlan.project.recentWork[0].summary,/一つ目が完了/);
   await api('connector/result',{taskId:acknowledgedPlan.id,leaseId:acknowledgedPlan.lease_id,success:true,result:JSON.stringify({steps:[{prompt:'失敗する実行工程',deviceId:paired.device.id}]})},paired.token);
   const acknowledgedStep=(await api('connector/claim',{},paired.token)).job;
   await api('connector/result',{taskId:acknowledgedStep.id,leaseId:acknowledgedStep.lease_id,success:false,error:'外部接続が使えなかった'},paired.token);

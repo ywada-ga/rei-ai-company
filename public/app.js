@@ -242,6 +242,17 @@ function renderProjects() {
     catch(error){if(state.selectedProject===project.id)status.textContent=error.message;}
     finally{button.disabled=false;}
   };
+  document.querySelectorAll('[data-note-to-playbook]').forEach(button=>button.onclick=()=>{
+    const note=state.projectNotes?.projectId===project.id?state.projectNotes.notes.find(item=>item.id===button.dataset.noteToPlaybook):null;
+    if(!note)return;
+    if(['playbook-title','playbook-purpose','playbook-prompt'].some(id=>$(id).value.trim())&&!confirm('作成中の共有手順の下書きを置き換えますか？'))return;
+    setView('playbooks');
+    $('playbook-title').value=note.title.slice(0,120);
+    $('playbook-purpose').value='';
+    $('playbook-prompt').value=note.content.slice(0,8000);
+    $('playbook-feedback').textContent='共有ナレッジを再利用できる依頼文に書き直し、使う場面を入力してから保存してください。';
+    $('playbook-purpose').focus();
+  });
   if($('project-note-search-form'))$('project-note-search-form').onsubmit=event=>{event.preventDefault();state.projectNotesQuery=$('project-note-search').value.trim();if(!state.projectNotesQuery)return;void loadProjectNotes();};
   if($('project-note-search-clear'))$('project-note-search-clear').onclick=()=>{state.projectNotesQuery='';void loadProjectNotes();};
   if($('project-work-search-form'))$('project-work-search-form').onsubmit=event=>{event.preventDefault();state.projectWorkQuery=$('project-work-search').value.trim();if(!state.projectWorkQuery)return;void loadProjectWork();};
@@ -251,7 +262,7 @@ function renderProjects() {
 function projectNotesMarkup(project){
   const data=state.projectNotes?.projectId===project.id?state.projectNotes:null;
   const notes=data?.notes||[];
-  return `<section class="project-notes"><h4>共有ナレッジ</h4><p class="project-empty">このプロジェクトの決定事項・手順・引き継ぎ情報を残せます。</p><form id="project-note-search-form" class="project-note-search"><label>共有メモを検索<input id="project-note-search" maxlength="100" value="${escapeHtml(state.projectNotesQuery)}" placeholder="件名・内容・作成者"></label><button type="submit" class="outline-button">検索</button>${state.projectNotesQuery?'<button id="project-note-search-clear" type="button" class="outline-button">解除</button>':''}</form>${data?notes.length?notes.map(note=>`<article class="project-note"><strong>${escapeHtml(note.title)}</strong><small>${escapeHtml(note.author)} · ${formatTime(note.createdAt)}</small><p>${escapeHtml(note.content)}</p></article>`).join(''):`<p class="project-empty">${state.projectNotesQuery?'一致する共有メモはありません':'共有メモはまだありません。'}</p>`:'<p class="project-empty">共有メモを読み込み中…</p>'}${data?.remaining?`<p class="project-empty">${state.projectNotesQuery?'ほかの一致する共有メモ':'古い共有メモ'}が${data.remaining}件あります。</p>`:''}${state.data.user.role==='viewer'?'':`<form id="project-note-form"><label>件名<input id="project-note-title" required maxlength="120" placeholder="例：LP公開までの手順"></label><label>共有する内容<textarea id="project-note-content" required maxlength="4000" rows="3" placeholder="決定事項や再利用できる手順を記入"></textarea></label><button type="submit" class="outline-button">共有メモを保存 ↗</button><span id="project-note-status" role="status"></span></form>`}</section>`;
+  return `<section class="project-notes"><h4>共有ナレッジ</h4><p class="project-empty">このプロジェクトの決定事項・手順・引き継ぎ情報を残せます。</p><form id="project-note-search-form" class="project-note-search"><label>共有メモを検索<input id="project-note-search" maxlength="100" value="${escapeHtml(state.projectNotesQuery)}" placeholder="件名・内容・作成者"></label><button type="submit" class="outline-button">検索</button>${state.projectNotesQuery?'<button id="project-note-search-clear" type="button" class="outline-button">解除</button>':''}</form>${data?notes.length?notes.map(note=>`<article class="project-note"><strong>${escapeHtml(note.title)}</strong><small>${escapeHtml(note.author)} · ${formatTime(note.createdAt)}</small><p>${escapeHtml(note.content)}</p>${state.data.user.role==='viewer'?'':`<button type="button" class="outline-button" data-note-to-playbook="${escapeHtml(note.id)}">共有手順の下書きへ ↗</button>`}</article>`).join(''):`<p class="project-empty">${state.projectNotesQuery?'一致する共有メモはありません':'共有メモはまだありません。'}</p>`:'<p class="project-empty">共有メモを読み込み中…</p>'}${data?.remaining?`<p class="project-empty">${state.projectNotesQuery?'ほかの一致する共有メモ':'古い共有メモ'}が${data.remaining}件あります。</p>`:''}${state.data.user.role==='viewer'?'':`<form id="project-note-form"><label>件名<input id="project-note-title" required maxlength="120" placeholder="例：LP公開までの手順"></label><label>共有する内容<textarea id="project-note-content" required maxlength="4000" rows="3" placeholder="決定事項や再利用できる手順を記入"></textarea></label><button type="submit" class="outline-button">共有メモを保存 ↗</button><span id="project-note-status" role="status"></span></form>`}</section>`;
 }
 async function loadProjectNotes(){
   const id=state.selectedProject,epoch=state.authEpoch,query=state.projectNotesQuery,sequence=++state.projectNotesRequest;if(!id||state.projectNotes?.projectId===id&&(state.projectNotes.query||'')===query)return;

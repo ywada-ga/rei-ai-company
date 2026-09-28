@@ -165,7 +165,8 @@ async function api(req,res,route) {
     const events=eventRows.slice(0,300).reverse().map(item=>({id:item.id,actor:item.actor,type:item.type,detail:item.detail,taskId:item.task_id,createdAt:new Date(item.created_at).toISOString()}));
     const canCancel=(['owner','admin'].includes(user.role)||user.role==='requester'&&root.created_by===user.id)&&cancellable(db,root);
     const canRetryPlan=['owner','admin'].includes(user.role)&&root.status==='needs_review'&&children.length===1&&children[0].kind==='plan'&&['failed','needs_review'].includes(children[0].status);
-    return send(res,200,{task:taskJson(root),children:children.map(task=>({...taskJson(task),lateReport:byTask.get(task.id)?.report||null,lateReportSuccess:!!byTask.get(task.id)?.success})),events,hasOlderEvents:eventRows.length>300,canCancel,canRetryPlan});
+    const canAcknowledgeFailure=['owner','admin'].includes(user.role)&&root.status==='needs_review'&&children.length>0&&children.every(child=>['completed','failed','cancelled'].includes(child.status))&&children.some(child=>child.status==='failed');
+    return send(res,200,{task:taskJson(root),children:children.map(task=>({...taskJson(task),lateReport:byTask.get(task.id)?.report||null,lateReportSuccess:!!byTask.get(task.id)?.success})),events,hasOlderEvents:eventRows.length>300,canCancel,canRetryPlan,canAcknowledgeFailure});
   }
   if(route.startsWith('tasks/events/')&&req.method==='POST') {
     const id=route.slice('tasks/events/'.length),data=await body(req),before=Number(data.beforeTime),beforeId=String(data.beforeId||'');
@@ -176,6 +177,23 @@ async function api(req,res,route) {
   }
   if(route==='tasks/cancel'&&req.method==='POST') {if(user.role==='viewer')return error(res,403,'中止する権限がありません');const data=await body(req),root=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root'",String(data.taskId||''));if(!root)return error(res,404,'仕事が見つかりません');if(!['owner','admin'].includes(user.role)&&root.created_by!==user.id)return error(res,403,'中止する権限がありません');if(!cancelTask(db,root,user.username))return error(res,409,'すでに実行中か、中止できない状態です');return send(res,200,{ok:true});}
   if(route==='tasks/retry-plan'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'計画を再実行する権限がありません');const data=await body(req);if(!retryPlan(db,String(data.taskId||''),user.username))return error(res,409,'再実行できる計画が見つかりません');return send(res,200,{ok:true});}
+  if(route==='tasks/acknowledge-failure'&&req.method==='POST') {
+    if(!['owner','admin'].includes(user.role))return error(res,403,'失敗を確認する権限がありません');
+    const data=await body(req),id=String(data.taskId||''),note=text(data.note,8000);
+    const accepted=transaction(db,()=>{
+      const root=one(db,"SELECT id FROM tasks WHERE id=? AND kind='root' AND status='needs_review'",id);
+      if(!root)return false;
+      const children=all(db,'SELECT kind,status,result,error FROM tasks WHERE parent_id=? ORDER BY created_at,id',id);
+      if(!children.length||!children.every(child=>['completed','failed','cancelled'].includes(child.status))||!children.some(child=>child.status==='failed'))return false;
+      const work=children.filter(child=>['execute','human'].includes(child.kind));
+      const summary=(work.length?work:children).map((child,index)=>`${index+1}. ${child.status==='completed'?'完了':child.status==='failed'?'失敗':'中止'}: ${(child.result||child.error).slice(0,1000)}`).join('\n');
+      run(db,"UPDATE tasks SET status='failed',result=?,error=?,finished_at=? WHERE id=? AND status='needs_review'",`${summary}\n失敗を確認: ${note}`,note,Date.now(),id);
+      event(db,id,user.username,'failure_acknowledged',note.slice(0,300));
+      return true;
+    });
+    if(!accepted)return error(res,409,'確認可能な失敗が見つかりません');
+    return send(res,200,{ok:true});
+  }
   if(route==='tasks/reassign'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'担当PCを変更する権限がありません');const data=await body(req),id=String(data.taskId||''),deviceId=String(data.deviceId||'');const device=one(db,"SELECT id,label,capabilities FROM devices WHERE id=? AND revoked=0 AND last_seen>? AND version=?",deviceId,Date.now()-30000,reiVersion);if(!device||!JSON.parse(device.capabilities||'[]').includes('execution'))return error(res,400,'接続中で実行可能なPCを選んでください');const accepted=transaction(db,()=>{const task=one(db,"SELECT id,device_id FROM tasks WHERE id=? AND kind='execute' AND status='ready'",id);if(!task||task.device_id===device.id)return false;run(db,'UPDATE tasks SET device_id=? WHERE id=?',device.id,id);event(db,id,user.username,'reassigned',`担当PCを${device.label}に変更`);return true;});if(!accepted)return error(res,409,'未着手の別PC向け工程が見つかりません');return send(res,200,{ok:true});}
   if(route==='human/respond'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'人の回答を記録する権限がありません');const data=await body(req),id=String(data.taskId||''),answer=text(data.answer,8000);const accepted=transaction(db,()=>{const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='human' AND status IN ('waiting_human','waiting_reply')",id);if(!task)return false;run(db,"UPDATE tasks SET status='completed',result=?,finished_at=? WHERE id=?",answer,Date.now(),id);event(db,id,user.username,'human_reply','画面から回答を記録');finishRoot(db,task.parent_id);return true;});if(!accepted)return error(res,409,'回答待ちの仕事が見つかりません');return send(res,200,{ok:true});}
   if(route==='tasks/reconcile'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'結果を確認する権限がありません');const data=await body(req),id=String(data.taskId||''),resolution=String(data.resolution||''),note=text(data.note,8000);if(!['completed','failed'].includes(resolution))return error(res,400,'確認結果が正しくありません');const accepted=transaction(db,()=>{const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind IN ('execute','human') AND status='needs_review'",id);if(!task)return false;run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_id=CASE WHEN kind=? THEN lease_id ELSE NULL END,lease_until=0 WHERE id=?',resolution,resolution==='completed'?note:'',resolution==='failed'?note:'',Date.now(),'execute',id);event(db,id,user.username,'reconciled',`${resolution}: ${note.slice(0,300)}`);finishRoot(db,task.parent_id);return true;});if(!accepted)return error(res,409,'確認待ちの工程が見つかりません');return send(res,200,{ok:true});}

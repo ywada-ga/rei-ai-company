@@ -174,7 +174,8 @@ export function report(db) {
   const devices=all(db,`SELECT d.id,d.label,d.revoked,COUNT(t.id) AS total,
     COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END),0) AS completed,
     COALESCE(SUM(CASE WHEN t.status='running' THEN 1 ELSE 0 END),0) AS running,
-    COALESCE(SUM(CASE WHEN t.status IN ('failed','needs_review') THEN 1 ELSE 0 END),0) AS attention
+    COALESCE(SUM(CASE WHEN t.status='failed' THEN 1 ELSE 0 END),0) AS failed,
+    COALESCE(SUM(CASE WHEN t.status='needs_review' THEN 1 ELSE 0 END),0) AS attention
     FROM devices d LEFT JOIN tasks t ON t.device_id=d.id AND t.kind IN ('plan','execute') AND ((t.started_at>=? AND t.started_at<?) OR (t.finished_at>=? AND t.finished_at<?) OR t.status='running')
     GROUP BY d.id ORDER BY d.rowid`,start,end,start,end);
   const people=one(db,`SELECT COUNT(*) AS total,

@@ -1,6 +1,11 @@
 // HTTPS MCP endpoints and prerequisites are checked against each provider's official documentation.
 export const MCP_PRESETS = [
   {
+    id:'synapseconnect',category:'会社の記憶',title:'SynapseConnect',label:'SynapseConnect',url:'https://mcp.synapse-connect.ai/mcp',auth:'oauth',
+    note:'会社のナレッジを参照します。対象PCでSynapseConnectに認証し、参照できる棚と権限を確認してください。ObsidianやNotionの一括取り込みは別途設定します。',
+    docs:'https://mcp.synapse-connect.ai/console/'
+  },
+  {
     id:'freee',category:'国内の業務サービス',title:'freee',label:'freee',url:'https://mcp.freee.co.jp/mcp',auth:'oauth',
     note:'freeeのログインが必要です。公式案内ではAgent Skillsの導入も必須とされています。',
     docs:'https://support.freee.co.jp/hc/ja/articles/56390747520537-freee-mcp-%E3%83%AA%E3%83%A2%E3%83%BC%E3%83%88%E7%89%88-%E3%82%92%E8%A8%AD%E5%AE%9A%E3%81%97%E3%81%A6%E5%88%A9%E7%94%A8%E3%81%99%E3%82%8B'

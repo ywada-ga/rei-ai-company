@@ -10,6 +10,10 @@ for(const preset of MCP_PRESETS) {
   assert.ok(preset.category);
 }
 assert.ok(MCP_PRESETS.some(item=>item.id==='notion'));
+assert.deepEqual(
+  (({url,auth})=>({url,auth}))(MCP_PRESETS.find(item=>item.id==='synapseconnect')),
+  {url:'https://mcp.synapse-connect.ai/mcp',auth:'oauth'}
+);
 assert.ok(MCP_PRESETS.some(item=>item.id==='drive'));
 for(const id of ['freee','moneyforward-accounting','moneyforward-tenant','misoca','kintone-docs','suzuri','meeting-ai','google-docs','google-sheets','google-slides','google-chat','google-people','google-workspace-search'])assert.ok(MCP_PRESETS.some(item=>item.id===id));
 for(const id of ['context7','supabase','sentry','cloudflare-api','cloudflare-docs','upstash','exa','firecrawl','stripe'])assert.ok(MCP_PRESETS.some(item=>item.id===id));

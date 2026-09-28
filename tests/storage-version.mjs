@@ -16,6 +16,7 @@ db.close();
 db=openStorage(dir);
 assert.equal(db.prepare('PRAGMA user_version').get().user_version,SCHEMA_VERSION);
 assert.equal(db.prepare("SELECT value FROM settings WHERE key='sentinel'").get().value,'preserved');
+assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_notes'").get());
 db.exec(`PRAGMA user_version=${SCHEMA_VERSION+1}`);
 db.close();
 

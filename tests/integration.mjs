@@ -132,6 +132,12 @@ try {
   assert.equal(emptyBrief.project.objective,'最初の成果を作る');
   assert.deepEqual(emptyBrief.tasks,[]);
   assert.equal(emptyBrief.remaining,0);
+  const note=(await api('projects/notes/create',{projectId:project.id,title:'引き継ぎ',content:'公開前に担当者が確認する'})).note;
+  assert.equal(note.author,'owner');
+  const notes=await api(`projects/notes/${project.id}`);
+  assert.equal(notes.notes[0].id,note.id);
+  assert.equal(notes.remaining,0);
+  assert.equal((await api(`projects/brief/${project.id}`)).notes[0].title,'引き継ぎ');
   const created=await api('command',{text:'テスト用の仕事をして',department:'operations',projectId:project.id});
   assert.equal(created.task.projectId,project.id);
   const projectBrief=await api(`projects/brief/${project.id}`);

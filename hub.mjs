@@ -50,6 +50,8 @@ const text=(value,max=8000)=>{const result=String(value??'').trim();if(!result||
 async function body(req,maxBytes=200000) {let raw='',bytes=0;const decoder=new StringDecoder('utf8');for await(const chunk of req){bytes+=chunk.length;if(bytes>maxBytes)throw Object.assign(new Error('送信内容が長すぎます'),{status:413});raw+=decoder.write(chunk);}raw+=decoder.end();try{return JSON.parse(raw||'{}');}catch{throw Object.assign(new Error('JSONが正しくありません'),{status:400});}}
 function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.kind,text:t.text,department:t.department,projectId:t.project_id||null,status:t.status,assignedDeviceId:t.device_id,result:brief?t.result.slice(0,500):t.result,error:brief?t.error.slice(0,500):t.error,createdAt:new Date(t.created_at).toISOString(),startedAt:t.started_at?new Date(t.started_at).toISOString():null,finishedAt:t.finished_at?new Date(t.finished_at).toISOString():null};}
 function projectJson(p) {return {id:p.id,name:p.name,objective:p.objective,status:p.status,createdAt:new Date(p.created_at).toISOString(),updatedAt:new Date(p.updated_at).toISOString(),total:p.total||0,completed:p.completed||0,failed:p.failed||0,attention:p.attention||0};}
+function projectNoteJson(n) {return {id:n.id,projectId:n.project_id,title:n.title,content:n.content,author:n.username,createdAt:new Date(n.created_at).toISOString()};}
+function projectNotes(id,limit=50) {return all(db,'SELECT n.*,u.username FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.project_id=? ORDER BY n.created_at DESC,n.id DESC LIMIT ?',id,limit).map(projectNoteJson);}
 function projects() {return all(db,"SELECT p.*,COUNT(t.id) AS total,COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END),0) AS completed,COALESCE(SUM(CASE WHEN t.status='failed' THEN 1 ELSE 0 END),0) AS failed,COALESCE(SUM(CASE WHEN t.status='needs_review' THEN 1 ELSE 0 END),0) AS attention FROM projects p LEFT JOIN tasks t ON t.project_id=p.id AND t.kind='root' GROUP BY p.id ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,p.updated_at DESC").map(projectJson);}
 function readyConnector() {
   const devices=all(db,'SELECT capabilities FROM devices WHERE revoked=0 AND last_seen>? AND version=?',Date.now()-30000,reiVersion);
@@ -156,7 +158,22 @@ async function api(req,res,route) {
     const project=projects().find(item=>item.id===id);
     if(!project)return error(res,404,'プロジェクトが見つかりません');
     const tasks=all(db,"SELECT * FROM tasks WHERE project_id=? AND kind='root' ORDER BY created_at DESC,id DESC LIMIT 20",id).map(task=>taskJson(task,true));
-    return send(res,200,{project,tasks,remaining:Math.max(0,project.total-tasks.length),generatedAt:new Date().toISOString()});
+    return send(res,200,{project,tasks,remaining:Math.max(0,project.total-tasks.length),notes:projectNotes(id,5),generatedAt:new Date().toISOString()});
+  }
+  if(route.startsWith('projects/notes/')&&req.method==='GET') {
+    const id=route.slice('projects/notes/'.length);
+    if(!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'プロジェクトIDが正しくありません');
+    if(!one(db,'SELECT id FROM projects WHERE id=?',id))return error(res,404,'プロジェクトが見つかりません');
+    const total=one(db,'SELECT COUNT(*) AS count FROM project_notes WHERE project_id=?',id).count;
+    return send(res,200,{projectId:id,notes:projectNotes(id),remaining:Math.max(0,total-50)});
+  }
+  if(route==='projects/notes/create'&&req.method==='POST') {
+    if(user.role==='viewer')return error(res,403,'共有メモを追加する権限がありません');
+    const data=await body(req),projectId=String(data.projectId||''),title=text(data.title,120),content=text(data.content,4000);
+    if(!one(db,'SELECT id FROM projects WHERE id=?',projectId))return error(res,404,'プロジェクトが見つかりません');
+    const id=uid(),now=Date.now();
+    transaction(db,()=>{run(db,'INSERT INTO project_notes(id,project_id,title,content,created_by,created_at) VALUES(?,?,?,?,?,?)',id,projectId,title,content,user.id,now);event(db,null,user.username,'project_note_created',`${projectId}: ${title}`);});
+    return send(res,201,{note:projectNoteJson(one(db,'SELECT n.*,u.username FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.id=?',id))});
   }
   if(route==='projects/status'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'プロジェクトを変更する権限がありません');const data=await body(req),status=String(data.status||''),id=String(data.projectId||'');if(!['active','paused','completed'].includes(status))return error(res,400,'状態が正しくありません');const project=one(db,'SELECT * FROM projects WHERE id=?',id);if(!project)return error(res,404,'プロジェクトが見つかりません');transaction(db,()=>{run(db,'UPDATE projects SET status=?,updated_at=? WHERE id=?',status,Date.now(),id);event(db,null,user.username,'project_status',`${project.name}: ${status}`);});return send(res,200,{project:projectJson(one(db,'SELECT * FROM projects WHERE id=?',id))});}
   if(route==='tasks/approve'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'承認する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='planning' WHERE id=?",task.id);run(db,"UPDATE tasks SET status='ready' WHERE parent_id=? AND kind='plan' AND status='blocked'",task.id);event(db,task.id,user.username,'approved','実行を承認');});return send(res,200,{ok:true});}

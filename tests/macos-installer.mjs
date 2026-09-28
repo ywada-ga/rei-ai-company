@@ -1,10 +1,12 @@
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, statSync, copyFileSync, existsSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { startLanGateway } from '../lan.mjs';
 
 if(process.platform==='darwin') {
   const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -78,6 +80,19 @@ else process.exit(2);
     assert.equal(code,0,output);
     assert.equal(JSON.parse(readFileSync(path.join(project,'data','connector.json'),'utf8')).agent,'rei');
     assert.match(readFileSync(path.join(temp,'joined-agents','ai.rei.connector.plist'),'utf8'),/connector\.mjs/);
+    const reserved=net.createServer();await new Promise(resolve=>reserved.listen(0,'127.0.0.1',resolve));const lanPort=reserved.address().port;await new Promise(resolve=>reserved.close(resolve));
+    const gateway=await startLanGateway({dataDir:path.join(temp,'lan-certificate'),hubPort:server.address().port,port:lanPort,addresses:['127.0.0.1']});
+    try {
+      const lanConfig=path.join(temp,'lan-connector.json');
+      const lanChild=spawn(process.execPath,['connector.mjs','join',gateway.urls[0]],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:path.join(temp,'joined-agents'),REI_FAKE_AGENT_STATE:path.join(temp,'agent.json'),REI_FAKE_CONFIG_FILE:configFile,REI_CONNECTOR_CONFIG:lanConfig,REI_JOIN_CODE:'TESTCODE12345678'},stdio:['ignore','pipe','pipe']});
+      let lanOutput='';lanChild.stdout.on('data',chunk=>lanOutput+=chunk);lanChild.stderr.on('data',chunk=>lanOutput+=chunk);
+      const lanTimer=setTimeout(()=>lanChild.kill(),15000);const lanExit=await new Promise(resolve=>lanChild.on('close',resolve));clearTimeout(lanTimer);
+      assert.equal(lanExit,0,lanOutput);
+      const saved=JSON.parse(readFileSync(lanConfig,'utf8'));
+      assert.equal(saved.hub,`https://127.0.0.1:${lanPort}`);
+      assert.match(saved.pin,/^[a-f0-9]{64}$/);
+      assert.match(saved.cert,/BEGIN CERTIFICATE/);
+    } finally {await gateway.close();}
   } finally {server.close();}
   console.log('PASS macOS LaunchAgent registration and guided join');
 } else console.log('SKIP macOS LaunchAgent registration on this OS');

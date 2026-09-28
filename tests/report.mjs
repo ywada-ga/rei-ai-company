@@ -20,15 +20,17 @@ run(db,'INSERT INTO tasks(id,kind,text,status,error,created_at,finished_at) VALU
 run(db,'INSERT INTO tasks(id,kind,text,status,error,created_at,finished_at) VALUES(?,?,?,?,?,?,?)','root-today-review','root','今日の要確認','needs_review','今日の結果を確認',today,today);
 run(db,'INSERT INTO tasks(id,kind,text,status,error,created_at,finished_at) VALUES(?,?,?,?,?,?,?)','root-today-failed','root','今日の失敗','failed','確認済みの失敗',today,today);
 run(db,'INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)','root-old-approval','root','前日から承認待ち','approval_pending',yesterday);
+run(db,'INSERT INTO tasks(id,kind,text,status,created_at) VALUES(?,?,?,?,?)','root-today-approval','root','今日の承認待ち','approval_pending',today);
 run(db,'INSERT INTO tasks(id,parent_id,kind,text,status,device_id,created_at,started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?)','device-today','root-today','execute','PCの工程','completed',deviceId,yesterday,yesterday,today);
 run(db,'INSERT INTO tasks(id,parent_id,kind,text,status,error,device_id,created_at,started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?)','device-failed','root-today-failed','execute','失敗した工程','failed','実行失敗',deviceId,today,today,today);
 run(db,'INSERT INTO tasks(id,parent_id,kind,text,status,created_at,finished_at) VALUES(?,?,?,?,?,?,?)','human-today','root-today','human','人の回答','completed',yesterday,today);
 run(db,"UPDATE tasks SET project_id=? WHERE id IN ('root-today','root-old-review','root-old-approval')",'project-report');
 const result=report(db);
-assert.equal(result.total,3);
+assert.equal(result.total,4);
 assert.equal(result.completed,1);
 assert.equal(result.failed,1);
 assert.equal(result.interrupted,1);
+assert.equal(result.approvalPending,1);
 assert.equal(result.tasks.find(task=>task.id==='root-today').activityAt,new Date(today).toISOString());
 assert.equal(result.tasks.find(task=>task.id==='root-today').projectName,'顧客Aの案件');
 assert.equal(result.attentionBacklog.tasks[0].projectName,'顧客Aの案件');

@@ -4,7 +4,9 @@
 
 ## 配布・接続の要件変更
 
-利用者はREIアプリだけを入れれば参加できる形を希望。同じネットワーク内の直接接続と、会社・自宅など離れたMacの任意の暗号化接続を対象とする。現行のZIP + Node.js + OpenClaw + Tailscaleの個別導入は未達。実装方針と検証条件は [SINGLE_APP_CONNECTIVITY.md](SINGLE_APP_CONNECTIVITY.md) を参照。現時点でREI単体の遠隔接続、同梱アプリ、新規Macでの実機検証は完了していない。
+利用者はREIアプリだけを入れれば参加できる形を希望。同じネットワーク内の直接接続と、会社・自宅など離れたMacの任意の暗号化接続を対象とする。現行のZIP + Node.js + OpenClaw + Tailscaleの個別導入は未達。実装方針と検証条件は [SINGLE_APP_CONNECTIVITY.md](SINGLE_APP_CONNECTIVITY.md) を参照。現時点でREI単体の遠隔接続、配布可能な完成アプリ、新規Macでの実機検証は完了していない。
+
+開発用macOSアプリの組み立てを追加。公式Node.js 24.21.0のSHA-256を確認して同梱し、このPCのOpenClaw 2026.7.1をアプリへコピーした。アプリ内Node.js・OpenClawの版を確認し、隔離した保存先とポートでREI Hubの初期登録画面用HTTP応答を実機で確認。macOS向けビルドはApple Siliconのみ確認。署名・公証、別Macへの配布、アプリ内の参加画面、遠隔接続は未完了。
 
 ## 完成の判定
 

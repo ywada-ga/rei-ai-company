@@ -16,11 +16,13 @@ function windowsEntry() {
 }
 
 export function checkOpenClaw() {
+  if(process.env.REI_OPENCLAW_ENTRY)return spawnSync(process.execPath,[bundledEntry(),'--version'],{encoding:'utf8',windowsHide:true});
   if(process.platform==='win32')return spawnSync(process.execPath,[windowsEntry(),'--version'],{encoding:'utf8',windowsHide:true});
   return spawnSync('openclaw',['--version'],{encoding:'utf8'});
 }
 
 export function runOpenClawCli(args) {
+  if(process.env.REI_OPENCLAW_ENTRY)return spawnSync(process.execPath,[bundledEntry(),...args],{encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:1024*1024});
   if(process.platform==='win32')return spawnSync(process.execPath,[windowsEntry(),...args],{encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:1024*1024});
   return spawnSync('openclaw',args,{encoding:'utf8',timeout:30000,maxBuffer:1024*1024});
 }
@@ -33,8 +35,15 @@ export function jobTimeoutSeconds(value=process.env.REI_JOB_TIMEOUT_SECONDS) {
 
 export function spawnOpenClaw(agent,key,instruction,timeoutSeconds=jobTimeoutSeconds()) {
   const args=['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout',String(timeoutSeconds)];
+  if(process.env.REI_OPENCLAW_ENTRY)return spawn(process.execPath,[bundledEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   return spawn('openclaw',args,{stdio:['ignore','pipe','pipe']});
+}
+
+function bundledEntry() {
+  const entry=process.env.REI_OPENCLAW_ENTRY;
+  if(!path.isAbsolute(entry)||!existsSync(entry))throw new Error('REIに同梱したOpenClawが見つかりません。REIアプリを入れ直してください');
+  return entry;
 }
 
 export function parseOpenClawResult(output) {

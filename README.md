@@ -13,6 +13,8 @@ REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴�
 
 ## 1台で始める
 
+macOSの開発用アプリは、開発者がNode.jsとOpenClaw CLIを準備したMacで `npm run package:macos` を実行すると `dist/REI-<版>-<CPU>.app` に作成できます。利用者のMacにはこのアプリだけを置けます。公式Node.jsをSHA-256で照合して同梱し、インストール済みOpenClawもアプリ内へコピーします。データはアプリ外の `~/Library/Application Support/REI` に保存します。現在のアプリは署名・公証と新規Macでの検証が未完了で、遠隔端末の接続もまだ従来方式です。
+
 ターミナルを使わずに試す場合は、GitHubの **Code → Download ZIP** で取得して展開し、[Node.js 24以降](https://nodejs.org/)を入れてください。Macでは展開したフォルダの **Start-REI.command**、Windowsでは **Start-REI.cmd** を開くとREIの画面が起動します。起動ファイルは必要なNode.jsの版を確認し、起動に失敗した場合はエラーを表示したまま待ちます。初回登録後、このPCのOpenClawを仕事に参加させるには画面の **端末・設定 → このPCの接続コードを作る** に従ってください。
 
 コマンドで始める場合:

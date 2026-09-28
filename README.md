@@ -15,6 +15,8 @@ REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴�
 
 macOSの開発用アプリは、開発者がNode.jsとOpenClaw CLIを準備したMacで `npm run package:macos` を実行すると `dist/REI-<版>-<CPU>.app` に作成できます。利用者のMacにはこのアプリだけを置けます。公式Node.jsをSHA-256で照合して同梱し、インストール済みOpenClawもアプリ内へコピーします。初回起動で中心PCか参加PCかを選びます。データはアプリ外の `~/Library/Application Support/REI` に保存します。アプリは署名・公証と新規Macでの検証が未完了です。
 
+別のMacへ渡す配布版にはApple Developer ID Application証明書と公証が必要です。開発用アプリをそのままAirDropするとmacOSから「破損」などの警告で起動を拒否されることがあります。証明書と公証用Keychainプロファイルがある開発Macでは `REI_DEVELOPER_IDENTITY='Developer ID Application: ...' REI_NOTARY_PROFILE='...' npm run release:macos` を実行します。この処理は同梱したMac用実行ファイルとアプリを署名し、Appleの公証・ステープル・Gatekeeper検査を通した後、`dist/REI-<版>-<CPU>-notarized.zip` を作ります。開発用アプリと保存データは上書きしません。現時点でこのMacに有効な配布用証明書はないため、署名・公証済みZIPはまだ作成できていません。
+
 ターミナルを使わずに試す場合は、GitHubの **Code → Download ZIP** で取得して展開し、[Node.js 24以降](https://nodejs.org/)を入れてください。Macでは展開したフォルダの **Start-REI.command**、Windowsでは **Start-REI.cmd** を開くとREIの画面が起動します。起動ファイルは必要なNode.jsの版を確認し、起動に失敗した場合はエラーを表示したまま待ちます。初回登録後、このPCのOpenClawを仕事に参加させるには画面の **端末・設定 → このPCの接続コードを作る** に従ってください。
 
 コマンドで始める場合:

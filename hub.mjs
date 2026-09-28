@@ -187,6 +187,16 @@ async function api(req,res,route) {
     const total=one(db,'SELECT COUNT(*) AS count FROM project_notes WHERE project_id=?',id).count;
     return send(res,200,{projectId:id,notes:projectNotes(id),remaining:Math.max(0,total-50)});
   }
+  if(route==='projects/notes/search'&&req.method==='POST') {
+    const data=await body(req),projectId=String(data.projectId||''),query=String(data.query||'').trim();
+    if(!/^[a-f0-9-]{36}$/.test(projectId))return error(res,400,'プロジェクトIDが正しくありません');
+    if(!one(db,'SELECT id FROM projects WHERE id=?',projectId))return error(res,404,'プロジェクトが見つかりません');
+    if(!query||query.length>100)return error(res,400,'検索語を1〜100文字で入力してください');
+    const where='FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.project_id=? AND (instr(lower(n.title),lower(?))>0 OR instr(lower(n.content),lower(?))>0 OR instr(lower(u.username),lower(?))>0)';
+    const args=[projectId,query,query,query],total=one(db,`SELECT COUNT(*) AS count ${where}`,...args).count;
+    const notes=all(db,`SELECT n.*,u.username ${where} ORDER BY n.created_at DESC,n.id DESC LIMIT 50`,...args).map(projectNoteJson);
+    return send(res,200,{projectId,notes,remaining:Math.max(0,total-notes.length),query});
+  }
   if(route==='projects/notes/create'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'共有メモを追加する権限がありません');
     const data=await body(req),projectId=String(data.projectId||''),title=text(data.title,120),content=text(data.content,4000);

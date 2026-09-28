@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectNotes:null, projectNotesLoading:false, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -194,6 +194,8 @@ async function loadTaskDetail() {
   finally{if(epoch===state.authEpoch&&state.taskDetailLoading===id)state.taskDetailLoading=null;}
 }
 function renderProjects() {
+  const previousProject=$('project-detail').querySelector('[data-project-id]')?.dataset.projectId;
+  const draftTitle=$('project-note-title')?.value||'',draftContent=$('project-note-content')?.value||'';
   const projects=state.data.projects||[];
   if(projects.length&&!projects.some(project=>project.id===state.selectedProject))state.selectedProject=projects[0].id;
   const select=$('command-project'),selected=select.value;
@@ -204,8 +206,9 @@ function renderProjects() {
   $('project-list').innerHTML=projects.length?projects.map(project=>`<button class="project-row ${state.selectedProject===project.id?'selected':''}" data-project="${escapeHtml(project.id)}"><span class="project-glyph">◈</span><span><strong>${escapeHtml(project.name)}</strong><small>${project.completed}/${project.total}件完了 · ${project.status==='active'?'稼働中':project.status==='paused'?'保留':'完了'}</small></span><em>${project.total?Math.round(project.completed/project.total*100):0}%</em></button>`).join(''):'<div class="panel-empty tall"><span>◈</span><strong>プロジェクトはまだありません</strong><small>目的を設定すると、複数の依頼をまとめて追跡できます。</small></div>';
   const project=projects.find(item=>item.id===state.selectedProject)||projects[0];
   const tasks=project?state.data.tasks.filter(task=>task.projectId===project.id):[];
-  $('project-detail').innerHTML=project?`<div class="project-detail-inner"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>最近の仕事</h4>${tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):'<p class="project-empty">このプロジェクトの仕事はまだありません。</p>'}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
-  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;renderProjects();void loadProjectNotes();});
+  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>最近の仕事</h4>${tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):'<p class="project-empty">このプロジェクトの仕事はまだありません。</p>'}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
+  if(project?.id===previousProject&&$('project-note-title')){$('project-note-title').value=draftTitle;$('project-note-content').value=draftContent;}
+  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;state.projectNotesQuery='';renderProjects();void loadProjectNotes();});
   document.querySelectorAll('[data-project-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.projectTask;setView('missions');});
   if($('project-assign'))$('project-assign').onclick=()=>{select.value=project.id;$('command-input').focus();};
   if($('project-share'))$('project-share').onclick=async()=>{
@@ -216,23 +219,25 @@ function renderProjects() {
   };
   if($('project-note-form'))$('project-note-form').onsubmit=async event=>{
     event.preventDefault();const button=event.target.querySelector('[type="submit"]'),status=$('project-note-status');button.disabled=true;status.textContent='保存中…';
-    try{await request('/api/projects/notes/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,title:$('project-note-title').value.trim(),content:$('project-note-content').value.trim()})});if(state.selectedProject===project.id){state.projectNotes=null;await loadProjectNotes();$('project-note-status').textContent='共有メモを保存しました';}}
+    try{await request('/api/projects/notes/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,title:$('project-note-title').value.trim(),content:$('project-note-content').value.trim()})});if(state.selectedProject===project.id){event.target.reset();state.projectNotes=null;await loadProjectNotes();$('project-note-status').textContent='共有メモを保存しました';}}
     catch(error){if(state.selectedProject===project.id)status.textContent=error.message;}
     finally{button.disabled=false;}
   };
+  if($('project-note-search-form'))$('project-note-search-form').onsubmit=event=>{event.preventDefault();state.projectNotesQuery=$('project-note-search').value.trim();if(!state.projectNotesQuery)return;void loadProjectNotes();};
+  if($('project-note-search-clear'))$('project-note-search-clear').onclick=()=>{state.projectNotesQuery='';void loadProjectNotes();};
   if($('project-status'))$('project-status').onchange=async event=>{const value=event.target.value;try{await request('/api/projects/status',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,status:value})});await refresh();}catch(error){$('project-feedback').textContent=error.message;await refresh();}};
 }
 function projectNotesMarkup(project){
   const data=state.projectNotes?.projectId===project.id?state.projectNotes:null;
   const notes=data?.notes||[];
-  return `<section class="project-notes"><h4>共有ナレッジ</h4><p class="project-empty">このプロジェクトの決定事項・手順・引き継ぎ情報を残せます。</p>${data?notes.length?notes.map(note=>`<article class="project-note"><strong>${escapeHtml(note.title)}</strong><small>${escapeHtml(note.author)} · ${formatTime(note.createdAt)}</small><p>${escapeHtml(note.content)}</p></article>`).join(''):'<p class="project-empty">共有メモはまだありません。</p>':'<p class="project-empty">共有メモを読み込み中…</p>'}${data?.remaining?`<p class="project-empty">古い共有メモが${data.remaining}件あります。</p>`:''}${state.data.user.role==='viewer'?'':`<form id="project-note-form"><label>件名<input id="project-note-title" required maxlength="120" placeholder="例：LP公開までの手順"></label><label>共有する内容<textarea id="project-note-content" required maxlength="4000" rows="3" placeholder="決定事項や再利用できる手順を記入"></textarea></label><button type="submit" class="outline-button">共有メモを保存 ↗</button><span id="project-note-status" role="status"></span></form>`}</section>`;
+  return `<section class="project-notes"><h4>共有ナレッジ</h4><p class="project-empty">このプロジェクトの決定事項・手順・引き継ぎ情報を残せます。</p><form id="project-note-search-form" class="project-note-search"><label>共有メモを検索<input id="project-note-search" maxlength="100" value="${escapeHtml(state.projectNotesQuery)}" placeholder="件名・内容・作成者"></label><button type="submit" class="outline-button">検索</button>${state.projectNotesQuery?'<button id="project-note-search-clear" type="button" class="outline-button">解除</button>':''}</form>${data?notes.length?notes.map(note=>`<article class="project-note"><strong>${escapeHtml(note.title)}</strong><small>${escapeHtml(note.author)} · ${formatTime(note.createdAt)}</small><p>${escapeHtml(note.content)}</p></article>`).join(''):`<p class="project-empty">${state.projectNotesQuery?'一致する共有メモはありません':'共有メモはまだありません。'}</p>`:'<p class="project-empty">共有メモを読み込み中…</p>'}${data?.remaining?`<p class="project-empty">${state.projectNotesQuery?'ほかの一致する共有メモ':'古い共有メモ'}が${data.remaining}件あります。</p>`:''}${state.data.user.role==='viewer'?'':`<form id="project-note-form"><label>件名<input id="project-note-title" required maxlength="120" placeholder="例：LP公開までの手順"></label><label>共有する内容<textarea id="project-note-content" required maxlength="4000" rows="3" placeholder="決定事項や再利用できる手順を記入"></textarea></label><button type="submit" class="outline-button">共有メモを保存 ↗</button><span id="project-note-status" role="status"></span></form>`}</section>`;
 }
 async function loadProjectNotes(){
-  const id=state.selectedProject,epoch=state.authEpoch;if(!id||state.projectNotes?.projectId===id||state.projectNotesLoading)return;
+  const id=state.selectedProject,epoch=state.authEpoch,query=state.projectNotesQuery,sequence=++state.projectNotesRequest;if(!id||state.projectNotes?.projectId===id&&(state.projectNotes.query||'')===query)return;
   state.projectNotesLoading=true;
-  try{const data=await request(`/api/projects/notes/${id}`);if(epoch!==state.authEpoch||state.selectedProject!==id)return;state.projectNotes=data;renderProjects();}
-  catch(error){if(epoch===state.authEpoch&&state.selectedProject===id){state.projectNotes={projectId:id,notes:[],remaining:0};renderProjects();const status=$('project-note-status');if(status)status.textContent=error.message;}}
-  finally{state.projectNotesLoading=false;if(epoch===state.authEpoch&&state.selectedProject!==id&&state.view==='projects')void loadProjectNotes();}
+  try{const data=query?await request('/api/projects/notes/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:id,query})}):await request(`/api/projects/notes/${id}`);if(epoch!==state.authEpoch||sequence!==state.projectNotesRequest)return;state.projectNotes={...data,query};renderProjects();}
+  catch(error){if(epoch===state.authEpoch&&sequence===state.projectNotesRequest){const status=$('project-feedback');if(status)status.textContent=error.message;}}
+  finally{if(epoch===state.authEpoch&&sequence===state.projectNotesRequest)state.projectNotesLoading=false;}
 }
 function projectBriefText({project,tasks,remaining,notes=[],generatedAt}) {
   const status={active:'稼働中',paused:'保留',completed:'完了'}[project.status]||project.status;
@@ -367,6 +372,8 @@ function showAuth() {
   state.selectedProject=null;
   state.projectNotes=null;
   state.projectNotesLoading=false;
+  state.projectNotesQuery='';
+  state.projectNotesRequest++;
   state.playbooks=null;
   state.playbooksLoading=false;
   state.playbookQuery='';

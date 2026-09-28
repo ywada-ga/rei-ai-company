@@ -1,6 +1,6 @@
 # REI — ローカルで動くAI会社の司令室
 
-> **配布前の状態:** macOS開発用アプリはNode.jsとOpenClawを同梱し、同じLAN内のMac同士をREIだけで接続できます。アプリは未署名・未公証で、別ネットワーク間の接続、参加Mac実機、Chatwork実アカウントでの動作確認は未完了です。ZIP版にはNode.jsとOpenClawが別途必要です。残る配布条件は [REI単体での端末接続](SINGLE_APP_CONNECTIVITY.md) に記載しています。
+> **配布前の状態:** macOS開発用アプリはNode.jsとOpenClawを同梱し、同じLAN内のMac同士をREIだけで接続できます。配布用のDeveloper ID署名・Apple公証、別ネットワーク間の接続、参加Mac実機、Chatwork実アカウントでの動作確認は未完了です。ZIP版にはNode.jsとOpenClawが別途必要です。残る配布条件は [REI単体での端末接続](SINGLE_APP_CONNECTIVITY.md) に記載しています。
 
 REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOS、Windows、Linuxを使えます。Web画面は中心PC上で動きます。現在のTailscale方式ではREI用のクラウドデータベースは不要です。完成版で遠隔端末をつなぐ場合は、任意の暗号化中継を使う方針です。
 
@@ -13,7 +13,7 @@ REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴�
 
 ## 1台で始める
 
-macOSの開発用アプリは、開発者がNode.jsとOpenClaw CLIを準備したMacで `npm run package:macos` を実行すると `dist/REI-<版>-<CPU>.app` に作成できます。利用者のMacにはこのアプリだけを置けます。公式Node.jsをSHA-256で照合して同梱し、インストール済みOpenClawもアプリ内へコピーします。初回起動で中心PCか参加PCかを選びます。データはアプリ外の `~/Library/Application Support/REI` に保存します。アプリは署名・公証と新規Macでの検証が未完了です。
+macOSの開発用アプリは、開発者がNode.jsとOpenClaw CLIを準備したMacで `npm run package:macos` を実行すると `dist/REI-<版>-<CPU>.app` に作成できます。利用者のMacにはこのアプリだけを置けます。公式Node.jsをSHA-256で照合して同梱し、インストール済みOpenClawもアプリ内へコピーします。初回起動で中心PCか参加PCかを選びます。中心PCを選ぶとHubをログイン時の自動起動に登録します。アプリを移動する場合は初回起動前に配置先を決めてください。自動起動はその場所のアプリを参照します。データはアプリ外の `~/Library/Application Support/REI` に保存します。配布用署名・公証と新規Macでの検証は未完了です。
 
 別のMacへ渡す配布版にはApple Developer ID Application証明書と公証が必要です。開発用アプリをそのままAirDropするとmacOSから「破損」などの警告で起動を拒否されることがあります。証明書と公証用Keychainプロファイルがある開発Macでは `REI_DEVELOPER_IDENTITY='Developer ID Application: ...' REI_NOTARY_PROFILE='...' npm run release:macos` を実行します。この処理は同梱したMac用実行ファイルとアプリを署名し、Appleの公証・ステープル・Gatekeeper検査を通した後、`dist/REI-<版>-<CPU>-notarized.zip` を作ります。開発用アプリと保存データは上書きしません。現時点でこのMacに有効な配布用証明書はないため、署名・公証済みZIPはまだ作成できていません。
 

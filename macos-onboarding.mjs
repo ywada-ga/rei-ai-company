@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +27,22 @@ function saveMode(mode) {
   writeFileSync(modeFile,`${mode}\n`,{mode:0o600,flag:'wx'});
 }
 async function host() {
+  const agents=process.env.REI_LAUNCH_AGENTS_DIR||path.join(os.homedir(),'Library','LaunchAgents');
+  const service=path.join(agents,'ai.rei.hub.plist');
+  if(!existsSync(service)) {
+    const installed=spawnSync(process.execPath,[path.join(root,'install-macos.mjs'),'hub'],{cwd:root,env:process.env,encoding:'utf8',timeout:30000});
+    if(installed.status!==0)throw new Error(`中心PCの自動起動を登録できませんでした: ${(installed.stderr||installed.stdout||installed.error?.message||'原因不明').trim()}`);
+    const port=Number(process.env.REI_PORT||4178);
+    let ready=false;
+    for(let attempt=0;attempt<30;attempt++) {
+      try {
+        const response=await fetch(`http://127.0.0.1:${port}/api?route=setup%2Fstatus`,{signal:AbortSignal.timeout(1000)});
+        if(response.ok){ready=true;break;}
+      } catch { /* launchd may still be starting the Hub */ }
+      await new Promise(resolve=>setTimeout(resolve,500));
+    }
+    if(!ready)throw new Error('自動起動を登録しましたが、中心PCのREIが応答しません。REIのログを確認してください');
+  }
   const child=spawn(process.execPath,[path.join(root,'launch.mjs')],{cwd:root,env:process.env,stdio:'inherit'});
   await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(new Error(`REIの起動が終了しました (${code})`)));});
 }

@@ -149,6 +149,14 @@ async function api(req,res,route) {
     const playbooks=all(db,'SELECT p.*,u.username FROM playbooks p JOIN users u ON u.id=p.created_by ORDER BY p.created_at DESC,p.id DESC LIMIT 100').map(playbookJson);
     return send(res,200,{playbooks,remaining:Math.max(0,total-playbooks.length)});
   }
+  if(route==='playbooks/search'&&req.method==='POST') {
+    const query=String((await body(req)).query||'').trim();
+    if(!query||query.length>100)return error(res,400,'検索語を1〜100文字で入力してください');
+    const where='FROM playbooks p JOIN users u ON u.id=p.created_by WHERE instr(lower(p.title),lower(?))>0 OR instr(lower(p.purpose),lower(?))>0 OR instr(lower(p.prompt),lower(?))>0 OR instr(lower(u.username),lower(?))>0';
+    const args=[query,query,query,query],total=one(db,`SELECT COUNT(*) AS count ${where}`,...args).count;
+    const playbooks=all(db,`SELECT p.*,u.username ${where} ORDER BY p.created_at DESC,p.id DESC LIMIT 100`,...args).map(playbookJson);
+    return send(res,200,{playbooks,remaining:Math.max(0,total-playbooks.length),query});
+  }
   if(route==='playbooks/create'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'手順を追加する権限がありません');
     const data=await body(req),title=text(data.title,120),purpose=text(data.purpose,1000),prompt=text(data.prompt,8000),id=uid(),now=Date.now();

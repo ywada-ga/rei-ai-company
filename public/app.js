@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectNotes:null, projectNotesLoading:false, playbooks:null, playbooksLoading:false, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectNotes:null, projectNotesLoading:false, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -246,21 +246,20 @@ function projectBriefText({project,tasks,remaining,notes=[],generatedAt}) {
 }
 function renderPlaybooks(){
   const items=state.playbooks?.playbooks||[];
-  $('playbook-total').textContent=`${String(items.length).padStart(2,'0')} PLAYBOOKS`;
+  $('playbook-total').textContent=`${String(items.length).padStart(2,'0')} ${state.playbookQuery?'MATCHES':'PLAYBOOKS'}`;
   $('playbook-form').classList.toggle('hidden',state.data.user.role==='viewer');
   if(items.length&&!items.some(item=>item.id===state.selectedPlaybook))state.selectedPlaybook=items[0].id;
-  $('playbook-list').innerHTML=items.length?items.map(item=>`<button type="button" class="playbook-row ${item.id===state.selectedPlaybook?'selected':''}" data-playbook="${escapeHtml(item.id)}"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.purpose)}</small><em>${escapeHtml(item.author)} · ${formatTime(item.createdAt)}</em></button>`).join('')+(state.playbooks.remaining?`<p class="project-empty">古い手順が${state.playbooks.remaining}件あります。</p>`:''):state.playbooks?'<div class="panel-empty tall"><strong>共有手順はまだありません</strong><small>繰り返す仕事の依頼文を登録できます。</small></div>':'<div class="panel-empty tall"><strong>共有手順を読み込み中…</strong></div>';
+  $('playbook-list').innerHTML=items.length?items.map(item=>`<button type="button" class="playbook-row ${item.id===state.selectedPlaybook?'selected':''}" data-playbook="${escapeHtml(item.id)}"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.purpose)}</small><em>${escapeHtml(item.author)} · ${formatTime(item.createdAt)}</em></button>`).join('')+(state.playbooks.remaining?`<p class="project-empty">${state.playbookQuery?'ほかの一致する手順':'古い手順'}が${state.playbooks.remaining}件あります。</p>`:''):state.playbooks?`<div class="panel-empty tall"><strong>${state.playbookQuery?'一致する手順はありません':'共有手順はまだありません'}</strong><small>${state.playbookQuery?'別の言葉で検索してください。':'繰り返す仕事の依頼文を登録できます。'}</small></div>`:'<div class="panel-empty tall"><strong>共有手順を読み込み中…</strong></div>';
   const item=items.find(value=>value.id===state.selectedPlaybook);
   $('playbook-detail').innerHTML=item?`<div class="playbook-detail-inner"><span class="overline">SHARED BY ${escapeHtml(item.author)} · ${formatTime(item.createdAt)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.purpose)}</p><h4>レイへの依頼文</h4><pre>${escapeHtml(item.prompt)}</pre><button type="button" class="outline-button" id="playbook-use">依頼欄に入れる ↗</button><p class="project-empty">依頼欄で内容を確認・編集してから送信してください。</p></div>`:'<div class="panel-empty tall"><strong>手順を選択</strong></div>';
   document.querySelectorAll('[data-playbook]').forEach(button=>button.onclick=()=>{state.selectedPlaybook=button.dataset.playbook;renderPlaybooks();});
   if($('playbook-use'))$('playbook-use').onclick=()=>{$('command-input').value=item.prompt;$('command-input').focus();feedback('共有手順を依頼欄に入れました。内容を確認して送信してください。');};
 }
 async function loadPlaybooks(){
-  if(state.playbooksLoading)return;
-  const epoch=state.authEpoch;state.playbooksLoading=true;
-  try{const data=await request('/api/playbooks');if(epoch!==state.authEpoch)return;state.playbooks=data;renderPlaybooks();}
-  catch(error){if(epoch===state.authEpoch)$('playbook-feedback').textContent=error.message;}
-  finally{if(epoch===state.authEpoch)state.playbooksLoading=false;}
+  const epoch=state.authEpoch,sequence=++state.playbooksRequest,query=state.playbookQuery;state.playbooksLoading=true;
+  try{const data=query?await request('/api/playbooks/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query})}):await request('/api/playbooks');if(epoch!==state.authEpoch||sequence!==state.playbooksRequest)return;state.playbooks=data;state.selectedPlaybook=null;renderPlaybooks();}
+  catch(error){if(epoch===state.authEpoch&&sequence===state.playbooksRequest)$('playbook-feedback').textContent=error.message;}
+  finally{if(epoch===state.authEpoch&&sequence===state.playbooksRequest)state.playbooksLoading=false;}
 }
 async function loadReport(silent=false) {
   if(state.reportLoading)return;
@@ -302,7 +301,9 @@ $('refresh').onclick = refresh;
 $('report-refresh').onclick = loadReport;
 $('report-copy').onclick=async()=>{if(!state.report)return;try{await navigator.clipboard.writeText(reportText(state.report,state.data?.workers||[]));$('report-copy-status').textContent='コピーしました';}catch{$('report-copy-status').textContent='コピーできませんでした。ブラウザのクリップボード許可を確認してください。';}};
 $('project-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type="submit"]');button.disabled=true;$('project-feedback').textContent='';try{const result=await request('/api/projects/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('project-name').value.trim(),objective:$('project-objective').value.trim()})});$('project-name').value='';$('project-objective').value='';state.selectedProject=result.project.id;state.projectNotes=null;await refresh();void loadProjectNotes();$('command-project').value=result.project.id;$('project-feedback').textContent='プロジェクトを作成しました';}catch(error){$('project-feedback').textContent=error.message;}finally{button.disabled=false;}};
-$('playbook-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type="submit"]');button.disabled=true;$('playbook-feedback').textContent='';try{const result=await request('/api/playbooks/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:$('playbook-title').value.trim(),purpose:$('playbook-purpose').value.trim(),prompt:$('playbook-prompt').value.trim()})});event.target.reset();state.selectedPlaybook=result.playbook.id;await loadPlaybooks();$('playbook-feedback').textContent='共有手順を保存しました';}catch(error){$('playbook-feedback').textContent=error.message;}finally{button.disabled=false;}};
+$('playbook-search-form').onsubmit=event=>{event.preventDefault();state.playbookQuery=$('playbook-search').value.trim();$('playbook-feedback').textContent='';void loadPlaybooks();};
+$('playbook-search-clear').onclick=()=>{$('playbook-search').value='';state.playbookQuery='';$('playbook-feedback').textContent='';void loadPlaybooks();};
+$('playbook-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type="submit"]');button.disabled=true;$('playbook-feedback').textContent='';try{const result=await request('/api/playbooks/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:$('playbook-title').value.trim(),purpose:$('playbook-purpose').value.trim(),prompt:$('playbook-prompt').value.trim()})});event.target.reset();state.playbookQuery='';$('playbook-search').value='';state.selectedPlaybook=result.playbook.id;await loadPlaybooks();$('playbook-feedback').textContent='共有手順を保存しました';}catch(error){$('playbook-feedback').textContent=error.message;}finally{button.disabled=false;}};
 $('core-button').onclick = () => $('command-input').focus();
 $('command-form').onsubmit = async event => {
   event.preventDefault();
@@ -366,6 +367,9 @@ function showAuth() {
   state.projectNotesLoading=false;
   state.playbooks=null;
   state.playbooksLoading=false;
+  state.playbookQuery='';
+  state.playbooksRequest++;
+  $('playbook-search').value='';
   state.selectedPlaybook=null;
   state.selectedDepartment=null;
   state.pendingReplyTaskId=null;

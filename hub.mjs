@@ -206,6 +206,17 @@ async function api(req,res,route) {
     return send(res,201,{note:projectNoteJson(one(db,'SELECT n.*,u.username FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.id=?',id))});
   }
   if(route==='projects/status'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'プロジェクトを変更する権限がありません');const data=await body(req),status=String(data.status||''),id=String(data.projectId||'');if(!['active','paused','completed'].includes(status))return error(res,400,'状態が正しくありません');const project=one(db,'SELECT * FROM projects WHERE id=?',id);if(!project)return error(res,404,'プロジェクトが見つかりません');transaction(db,()=>{run(db,'UPDATE projects SET status=?,updated_at=? WHERE id=?',status,Date.now(),id);event(db,null,user.username,'project_status',`${project.name}: ${status}`);});return send(res,200,{project:projectJson(one(db,'SELECT * FROM projects WHERE id=?',id))});}
+  if(route==='tasks/project'&&req.method==='POST') {
+    if(!['owner','admin'].includes(user.role))return error(res,403,'仕事の所属を変更する権限がありません');
+    const data=await body(req),taskId=String(data.taskId||''),projectId=data.projectId?String(data.projectId):null;
+    const task=one(db,"SELECT id,project_id,status FROM tasks WHERE id=? AND kind='root'",taskId);
+    if(!task)return error(res,404,'仕事が見つかりません');
+    if(!['completed','failed','cancelled'].includes(task.status))return error(res,409,'終了した仕事だけ所属を変更できます');
+    if(projectId&&!one(db,'SELECT id FROM projects WHERE id=?',projectId))return error(res,404,'プロジェクトが見つかりません');
+    if(task.project_id===projectId)return send(res,200,{taskId,projectId});
+    transaction(db,()=>{run(db,'UPDATE tasks SET project_id=? WHERE id=? OR parent_id=?',projectId,taskId,taskId);if(task.project_id)run(db,'UPDATE projects SET updated_at=? WHERE id=?',Date.now(),task.project_id);if(projectId)run(db,'UPDATE projects SET updated_at=? WHERE id=?',Date.now(),projectId);event(db,taskId,user.username,'task_project_changed',`${task.project_id||'なし'} → ${projectId||'なし'}`);});
+    return send(res,200,{taskId,projectId});
+  }
   if(route==='tasks/approve'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'承認する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='planning' WHERE id=?",task.id);run(db,"UPDATE tasks SET status='ready' WHERE parent_id=? AND kind='plan' AND status='blocked'",task.id);event(db,task.id,user.username,'approved','実行を承認');});return send(res,200,{ok:true});}
   if(route==='tasks/reject'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'却下する権限がありません');const data=await body(req),task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root' AND status='approval_pending'",String(data.taskId||''));if(!task)return error(res,404,'承認待ちの仕事が見つかりません');transaction(db,()=>{run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE id=?",Date.now(),task.id);run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND kind='plan'",Date.now(),task.id);event(db,task.id,user.username,'rejected','実行を却下');});return send(res,200,{ok:true});}
   if(route.startsWith('tasks/detail/')&&req.method==='GET') {

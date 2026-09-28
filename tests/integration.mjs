@@ -16,6 +16,9 @@ await new Promise(resolve=>reservation.close(resolve));
 const base=`http://127.0.0.1:${port}`;
 const child=spawn(process.execPath,['hub.mjs'],{cwd:root,env:{...process.env,REI_DATA_DIR:data,REI_PORT:String(port)},stdio:['ignore','pipe','pipe']});
 let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
+let lastRequest='Hub startup';
+const fetchOriginal=globalThis.fetch;
+globalThis.fetch=(input,options)=>{lastRequest=String(input);return fetchOriginal(input,options);};
 try {
   for(let i=0;i<100&&!output.includes('REI Hub:');i++)await new Promise(r=>setTimeout(r,100));
   assert.match(output,/REI Hub:/);
@@ -442,4 +445,10 @@ try {
   assert.equal(new Set([...latest.tasks,...older.tasks].map(task=>task.id)).size,latest.tasks.length+older.tasks.length);
   assert.equal((await api(`tasks/detail/${latest.tasks[0].id}`)).task.result.length,6000);
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
-} finally {child.kill('SIGTERM');}
+} catch(error) {
+  console.error(`Integration test failed at ${lastRequest}; Hub exit=${child.exitCode??'running'} signal=${child.signalCode??'none'}; Hub output: ${output.slice(-4000)}`);
+  throw error;
+} finally {
+  globalThis.fetch=fetchOriginal;
+  child.kill('SIGTERM');
+}

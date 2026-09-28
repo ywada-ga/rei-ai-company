@@ -1,19 +1,19 @@
 # REI — ローカルで動くAI会社の司令室
 
-> **配布前の状態:** 現行ZIP版はNode.js、OpenClaw、遠隔接続用のTailscaleを別途必要とします。REIアプリ1つで同一ネットワークと遠隔のMacを接続する完成版は未実装です。導入目標と未解決事項は [REI単体での端末接続](SINGLE_APP_CONNECTIVITY.md) に記載しています。以下の端末追加手順は現行版の開発・検証用です。
+> **配布前の状態:** macOS開発用アプリはNode.jsとOpenClawを同梱し、同じLAN内のMac同士をREIだけで接続できます。アプリは未署名・未公証で、別ネットワーク間の接続、参加Mac実機、Chatwork実アカウントでの動作確認は未完了です。ZIP版にはNode.jsとOpenClawが別途必要です。残る配布条件は [REI単体での端末接続](SINGLE_APP_CONNECTIVITY.md) に記載しています。
 
 REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOS、Windows、Linuxを使えます。Web画面は中心PC上で動きます。現在のTailscale方式ではREI用のクラウドデータベースは不要です。完成版で遠隔端末をつなぐ場合は、任意の暗号化中継を使う方針です。
 
-## 必要なもの
+## ZIP版に必要なもの
 
 - Node.js 24以降
 - 実行に参加する各PCのOpenClaw CLIと、利用可能なAIモデルの認証設定。かんたん端末追加ではREI専用エージェントを自動作成します（Windows HubアプリだけではCLIが使えるとは限りません）
-- 遠隔の複数PCの場合、同じTailscaleネットワークへの参加。通常の端末追加にSSHは不要です
+- ZIP版で遠隔の複数PCをつなぐ場合、同じTailscaleネットワークへの参加。通常の端末追加にSSHは不要です
 - 人に依頼する場合だけChatwork APIトークンとルームID
 
 ## 1台で始める
 
-macOSの開発用アプリは、開発者がNode.jsとOpenClaw CLIを準備したMacで `npm run package:macos` を実行すると `dist/REI-<版>-<CPU>.app` に作成できます。利用者のMacにはこのアプリだけを置けます。公式Node.jsをSHA-256で照合して同梱し、インストール済みOpenClawもアプリ内へコピーします。データはアプリ外の `~/Library/Application Support/REI` に保存します。現在のアプリは署名・公証と新規Macでの検証が未完了で、遠隔端末の接続もまだ従来方式です。
+macOSの開発用アプリは、開発者がNode.jsとOpenClaw CLIを準備したMacで `npm run package:macos` を実行すると `dist/REI-<版>-<CPU>.app` に作成できます。利用者のMacにはこのアプリだけを置けます。公式Node.jsをSHA-256で照合して同梱し、インストール済みOpenClawもアプリ内へコピーします。初回起動で中心PCか参加PCかを選びます。データはアプリ外の `~/Library/Application Support/REI` に保存します。アプリは署名・公証と新規Macでの検証が未完了です。
 
 ターミナルを使わずに試す場合は、GitHubの **Code → Download ZIP** で取得して展開し、[Node.js 24以降](https://nodejs.org/)を入れてください。Macでは展開したフォルダの **Start-REI.command**、Windowsでは **Start-REI.cmd** を開くとREIの画面が起動します。起動ファイルは必要なNode.jsの版を確認し、起動に失敗した場合はエラーを表示したまま待ちます。初回登録後、このPCのOpenClawを仕事に参加させるには画面の **端末・設定 → このPCの接続コードを作る** に従ってください。
 
@@ -59,7 +59,19 @@ Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `n
 
 ## Mac miniをかんたんに追加する
 
-SSHの設定は必要ありません。中心PCと各Mac miniを同じTailscaleネットワークへ参加させます。
+同じLAN内で使う場合、SSHとTailscaleの設定は不要です。中心PCと参加Macに同じ版のREIアプリを置きます。
+
+1. 中心PCでREIアプリを開き、「中心PCにする」を選びます。初回登録とログインを行い、**端末・設定 → このMacを接続する** を押します。
+2. **端末・設定 → LAN接続を有効にする** を押します。接続URLには証明書を照合する情報が含まれます。
+3. **かんたん端末追加** で参加Macの名前を入力し、10分間有効な接続コードを発行します。
+4. 参加Macで同じ版のREIアプリを開き、「既存のREIに参加」を選びます。中心PCに表示された接続URLと接続コードを貼り付けます。
+5. 中心PCの「接続端末」で接続状態を確認します。OSのファイアウォールでREIのLANポートへの通信許可が必要になる場合があります。
+
+接続URLは、LAN内のプライベートIPとHTTPS証明書の指紋を含みます。接続相手の証明書が変わると参加PCは停止し、トークンを送信しません。中心PCの管理画面は引き続きlocalhost限定で、LANには端末用APIだけを公開します。別ネットワーク間の接続はまだ実装されていません。
+
+### ZIP版の従来手順
+
+以下はNode.jsとOpenClawを個別に用意する開発用の手順です。遠隔利用ではTailscaleを別途導入する必要があり、REIアプリだけで完結しません。
 
 1. 中心PCとMac miniに[Tailscale](https://tailscale.com/download)を入れてログインします。Macでは[公式のStandalone版](https://tailscale.com/docs/install/mac)を使えます。インストールにはMacの管理者パスワードとVPNの許可が必要です。REIにパスワードを入力する必要はありません。
 2. Mac miniに[Node.js 24以降](https://nodejs.org/)と、利用できる状態のOpenClaw CLIを用意します。Mac miniで[REIのZIP](https://github.com/ywada-ga/rei-ai-company/archive/refs/heads/main.zip)をダウンロードして展開します。

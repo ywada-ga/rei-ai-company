@@ -1,6 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { readFileSync, existsSync, lstatSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
@@ -11,6 +12,7 @@ import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } fro
 import { MCP_PRESETS } from './public/mcp-presets.js';
 import { createBackup, createBackupIfDue } from './backup.mjs';
 import { networkStatus, enableServe } from './network.mjs';
+import { startLanGateway } from './lan.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
@@ -20,6 +22,16 @@ const host=process.env.REI_HOST||'127.0.0.1';
 if(host!=='127.0.0.1'&&host!=='::1'&&process.env.REI_ALLOW_INSECURE_LAN!=='1') throw new Error('外部待受には暗号化したトンネルを使用してください。直接LANに公開する場合はREI_ALLOW_INSECURE_LAN=1が必要です');
 const uid=()=>crypto.randomUUID();
 let backupInProgress=false;
+const lanDataDir=process.env.REI_DATA_DIR||path.join(root,'data');
+const lanFlag=path.join(lanDataDir,'lan-identity','enabled');
+let lanGateway=null,lanStarting=null,lanError='';
+async function enableLan() {
+  if(lanGateway)return lanGateway;
+  if(lanStarting)return lanStarting;
+  lanStarting=startLanGateway({dataDir:lanDataDir,hubPort:port,port:Number(process.env.REI_LAN_PORT||4180)}).then(gateway=>{lanGateway=gateway;lanError='';return gateway;}).catch(error=>{lanError=error.message;throw error;}).finally(()=>{lanStarting=null;});
+  return lanStarting;
+}
+const lanStatus=()=>({state:lanGateway?'connected':lanError?'error':'disabled',urls:lanGateway?.urls||[],error:lanError||null});
 function localConnectorStatus() {
   const config=process.env.REI_CONNECTOR_CONFIG||path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'connector.json');
   if(!existsSync(config))return {status:'not_configured'};
@@ -116,6 +128,9 @@ async function api(req,res,route) {
   if(route==='backup/create'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけがバックアップを作成できます');if(backupInProgress)return error(res,409,'バックアップを作成中です');backupInProgress=true;try{const folder=await createBackup();event(db,null,user.username,'backup_created',path.basename(folder));return send(res,201,{folder});}finally{backupInProgress=false;}}
   if(route==='network/status'&&req.method==='GET') {if(!['owner','admin'].includes(user.role))return error(res,403,'端末の接続を確認する権限がありません');return send(res,200,networkStatus());}
   if(route==='network/serve'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが接続を有効にできます');return send(res,200,enableServe());}
+  if(route==='network/lan/status'&&req.method==='GET') {if(!['owner','admin'].includes(user.role))return error(res,403,'端末の接続を確認する権限がありません');return send(res,200,lanStatus());}
+  if(route==='network/lan/enable'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが接続を有効にできます');if(existsSync(lanFlag)&&!lstatSync(lanFlag).isFile())return error(res,409,'LAN接続の保存ファイルを確認してください');const wasRunning=!!lanGateway;await enableLan();try{if(!existsSync(lanFlag))writeFileSync(lanFlag,'enabled\n',{mode:0o600,flag:'wx'});}catch(e){if(!wasRunning&&lanGateway){await lanGateway.close();lanGateway=null;}throw e;}return send(res,200,lanStatus());}
+  if(route==='network/lan/disable'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが接続を停止できます');if(lanStarting)await lanStarting;if(lanGateway){await lanGateway.close();lanGateway=null;}if(existsSync(lanFlag)){if(!lstatSync(lanFlag).isFile())return error(res,409,'LAN接続の保存ファイルを確認してください');unlinkSync(lanFlag);}lanError='';return send(res,200,lanStatus());}
   if(route==='bootstrap'&&req.method==='GET') {
     sweep(db);
     const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,agent_name,pending_results,version FROM devices WHERE revoked=0 ORDER BY rowid');
@@ -166,7 +181,7 @@ async function api(req,res,route) {
   if(route==='tasks/reconcile'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'結果を確認する権限がありません');const data=await body(req),id=String(data.taskId||''),resolution=String(data.resolution||''),note=text(data.note,8000);if(!['completed','failed'].includes(resolution))return error(res,400,'確認結果が正しくありません');const accepted=transaction(db,()=>{const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind IN ('execute','human') AND status='needs_review'",id);if(!task)return false;run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_id=CASE WHEN kind=? THEN lease_id ELSE NULL END,lease_until=0 WHERE id=?',resolution,resolution==='completed'?note:'',resolution==='failed'?note:'',Date.now(),'execute',id);event(db,id,user.username,'reconciled',`${resolution}: ${note.slice(0,300)}`);finishRoot(db,task.parent_id);return true;});if(!accepted)return error(res,409,'確認待ちの工程が見つかりません');return send(res,200,{ok:true});}
   if(route==='tasks/history'&&req.method==='POST') {const data=await body(req),before=Number(data.beforeTime),id=String(data.beforeId||'');if(!Number.isSafeInteger(before)||before<=0||!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'履歴の位置が正しくありません');const rows=all(db,"SELECT * FROM tasks WHERE kind='root' AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 101",before,before,id);return send(res,200,{tasks:rows.slice(0,100).map(task=>taskJson(task,true)),hasMore:rows.length>100});}
   if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(task=>taskJson(task,true));return send(res,200,{tasks});}
-  if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked,agent_name,pending_results,version FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices,localConnector:localConnectorStatus(),hubVersion:reiVersion});}
+  if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked,agent_name,pending_results,version FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices,localConnector:localConnectorStatus(),bundledMac:process.platform==='darwin'&&!!process.env.REI_OPENCLAW_ENTRY,hubVersion:reiVersion});}
   if(route==='mcp/list'&&req.method==='GET') {const integrations=all(db,'SELECT m.name,m.label,m.url,m.auth,m.device_id,d.label AS device_label,s.status,s.updated_at,c.requested_at AS check_requested_at,c.checked_at,c.status AS check_status,c.tool_count,c.error AS check_error FROM mcp_integrations m JOIN devices d ON d.id=m.device_id LEFT JOIN device_mcp_status s ON s.name=m.name AND s.device_id=m.device_id LEFT JOIN mcp_checks c ON c.name=m.name ORDER BY m.created_at DESC');return send(res,200,{integrations});}
   if(route==='mcp/check'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが接続を確認できます');const data=await body(req),name=String(data.name||'');const integration=one(db,'SELECT m.name FROM mcp_integrations m JOIN devices d ON d.id=m.device_id WHERE m.name=? AND d.revoked=0',name);if(!integration)return error(res,404,'連携が見つかりません');const requestId=uid(),requestedAt=Date.now();run(db,"INSERT INTO mcp_checks(name,request_id,requested_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET request_id=excluded.request_id,requested_at=excluded.requested_at,checked_at=0,status='queued',tool_count=0,error=''",name,requestId,requestedAt);return send(res,202,{ok:true});}
   if(route==='mcp/add-batch'&&req.method==='POST') {
@@ -213,6 +228,22 @@ async function api(req,res,route) {
     run(db,'INSERT INTO pairings(hash,label,expires_at) VALUES(?,?,?)',hash(code),label,Date.now()+600000);
     return send(res,201,{label,code,expiresInSeconds:600});
   }
+  if(route==='devices/local-connect'&&req.method==='POST') {
+    if(user.role!=='owner')return error(res,403,'所有者だけがこのMacを接続できます');
+    if(process.platform!=='darwin'||!process.env.REI_OPENCLAW_ENTRY)return error(res,400,'REIのMacアプリから実行してください');
+    if(localConnectorStatus().status!=='not_configured')return error(res,409,'このMacには既に接続設定があります');
+    const code=crypto.randomBytes(12).toString('base64url');
+    run(db,'INSERT INTO pairings(hash,label,expires_at) VALUES(?,?,?)',hash(code),'このMac',Date.now()+600000);
+    const result=await new Promise(resolve=>{
+      const child=spawn(process.execPath,[path.join(root,'connector.mjs'),'join',`http://127.0.0.1:${port}`],{cwd:root,env:{...process.env,REI_JOIN_CODE:code},stdio:['ignore','pipe','pipe']});
+      let detail='';const timer=setTimeout(()=>child.kill(),180000);
+      for(const stream of [child.stdout,child.stderr])stream.on('data',part=>detail=(detail+part).slice(-3000));
+      child.once('error',cause=>{clearTimeout(timer);resolve({ok:false,detail:cause.message});});
+      child.once('close',exitCode=>{clearTimeout(timer);resolve({ok:exitCode===0,detail});});
+    });
+    if(!result.ok){console.error('REI local connector setup failed');return error(res,500,'このMacの接続に失敗しました。保存済みの端末設定とREIログを確認してください');}
+    return send(res,200,{ok:true});
+  }
   if(route==='devices/enroll'&&req.method==='POST') {
     if(!['owner','admin'].includes(user.role))return error(res,403,'端末を登録する権限がありません');
     const data=await body(req),label=text(data.label,80),raw=random(),id=uid(),planner=!!data.isPlanner||!one(db,'SELECT id FROM devices WHERE planner=1 AND revoked=0');
@@ -240,7 +271,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'content-type':`${mime[path.extname(file)]}; charset=utf-8`,'cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(bytes);
   } catch(e) {console.error('REI:',e.message);return error(res,e.status||500,e.status?e.message:'処理に失敗しました');}
 });
-server.listen(port,host,()=>console.log(`REI Hub: http://${host}:${port}`));
+server.listen(port,host,()=>{console.log(`REI Hub: http://${host}:${port}`);if(existsSync(lanFlag))void enableLan().catch(e=>console.error('REI LAN:',e.message));});
 async function dailyBackup() {
   if(backupInProgress||!one(db,"SELECT id FROM users WHERE role='owner' LIMIT 1"))return;
   backupInProgress=true;

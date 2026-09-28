@@ -1,0 +1,54 @@
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+if(process.platform!=='darwin')throw new Error('Mac用の起動画面です');
+const root=path.dirname(fileURLToPath(import.meta.url));
+const data=process.env.REI_DATA_DIR||path.join(root,'data');
+const modeFile=path.join(data,'app-mode');
+
+function dialog(script) {
+  const result=spawnSync('/usr/bin/osascript',['-e',script],{encoding:'utf8',timeout:120000});
+  if(result.status!==0) {
+    if(/User canceled|ユーザがキャンセル|(-128)/i.test(result.stderr||''))return null;
+    throw new Error((result.stderr||'画面を開けませんでした').trim());
+  }
+  return result.stdout.trim();
+}
+function notice(message) {
+  const safe=String(message).slice(0,1200).replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('\n','\\n');
+  dialog(`display dialog "${safe}" with title "REI" buttons {"OK"} default button "OK"`);
+}
+function saveMode(mode) {
+  mkdirSync(data,{recursive:true,mode:0o700});
+  if(existsSync(modeFile))throw new Error('既存のREI起動設定があります。上書きせず確認してください');
+  writeFileSync(modeFile,`${mode}\n`,{mode:0o600,flag:'wx'});
+}
+async function host() {
+  const child=spawn(process.execPath,[path.join(root,'launch.mjs')],{cwd:root,env:process.env,stdio:'inherit'});
+  await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(new Error(`REIの起動が終了しました (${code})`)));});
+}
+async function main() {
+  if(existsSync(modeFile)&&!lstatSync(modeFile).isFile())throw new Error('REIの起動設定が通常のファイルではありません');
+  let mode=existsSync(modeFile)?readFileSync(modeFile,'utf8').trim():'';
+  if(!mode) {
+    const selection=dialog('button returned of (display dialog "このMacでREIをどう使いますか？" with title "REIを始める" buttons {"やめる", "既存のREIに参加", "中心PCにする"} default button "中心PCにする")');
+    if(!selection||selection==='やめる')return;
+    mode=selection==='中心PCにする'?'hub':'connector';
+    if(mode==='hub')saveMode(mode);
+  }
+  if(mode==='hub'){await host();return;}
+  if(mode!=='connector')throw new Error('REIの起動設定が正しくありません');
+  const config=process.env.REI_CONNECTOR_CONFIG||path.join(data,'connector.json');
+  if(existsSync(config)){notice('このMacはREIに登録済みです。中心PCのREI画面で接続端末の状態を確認してください。');return;}
+  const url=dialog('text returned of (display dialog "中心PCのREI画面に表示された接続URLを貼り付けてください" with title "REIに参加" default answer "" buttons {"やめる", "次へ"} default button "次へ")');
+  if(!url)return;
+  const code=dialog('text returned of (display dialog "中心PCのREI画面に表示された16文字の接続コードを貼り付けてください" with title "REIに参加" default answer "" buttons {"やめる", "接続"} default button "接続")');
+  if(!code)return;
+  const result=spawnSync(process.execPath,[path.join(root,'connector.mjs'),'join',url],{cwd:root,env:{...process.env,REI_JOIN_CODE:code},encoding:'utf8',timeout:180000,maxBuffer:1024*1024});
+  if(result.status!==0)throw new Error((result.stderr||result.stdout||result.error?.message||'接続できませんでした').trim());
+  saveMode('connector');
+  notice('REIへの接続が完了しました。中心PCの「接続端末」で状態を確認してください。');
+}
+try {await main();} catch(error) {console.error(error);notice(`REIを起動できませんでした。${error.message}`);process.exitCode=1;}

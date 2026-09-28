@@ -21,7 +21,7 @@ const restoredData=mkdtempSync(path.join(os.tmpdir(),'rei-restored-'));
 writeFileSync(path.join(restoredData,'connector.json'),JSON.stringify({hub:'http://example.com',token:'restored-token',agent:'rei'}));
 const restored=spawnSync(process.execPath,['connector.mjs','--once'],{cwd:root,env:{...process.env,REI_CONNECTOR_CONFIG:'',REI_DATA_DIR:restoredData},encoding:'utf8',timeout:10000});
 assert.notEqual(restored.status,0);
-assert.match(restored.stderr,/遠隔の中心PCには/);
+assert.match(restored.stderr,/中心PCのREI画面に表示された接続URL/);
 const damagedDir=mkdtempSync(path.join(os.tmpdir(),'rei-damaged-results-'));
 writeFileSync(path.join(damagedDir,'connector.json'),JSON.stringify({hub:'http://127.0.0.1:4181',token:'test-token',agent:'rei'}));
 const damagedPath=path.join(damagedDir,'pending-results.json');

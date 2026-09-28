@@ -68,7 +68,7 @@ try {
 
   console.log(`OpenClaw ${openClaw.version} をアプリ内に同梱しています…`);
   cpSync(openClaw.source,path.join(resources,'openclaw'),{recursive:true});
-  const launcher=`#!/bin/zsh\nset -eu\napp_root="\${0:A:h:h}"\nexport PATH="$app_root/MacOS:/usr/bin:/bin:/usr/sbin:/sbin"\nexport REI_DATA_DIR="\${REI_DATA_DIR:-$HOME/Library/Application Support/REI}"\nexport REI_OPENCLAW_ENTRY="$app_root/Resources/openclaw/openclaw.mjs"\nexec "$app_root/MacOS/node" "$app_root/Resources/rei/launch.mjs"\n`;
+  const launcher=`#!/bin/zsh\nset -eu\napp_root="\${0:A:h:h}"\nexport PATH="$app_root/MacOS:/usr/bin:/bin:/usr/sbin:/sbin"\nexport REI_DATA_DIR="\${REI_DATA_DIR:-$HOME/Library/Application Support/REI}"\nexport REI_OPENCLAW_ENTRY="$app_root/Resources/openclaw/openclaw.mjs"\nexec "$app_root/MacOS/node" "$app_root/Resources/rei/macos-onboarding.mjs"\n`;
   writeFileSync(path.join(bin,'REI'),launcher,{mode:0o755});
   writeFileSync(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>CFBundleIdentifier</key><string>com.rei.local</string>\n<key>CFBundleName</key><string>REI</string>\n<key>CFBundleDisplayName</key><string>REI</string>\n<key>CFBundleExecutable</key><string>REI</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>${xml(version)}</string>\n<key>CFBundleVersion</key><string>${xml(version)}</string>\n<key>LSMinimumSystemVersion</key><string>13.5</string>\n</dict></plist>\n`);
   rmSync(archivePath);

@@ -2,13 +2,13 @@
 
 ```mermaid
 flowchart LR
-  U[利用者のブラウザ] -->|localhost / Tailscale Serve| H[中心PCのREI Hub]
+  U[利用者のブラウザ] -->|localhost| H[中心PCのREI Hub]
   H --> D[(SQLite<br/>仕事・権限・履歴)]
   H --> C[Chatwork API]
   A[中心PC Connector] -->|localhost| H
-  B[Mac mini 1 Connector] -->|Tailscale HTTPS| H
-  E[Mac mini 2 Connector] -->|Tailscale HTTPS| H
-  F[Mac mini 3 Connector] -->|Tailscale HTTPS| H
+  B[Mac mini 1 Connector] -->|LAN HTTPS入口| H
+  E[Mac mini 2 Connector] -->|LAN HTTPS入口| H
+  F[Mac mini 3 Connector] -->|LAN HTTPS入口| H
   A --> OA[ローカルOpenClaw]
   B --> OB[ローカルOpenClaw]
   E --> OE[ローカルOpenClaw]
@@ -24,7 +24,9 @@ flowchart LR
 - **Chatwork:** 人へ渡す仕事の投稿・返信取得。APIトークンはHubのローカル暗号鍵で暗号化して保存。
   返信は仕事IDと投稿者アカウントを照合する。複数の異なる仕事IDが含まれる投稿、REI自身の投稿、投稿者不明のメッセージは回答としない。投稿IDが取得できない場合は送信結果不明として人の確認を待つ。
 
-遠隔接続の案内はTailscale ServeのHTTPSルート `/` がこのHubのローカルポートへ向く場合だけ表示する。同じ入口にFunnelが有効なら公開接続として警告し、参加PC用URLを案内しない。既存の `/` ルートが別のサービスを指す場合も自動上書きしない。
+同一LAN内の端末接続には専用HTTPS入口を使う。入口はプライベートIPだけで待ち受け、端末用API以外を拒否し、管理画面とCookieを公開しない。中心PCは自己署名証明書を生成してアプリ外に保存し、接続URLに証明書のSHA-256指紋を含める。参加PCは証明書を照合してから接続コードや端末トークンを送信し、以後も同じ証明書を要求する。URLとコードは別々に渡す。別ネットワーク間のREI単体接続は未実装。
+
+ZIP版の従来の遠隔接続はTailscale ServeのHTTPSルート `/` がこのHubのローカルポートへ向く場合だけ案内する。同じ入口にFunnelが有効なら公開接続として警告し、参加PC用URLを案内しない。既存の `/` ルートが別のサービスを指す場合も自動上書きしない。
 
 ## 仕事の流れ
 

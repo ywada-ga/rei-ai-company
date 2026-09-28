@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises';
 import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult, jobTimeoutSeconds } from './openclaw-process.mjs';
 import { syncMcp, probeMcp } from './mcp-sync.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
+import { certificateForInvite, parseLanInvite, pinnedFetch } from './lan.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
@@ -32,29 +33,33 @@ async function join() {
   const rl=createInterface({input:process.stdin,output:process.stdout});
   try {
     if(existsSync(configPath))throw new Error('このPCには既にREIの接続設定があります。既存設定を確認してから再登録してください');
-    const hub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
+    const enteredHub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
+    const lanInvite=parseLanInvite(enteredHub);
+    const hub=lanInvite?.hub||enteredHub;
     validateHub(hub);
+    const lan=lanInvite?{pin:lanInvite.pin,cert:await certificateForInvite(lanInvite)}:null;
+    const hubFetch=(url,options)=>pinnedFetch(url,options,lan);
     let hubStatus;
     try {
-      const response=await fetch(new URL('/api?route=setup%2Fstatus',hub),{signal:AbortSignal.timeout(15000)});
+      const response=await hubFetch(new URL('/api?route=setup%2Fstatus',hub),{signal:AbortSignal.timeout(15000)});
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
       hubStatus=await response.json();
     } catch {
-      throw new Error('中心PCのREIに接続できません。両方のPCでTailscaleへログインし、接続URLを確認してください');
+      throw new Error('中心PCのREIに接続できません。接続URLと両方のPCのネットワークを確認してください');
     }
     if(hubStatus.version!==reiVersion)throw new Error(`REIの版が異なります。中心PCは${hubStatus.version||'不明'}、このPCは${reiVersion}です。同じ版のREIを用意してからやり直してください`);
     const available=checkOpenClaw();
     if(available.status!==0)throw new Error('このPCにOpenClaw CLIがありません。先にOpenClawをセットアップしてください');
-    const code=(await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
+    const code=(process.env.REI_JOIN_CODE||await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
     if(!/^[A-Za-z0-9_-]{16}$/.test(code))throw new Error('接続コードは16文字です。REI画面で確認してください');
-    const checked=await fetch(new URL('/api?route=connector%2Fpair%2Fcheck',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
+    const checked=await hubFetch(new URL('/api?route=connector%2Fpair%2Fcheck',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
     if(!checked.ok) {const detail=await checked.json();throw new Error(detail.error||`接続コードを確認できません (HTTP ${checked.status})`);}
     ensureReiAgent(root);
-    const response=await fetch(new URL('/api?route=connector%2Fpair',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
+    const response=await hubFetch(new URL('/api?route=connector%2Fpair',hub),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||`接続に失敗しました (HTTP ${response.status})`);
     mkdirSync(path.dirname(configPath),{recursive:true,mode:0o700});
-    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'rei'},null,2),{mode:0o600,flag:'wx'});
+    writeFileSync(configPath,JSON.stringify({hub,token:result.token,agent:'rei',...(lan||{})},null,2),{mode:0o600,flag:'wx'});
     chmodSync(configPath,0o600);
     if(['darwin','win32','linux'].includes(process.platform)) {
       const installer={darwin:'install-macos.mjs',win32:'install-windows.mjs',linux:'install-linux.mjs'}[process.platform];
@@ -67,9 +72,10 @@ async function join() {
 function validateHub(value) {
   let url;
   try {url=new URL(value);} catch {throw new Error('接続URLを入力してください。中心PCのREI画面で「接続URLをコピー」を押して貼り付けます');}
+  if(url.hash&&!parseLanInvite(value))throw new Error('REIのLAN接続URLが正しくありません');
   if(url.protocol==='https:')return;
   if(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname))return;
-  throw new Error('遠隔の中心PCには、REI画面に表示されたHTTPSの接続URLを入力してください');
+  throw new Error('中心PCのREI画面に表示された接続URLを入力してください');
 }
 function loadPending() {
   if(existsSync(`${pendingPath}.tmp`))throw new Error(`未完了の結果保存ファイルがあります。${pendingPath}.tmp を確認してください`);
@@ -112,7 +118,7 @@ async function main() {
   const endpoint=new URL('/api',config.hub).toString();
   async function api(route,data={}) {
     const url=`${endpoint}?route=${encodeURIComponent(route)}`;
-    const response=await fetch(url,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${config.token}`},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});
+    const response=await pinnedFetch(url,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${config.token}`},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)},config);
     const result=await response.json();if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);return result;
   }
   let lastHeartbeat=0;

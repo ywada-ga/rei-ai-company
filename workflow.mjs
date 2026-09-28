@@ -170,6 +170,11 @@ export function report(db) {
     total:one(db,`SELECT COUNT(*) AS count FROM tasks t WHERE ${backlogWhere}`,start,start).count,
     tasks:all(db,`SELECT t.id,t.text,t.error,t.result,t.created_at,t.finished_at,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE ${backlogWhere} ORDER BY MAX(t.created_at,t.finished_at) DESC LIMIT 10`,start,start).map(task=>({id:task.id,text:task.text,projectName:task.project_name||null,activityAt:new Date(Math.max(task.created_at,task.finished_at)).toISOString(),summary:(task.result||task.error).slice(0,220)}))
   };
+  const approvalWhere="t.kind='root' AND t.status='approval_pending' AND t.created_at<?";
+  const approvalBacklog={
+    total:one(db,`SELECT COUNT(*) AS count FROM tasks t WHERE ${approvalWhere}`,start).count,
+    tasks:all(db,`SELECT t.id,t.text,t.created_at,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE ${approvalWhere} ORDER BY t.created_at DESC,t.id DESC LIMIT 10`,start).map(task=>({id:task.id,text:task.text,projectName:task.project_name||null,activityAt:new Date(task.created_at).toISOString()}))
+  };
   const count=status=>tasks.filter(t=>t.status===status).length;
   const devices=all(db,`SELECT d.id,d.label,d.revoked,COUNT(t.id) AS total,
     COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END),0) AS completed,
@@ -183,5 +188,5 @@ export function report(db) {
     COALESCE(SUM(CASE WHEN status IN ('waiting_human','waiting_reply','sending') THEN 1 ELSE 0 END),0) AS waiting,
     COALESCE(SUM(CASE WHEN status='needs_review' THEN 1 ELSE 0 END),0) AS attention
     FROM tasks WHERE kind='human' AND ((created_at>=? AND created_at<?) OR (finished_at>=? AND finished_at<?) OR status IN ('waiting_human','waiting_reply','sending'))`,start,end,start,end);
-  return {day,total:tasks.length,completed:count('completed'),running:count('running')+count('planning'),failed:count('failed'),interrupted:count('needs_review'),attentionBacklog,devices,people,tasks:tasks.map(t=>({id:t.id,text:t.text,projectName:t.project_name||null,department:t.department,status:t.status,createdAt:new Date(t.created_at).toISOString(),activityAt:new Date(Math.max(t.created_at,t.finished_at)).toISOString(),summary:(t.result||t.error).slice(0,220)}))};
+  return {day,total:tasks.length,completed:count('completed'),running:count('running')+count('planning'),failed:count('failed'),interrupted:count('needs_review'),attentionBacklog,approvalBacklog,devices,people,tasks:tasks.map(t=>({id:t.id,text:t.text,projectName:t.project_name||null,department:t.department,status:t.status,createdAt:new Date(t.created_at).toISOString(),activityAt:new Date(Math.max(t.created_at,t.finished_at)).toISOString(),summary:(t.result||t.error).slice(0,220)}))};
 }

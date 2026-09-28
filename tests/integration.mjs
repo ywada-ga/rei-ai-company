@@ -553,6 +553,10 @@ try {
   const latest=await api('bootstrap');
   assert.equal(latest.tasks.length,100);
   assert.equal(latest.hasOlderTasks,true);
+  assert.ok(!latest.tasks.some(task=>task.id===created.task.id));
+  const projectWork=await api(`projects/brief/${project.id}`);
+  assert.ok(projectWork.tasks.some(task=>task.id===created.task.id));
+  assert.equal(projectWork.remaining,Math.max(0,projectWork.project.total-projectWork.tasks.length));
   assert.ok(latest.tasks.every(task=>task.result.length<=500));
   const cursor=latest.tasks.at(-1);
   const older=await api('tasks/history',{beforeTime:Date.parse(cursor.createdAt),beforeId:cursor.id});

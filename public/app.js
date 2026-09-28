@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbooksRequest:0, selectedPlaybook:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 
@@ -46,14 +46,14 @@ function setView(view) {
   $('view-title').innerHTML = `${copy[0]} <span>${copy[1]}</span>`;
   $('view-subtitle').textContent = copy[2];
   render();
-  if (view === 'projects') void loadProjectNotes();
+  if (view === 'projects') {void loadProjectNotes();void loadProjectWork();}
   if (view === 'playbooks') void loadPlaybooks();
   if (view === 'briefing' && Date.now()-state.reportLoadedAt>10000) void loadReport();
   if (view === 'missions') void loadTaskDetail();
 }
 async function refresh() {
   const epoch=state.authEpoch;
-  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
+  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='projects')void loadProjectWork(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
   catch (error) { if(epoch!==state.authEpoch||error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {
@@ -139,7 +139,7 @@ function renderMissions() {
   if($('task-retry-plan'))$('task-retry-plan').onclick=async()=>{const button=$('task-retry-plan');button.disabled=true;try{await request('/api/tasks/retry-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id})});state.taskDetail=null;await refresh();feedback('計画の再実行を依頼しました');}catch(error){feedback(error.message,true);button.disabled=false;}};
   if($('task-reissue'))$('task-reissue').onclick=()=>{$('command-input').value=chosen.text;$('command-project').value=chosen.projectId||'';$('command-input').focus();feedback('内容を確認してから送信してください');};
   if($('task-to-playbook'))$('task-to-playbook').onclick=()=>{if(['playbook-title','playbook-purpose','playbook-prompt'].some(id=>$(id).value.trim())&&!confirm('作成中の共有手順の下書きを置き換えますか？'))return;setView('playbooks');$('playbook-title').value=chosen.text.slice(0,120);$('playbook-purpose').value='';$('playbook-prompt').value=chosen.text.slice(0,8000);$('playbook-feedback').textContent='依頼文を再利用しやすい形に直し、使う場面を入力してから保存してください。';$('playbook-purpose').focus();};
-  if($('task-project-form'))$('task-project-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('button'),projectId=$('task-project-select').value||null;button.disabled=true;try{await request('/api/tasks/project',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id,projectId})});state.taskDetail=null;await refresh();feedback('仕事の所属を更新しました');}catch(error){feedback(error.message,true);button.disabled=false;}};
+  if($('task-project-form'))$('task-project-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('button'),projectId=$('task-project-select').value||null;button.disabled=true;try{await request('/api/tasks/project',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id,projectId})});state.taskDetail=null;state.projectWorkLoadedAt=0;await refresh();feedback('仕事の所属を更新しました');}catch(error){feedback(error.message,true);button.disabled=false;}};
   document.querySelectorAll('.human-reply-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/human/respond',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.humanReply,answer:form.querySelector('textarea').value.trim()})});form.querySelector('textarea').blur();state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('.reconcile-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/reconcile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:form.dataset.reconcile,resolution:form.querySelector('select').value,note:form.querySelector('textarea').value.trim()})});form.querySelector('textarea').blur();state.taskDetail=null;await refresh();}catch(error){feedback(error.message,true);button.disabled=false;}});
   document.querySelectorAll('.acknowledge-failure-form').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await request('/api/tasks/acknowledge-failure',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({taskId:chosen.id,note:form.querySelector('textarea').value.trim()})});form.querySelector('textarea').blur();state.taskDetail=null;await refresh();feedback('失敗の確認を記録しました');}catch(error){feedback(error.message,true);button.disabled=false;}});
@@ -207,10 +207,12 @@ function renderProjects() {
   $('project-total').textContent=`${String(projects.length).padStart(2,'0')} PROJECTS`;
   $('project-list').innerHTML=projects.length?projects.map(project=>`<button class="project-row ${state.selectedProject===project.id?'selected':''}" data-project="${escapeHtml(project.id)}"><span class="project-glyph">◈</span><span><strong>${escapeHtml(project.name)}</strong><small>${project.completed}/${project.total}件完了 · ${project.status==='active'?'稼働中':project.status==='paused'?'保留':'完了'}</small></span><em>${project.total?Math.round(project.completed/project.total*100):0}%</em></button>`).join(''):'<div class="panel-empty tall"><span>◈</span><strong>プロジェクトはまだありません</strong><small>目的を設定すると、複数の依頼をまとめて追跡できます。</small></div>';
   const project=projects.find(item=>item.id===state.selectedProject)||projects[0];
-  const tasks=project?state.data.tasks.filter(task=>task.projectId===project.id):[];
-  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>最近の仕事</h4>${tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):'<p class="project-empty">このプロジェクトの仕事はまだありません。</p>'}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
+  const work=state.projectWork?.project.id===project?.id?state.projectWork:null;
+  const tasks=work?.tasks||[];
+  const workMarkup=work?(tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):'<p class="project-empty">このプロジェクトの仕事はまだありません。</p>')+(work.remaining?`<p class="project-empty">このほか${work.remaining}件の仕事があります。</p>`:''):'<p class="project-empty">仕事を読み込み中…</p>';
+  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>最近の仕事</h4>${workMarkup}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
   if(project?.id===previousProject&&$('project-note-title')){$('project-note-title').value=draftTitle;$('project-note-content').value=draftContent;}
-  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;state.projectNotesQuery='';renderProjects();void loadProjectNotes();});
+  document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;state.projectNotesQuery='';renderProjects();void loadProjectNotes();void loadProjectWork();});
   document.querySelectorAll('[data-project-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.projectTask;setView('missions');});
   if($('project-assign'))$('project-assign').onclick=()=>{select.value=project.id;$('command-input').focus();};
   if($('project-share'))$('project-share').onclick=async()=>{
@@ -240,6 +242,15 @@ async function loadProjectNotes(){
   try{const data=query?await request('/api/projects/notes/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:id,query})}):await request(`/api/projects/notes/${id}`);if(epoch!==state.authEpoch||sequence!==state.projectNotesRequest)return;state.projectNotes={...data,query};renderProjects();}
   catch(error){if(epoch===state.authEpoch&&sequence===state.projectNotesRequest){const status=$('project-feedback');if(status)status.textContent=error.message;}}
   finally{if(epoch===state.authEpoch&&sequence===state.projectNotesRequest)state.projectNotesLoading=false;}
+}
+async function loadProjectWork(){
+  const id=state.selectedProject,epoch=state.authEpoch;
+  const current=state.data?.projects.find(project=>project.id===id);
+  const cached=state.projectWork?.project;
+  if(!id||cached?.id===id&&cached.total===current?.total&&cached.completed===current?.completed&&cached.failed===current?.failed&&cached.attention===current?.attention&&Date.now()-state.projectWorkLoadedAt<30000)return;
+  const sequence=++state.projectWorkRequest;
+  try{const data=await request(`/api/projects/brief/${id}`);if(epoch!==state.authEpoch||sequence!==state.projectWorkRequest||state.selectedProject!==id)return;state.projectWork=data;state.projectWorkLoadedAt=Date.now();renderProjects();}
+  catch(error){if(epoch===state.authEpoch&&sequence===state.projectWorkRequest){state.projectWorkLoadedAt=Date.now();const status=$('project-feedback');if(status)status.textContent=error.message;}}
 }
 function projectBriefText({project,tasks,remaining,notes=[],generatedAt}) {
   const status={active:'稼働中',paused:'保留',completed:'完了'}[project.status]||project.status;
@@ -372,6 +383,9 @@ function showAuth() {
   state.historyLoading=false;
   state.selectedTask=null;
   state.selectedProject=null;
+  state.projectWork=null;
+  state.projectWorkLoadedAt=0;
+  state.projectWorkRequest++;
   state.projectNotes=null;
   state.projectNotesLoading=false;
   state.projectNotesQuery='';

@@ -1,6 +1,8 @@
 # REI — ローカルで動くAI会社の司令室
 
-REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOS、Windows、Linuxを使えます。Web画面は中心PC上で動きます。クラウドやVercel、外部データベースは不要です。
+> **配布前の状態:** 現行ZIP版はNode.js、OpenClaw、遠隔接続用のTailscaleを別途必要とします。REIアプリ1つで同一ネットワークと遠隔のMacを接続する完成版は未実装です。導入目標と未解決事項は [REI単体での端末接続](SINGLE_APP_CONNECTIVITY.md) に記載しています。以下の端末追加手順は現行版の開発・検証用です。
+
+REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOS、Windows、Linuxを使えます。Web画面は中心PC上で動きます。現在のTailscale方式ではREI用のクラウドデータベースは不要です。完成版で遠隔端末をつなぐ場合は、任意の暗号化中継を使う方針です。
 
 ## 必要なもの
 

@@ -50,10 +50,21 @@ else if(['agents set-identity','config set','config validate'].includes(key))con
 else process.exit(2);
 `;
   const openclaw=path.join(bin,'openclaw');writeFileSync(openclaw,fakeOpenClaw);chmodSync(openclaw,0o755);
-  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{const code=JSON.parse(input).code;if(code!=='TESTCODE12345678'){response.writeHead(403,{'content-type':'application/json'});response.end(JSON.stringify({error:'接続コードが無効です'}));return;}response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
+  let hubVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
+  const server=createServer((request,response)=>{if(request.url?.includes('setup%2Fstatus')){response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({version:hubVersion}));return;}let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{const code=JSON.parse(input).code;if(code!=='TESTCODE12345678'){response.writeHead(403,{'content-type':'application/json'});response.end(JSON.stringify({error:'接続コードが無効です'}));return;}response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {
     const configFile=path.join(temp,'openclaw.json');writeFileSync(configFile,'{}');
+    hubVersion='older-version';
+    const mismatch=spawn(process.execPath,['connector.mjs','join',`http://127.0.0.1:${server.address().port}`],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:path.join(temp,'joined-agents'),REI_FAKE_AGENT_STATE:path.join(temp,'agent.json'),REI_FAKE_CONFIG_FILE:configFile},stdio:['pipe','pipe','pipe']});
+    mismatch.stdin.end();
+    let mismatchOutput='';mismatch.stderr.on('data',chunk=>mismatchOutput+=chunk);
+    const mismatchCode=await new Promise(resolve=>mismatch.on('close',resolve));
+    assert.notEqual(mismatchCode,0);
+    assert.match(mismatchOutput,/版が異なります/);
+    assert.equal(existsSync(path.join(temp,'agent.json')),false);
+    assert.equal(existsSync(path.join(project,'data','connector.json')),false);
+    hubVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
     const invalid=spawn(process.execPath,['connector.mjs','join',`http://127.0.0.1:${server.address().port}`],{cwd:project,env:{...process.env,PATH:`${bin}${path.delimiter}${process.env.PATH}`,REI_LAUNCH_AGENTS_DIR:path.join(temp,'joined-agents'),REI_FAKE_AGENT_STATE:path.join(temp,'agent.json'),REI_FAKE_CONFIG_FILE:configFile},stdio:['pipe','pipe','pipe']});
     let invalidOutput='',invalidAnswered=false;invalid.stdout.on('data',chunk=>{invalidOutput+=chunk;if(!invalidAnswered&&invalidOutput.includes('接続コード')){invalidAnswered=true;invalid.stdin.end('INVALIDCODE12345\n');}});invalid.stderr.on('data',chunk=>invalidOutput+=chunk);
     const invalidTimer=setTimeout(()=>invalid.kill(),15000);

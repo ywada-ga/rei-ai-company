@@ -6,7 +6,7 @@ REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴�
 
 - Node.js 24以降
 - 実行に参加する各PCのOpenClaw CLIと、利用可能なAIモデルの認証設定。かんたん端末追加ではREI専用エージェントを自動作成します（Windows HubアプリだけではCLIが使えるとは限りません）
-- 遠隔の複数PCの場合、同じTailscaleネットワークへの参加（手動方式ではSSH接続も可）
+- 遠隔の複数PCの場合、同じTailscaleネットワークへの参加。通常の端末追加にSSHは不要です
 - 人に依頼する場合だけChatwork APIトークンとルームID
 
 ## 1台で始める
@@ -53,12 +53,19 @@ WindowsではPowerShellでこのリポジトリを取得し、同じ `npm start`
 
 Linuxではsystemdのユーザーサービスを使えます。Hub用PCでは `node install-linux.mjs hub` を実行します。参加PCで「かんたん端末追加」を使う場合、接続情報の保存と一緒にConnectorの自動起動を登録します。手動で接続設定した場合は `node install-linux.mjs connector` を実行します。設定は `~/.config/systemd/user/` に保存され、ユーザーのログイン中に自動再起動します。ログアウト中も常駐させたい場合はOS側でユーザーサービスのlinger設定が必要です。
 
-## Mac mini・Windows・Linux PCをかんたんに追加する（遠隔も可）
+## Mac miniをかんたんに追加する
 
-1. 中心PCと各参加PCに[Tailscale](https://tailscale.com/download)を入れ、同じネットワークへログインします。Macでは[公式のStandalone版](https://tailscale.com/docs/install/mac)が推奨されています。インストール時はそのMacの管理者パスワードとVPNの許可が必要です。REIにパスワードを入力する必要はありません。
-2. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。REIが接続URLを検出して入力欄へ入れます。Tailscale側でHTTPSを有効にする案内が出た場合は、その案内を完了してください。
-3. REIの **端末・設定 → かんたん端末追加** にPCの名前を入力します。10分間だけ使える接続コードが表示されます。
-4. 参加PCでは、画面に表示されたコマンドを実行し、接続コードを入力します。コードの有効性を中心PCで確認してから、個人用とは別の `rei` エージェントを作り、Connectorをログイン時の自動起動に登録します。WindowsではPowerShellに表示された3行を順に入力します。最初に追加されたPCはREIの計画担当になります。
+SSHの設定は必要ありません。中心PCと各Mac miniを同じTailscaleネットワークへ参加させます。
+
+1. 中心PCとMac miniに[Tailscale](https://tailscale.com/download)を入れてログインします。Macでは[公式のStandalone版](https://tailscale.com/docs/install/mac)を使えます。インストールにはMacの管理者パスワードとVPNの許可が必要です。REIにパスワードを入力する必要はありません。
+2. Mac miniに[Node.js 24以降](https://nodejs.org/)と、利用できる状態のOpenClaw CLIを用意します。Mac miniで[REIのZIP](https://github.com/ywada-ga/rei-ai-company/archive/refs/heads/main.zip)をダウンロードして展開します。
+3. 中心PCのREIで **端末・設定 → 安全な接続を有効にする** を押します。Tailscale側からHTTPSの案内が出た場合は完了させます。
+4. **端末・設定 → かんたん端末追加** でMac miniの名前を入力し、接続コードを発行します。コードは10分間有効です。
+5. Mac miniで展開したフォルダの **Join-REI.command** をダブルクリックします。macOSが確認を求めたら右クリックして **開く** を選びます。画面の **接続URL** と **接続コード** を順にコピーして貼り付けます。REI専用エージェントと自動起動はその場で設定されます。中心PCの「接続端末」を更新して表示を確認します。
+
+3台それぞれ別の接続コードを発行してください。失敗時に既存の接続設定がある場合、REIは上書きせず止まります。接続コードが期限切れなら新しいコードを発行してください。中心PCとMac miniでREIの版が異なる場合も、コードを使う前に止まります。
+
+Windows・Linuxの参加PCでは、画面の **Windows・Linux／コマンドで追加する場合** を開き、表示された手順に従います。各PCにはNode.js 24以降とOpenClaw CLIが必要です。
 
 端末追加がOpenClawの設定途中で止まった場合は、同じPCで新しい接続コードを作って手順を再実行してください。REI専用エージェントの不足ファイルと識別設定は再実行時に補われます。既に `data/connector.json` がある場合は接続済みの情報を保護するため再登録を止めます。
 
@@ -76,7 +83,7 @@ Hubと異なる版を報告したPCには新しい仕事を渡しません。更
 未着手の仕事を別PCへ移す場合も、Hubと同じ版で接続中のPCだけを選べます。
 端末が「計画」または「実行」を提供していない間、その種類の工程は渡しません。司令室の準備状態も、計画と実行の両方を使えるPCがあるかで判定します。
 
-## Mac miniをSSHで追加する（手動方式）
+## 旧方式: SSHで追加する（通常は不要）
 
 中心PCにはmacOSの **リモートログイン** を有効にし、Mac miniからSSH鍵で接続できるようにします。まずMac miniで次を試します。
 

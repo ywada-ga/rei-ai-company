@@ -53,7 +53,7 @@ else process.exit(2);
   const failedNew=spawnSync(process.execPath,['install-linux.mjs','hub'],{cwd:root,encoding:'utf8',env:{...serviceEnv,REI_SYSTEMD_DIR:emptyUnits,REI_PORT:'4199',REI_TEST_FAIL_PORT:'4199',REI_TEST_FAIL_ACTION:'enable'}});
   assert.notEqual(failedNew.status,0);
   assert.equal(existsSync(path.join(emptyUnits,'rei-hub.service')),false);
-  const server=createServer((request,response)=>{let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE12345678');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
+  const server=createServer((request,response)=>{if(request.url?.includes('setup%2Fstatus')){response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({version:JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version}));return;}let input='';request.on('data',chunk=>input+=chunk);request.on('end',()=>{assert.equal(JSON.parse(input).code,'TESTCODE12345678');response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({token:'test-device-token'}));});});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {
     writeFileSync(path.join(project,'openclaw.json'),'{}');

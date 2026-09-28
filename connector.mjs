@@ -34,6 +34,15 @@ async function join() {
     if(existsSync(configPath))throw new Error('このPCには既にREIの接続設定があります。既存設定を確認してから再登録してください');
     const hub=(process.argv[3]||await rl.question('REIの接続URL: ')).trim().replace(/\/$/,'');
     validateHub(hub);
+    let hubStatus;
+    try {
+      const response=await fetch(new URL('/api?route=setup%2Fstatus',hub),{signal:AbortSignal.timeout(15000)});
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      hubStatus=await response.json();
+    } catch {
+      throw new Error('中心PCのREIに接続できません。両方のPCでTailscaleへログインし、接続URLを確認してください');
+    }
+    if(hubStatus.version!==reiVersion)throw new Error(`REIの版が異なります。中心PCは${hubStatus.version||'不明'}、このPCは${reiVersion}です。同じ版のREIを用意してからやり直してください`);
     const available=checkOpenClaw();
     if(available.status!==0)throw new Error('このPCにOpenClaw CLIがありません。先にOpenClawをセットアップしてください');
     const code=(await rl.question('REI画面に表示された16文字の接続コード: ')).trim();
@@ -56,10 +65,11 @@ async function join() {
   } finally {rl.close();}
 }
 function validateHub(value) {
-  const url=new URL(value);
+  let url;
+  try {url=new URL(value);} catch {throw new Error('接続URLを入力してください。中心PCのREI画面で「接続URLをコピー」を押して貼り付けます');}
   if(url.protocol==='https:')return;
   if(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname))return;
-  throw new Error('HubはHTTPS、またはSSH転送したローカルURLを指定してください');
+  throw new Error('遠隔の中心PCには、REI画面に表示されたHTTPSの接続URLを入力してください');
 }
 function loadPending() {
   if(existsSync(`${pendingPath}.tmp`))throw new Error(`未完了の結果保存ファイルがあります。${pendingPath}.tmp を確認してください`);
@@ -164,4 +174,4 @@ async function main() {
     } catch(e) {console.error('接続/実行:',e.message);if(e.fatal||process.argv.includes('--once')){process.exitCode=1;break;}await sleep(5000);}
   }
 }
-await main();
+await main().catch(error=>{console.error(error.message);process.exitCode=1;});

@@ -46,7 +46,8 @@ try {
   const archivedDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   const authorId=archivedDb.prepare('SELECT id FROM users WHERE username=?').get('owner').id;
   const insertArchived=archivedDb.prepare('INSERT INTO playbooks(id,title,purpose,prompt,created_by,created_at) VALUES(?,?,?,?,?,?)');
-  for(let index=0;index<101;index++)insertArchived.run(`archived-${index}`,index===100?'古いLP監修手順':`保管手順 ${index}`,'履歴の検索','確認用',authorId,Date.now()-100000-index);
+  const archivedAt=Date.now()-100000;
+  for(let index=0;index<101;index++)insertArchived.run(`archived-${index}`,index===100?'古いLP監修手順':`保管手順 ${index}`,'履歴の検索','確認用',authorId,archivedAt-index*1000);
   archivedDb.close();
   assert.ok(!(await api('playbooks')).playbooks.some(item=>item.title==='古いLP監修手順'));
   assert.equal((await api('playbooks/search',{query:'古いLP監修'})).playbooks[0].title,'古いLP監修手順');

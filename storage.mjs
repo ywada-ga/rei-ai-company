@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
-export const SCHEMA_VERSION=3;
+export const SCHEMA_VERSION=4;
 
 export function openStorage(root) {
   const dir=process.env.REI_DATA_DIR||path.join(root,'data');
@@ -44,6 +44,9 @@ export function openStorage(root) {
   if(!all(db,'PRAGMA table_info(devices)').some(column=>column.name==='version'))db.exec("ALTER TABLE devices ADD COLUMN version TEXT NOT NULL DEFAULT ''");
   if(!all(db,'PRAGMA table_info(late_result_receipts)').some(column=>column.name==='report'))db.exec("ALTER TABLE late_result_receipts ADD COLUMN report TEXT NOT NULL DEFAULT ''");
   if(!all(db,'PRAGMA table_info(late_result_receipts)').some(column=>column.name==='success'))db.exec('ALTER TABLE late_result_receipts ADD COLUMN success INTEGER NOT NULL DEFAULT 0');
+  if(!all(db,'PRAGMA table_info(playbooks)').some(column=>column.name==='department'))db.exec("ALTER TABLE playbooks ADD COLUMN department TEXT NOT NULL DEFAULT 'all'");
+  if(!all(db,'PRAGMA table_info(playbooks)').some(column=>column.name==='knowledge'))db.exec("ALTER TABLE playbooks ADD COLUMN knowledge TEXT NOT NULL DEFAULT ''");
+  if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='skill_id'))db.exec('ALTER TABLE tasks ADD COLUMN skill_id TEXT REFERENCES playbooks(id)');
   db.exec('CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id,kind,created_at)');
   if(currentVersion<SCHEMA_VERSION)db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   try { chmodSync(path.join(dir,'rei.sqlite'),0o600); } catch {}

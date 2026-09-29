@@ -10,6 +10,7 @@ import { random, hash, encodePassword, checkPassword, cookies, sessionUser, conn
 import { departments, event, createTask, cancellable, cancelTask, retryPlan, claim, sweep, finishJob, finishRoot, report } from './workflow.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
+import { searchMarketplaceSkills } from './skill-marketplace.mjs';
 import { createBackup, createBackupIfDue } from './backup.mjs';
 import { networkStatus, enableServe } from './network.mjs';
 import { startLanGateway } from './lan.mjs';
@@ -48,11 +49,11 @@ const send=(res,code,data)=>{res.writeHead(code,{'content-type':'application/jso
 const error=(res,code,message)=>send(res,code,{error:message});
 const text=(value,max=8000)=>{const result=String(value??'').trim();if(!result||result.length>max)throw Object.assign(new Error(`1〜${max}文字で入力してください`),{status:400});return result;};
 async function body(req,maxBytes=200000) {let raw='',bytes=0;const decoder=new StringDecoder('utf8');for await(const chunk of req){bytes+=chunk.length;if(bytes>maxBytes)throw Object.assign(new Error('送信内容が長すぎます'),{status:413});raw+=decoder.write(chunk);}raw+=decoder.end();try{return JSON.parse(raw||'{}');}catch{throw Object.assign(new Error('JSONが正しくありません'),{status:400});}}
-function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.kind,text:t.text,department:t.department,projectId:t.project_id||null,status:t.status,assignedDeviceId:t.device_id,result:brief?t.result.slice(0,500):t.result,error:brief?t.error.slice(0,500):t.error,createdAt:new Date(t.created_at).toISOString(),startedAt:t.started_at?new Date(t.started_at).toISOString():null,finishedAt:t.finished_at?new Date(t.finished_at).toISOString():null};}
+function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.kind,text:t.text,department:t.department,projectId:t.project_id||null,skillId:t.skill_id||null,status:t.status,assignedDeviceId:t.device_id,result:brief?t.result.slice(0,500):t.result,error:brief?t.error.slice(0,500):t.error,createdAt:new Date(t.created_at).toISOString(),startedAt:t.started_at?new Date(t.started_at).toISOString():null,finishedAt:t.finished_at?new Date(t.finished_at).toISOString():null};}
 function projectJson(p) {return {id:p.id,name:p.name,objective:p.objective,status:p.status,createdAt:new Date(p.created_at).toISOString(),updatedAt:new Date(p.updated_at).toISOString(),total:p.total||0,completed:p.completed||0,failed:p.failed||0,attention:p.attention||0};}
 function projectNoteJson(n) {return {id:n.id,projectId:n.project_id,title:n.title,content:n.content,author:n.username,createdAt:new Date(n.created_at).toISOString()};}
 function projectNotes(id,limit=50) {return all(db,'SELECT n.*,u.username FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.project_id=? ORDER BY n.created_at DESC,n.id DESC LIMIT ?',id,limit).map(projectNoteJson);}
-function playbookJson(p) {return {id:p.id,title:p.title,purpose:p.purpose,prompt:p.prompt,author:p.username,createdAt:new Date(p.created_at).toISOString()};}
+function playbookJson(p) {return {id:p.id,title:p.title,purpose:p.purpose,prompt:p.prompt,department:p.department,knowledge:p.knowledge,author:p.username,createdAt:new Date(p.created_at).toISOString()};}
 function projects() {return all(db,"SELECT p.*,COUNT(t.id) AS total,COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END),0) AS completed,COALESCE(SUM(CASE WHEN t.status='failed' THEN 1 ELSE 0 END),0) AS failed,COALESCE(SUM(CASE WHEN t.status='needs_review' THEN 1 ELSE 0 END),0) AS attention FROM projects p LEFT JOIN tasks t ON t.project_id=p.id AND t.kind='root' GROUP BY p.id ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END,p.updated_at DESC").map(projectJson);}
 function readyConnector() {
   const devices=all(db,'SELECT capabilities FROM devices WHERE revoked=0 AND last_seen>? AND version=?',Date.now()-30000,reiVersion);
@@ -119,7 +120,7 @@ async function api(req,res,route) {
     if(route==='connector/status'&&req.method==='GET')return send(res,200,{ok:true,deviceId:device.id,label:device.label,hubVersion:reiVersion});
     if(route==='connector/heartbeat'&&req.method==='POST') {const data=await body(req),now=Date.now(),agentName=typeof data.agentName==='string'&&data.agentName.trim()?data.agentName.slice(0,80):null,pendingResults=Number.isSafeInteger(data.pendingResults)&&data.pendingResults>=0&&data.pendingResults<=10000?data.pendingResults:null,version=typeof data.version==='string'&&/^[0-9A-Za-z.+_-]{1,32}$/.test(data.version)?data.version:'';run(db,'UPDATE devices SET last_seen=?,capabilities=?,agent_name=COALESCE(?,agent_name),pending_results=COALESCE(?,pending_results),version=? WHERE id=?',now,JSON.stringify(Array.isArray(data.capabilities)?data.capabilities:[]),agentName,pendingResults,version,device.id);if(Array.isArray(data.mcpStatuses))for(const item of data.mcpStatuses.slice(0,100)){if(typeof item?.name!=='string'||!['configured','auth_required','error'].includes(item.status))continue;if(!one(db,'SELECT name FROM mcp_integrations WHERE name=? AND device_id=?',item.name,device.id))continue;run(db,'INSERT INTO device_mcp_status(device_id,name,status,updated_at) VALUES(?,?,?,?) ON CONFLICT(device_id,name) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at',device.id,item.name,item.status,now);}const integrations=all(db,'SELECT name,label,url,auth FROM mcp_integrations WHERE device_id=? ORDER BY name',device.id);const checks=all(db,'SELECT c.name,c.request_id FROM mcp_checks c JOIN mcp_integrations m ON m.name=c.name WHERE m.device_id=? AND c.checked_at<c.requested_at ORDER BY c.requested_at LIMIT 1',device.id);return send(res,200,{ok:true,deviceId:device.id,integrations,checks});}
     if(route==='connector/mcp-check-result'&&req.method==='POST') {const data=await body(req),name=String(data.name||''),requestId=String(data.requestId||''),status=String(data.status||''),toolCount=Number(data.toolCount||0),detail=String(data.error||'').slice(0,400);if(!['success','error','auth_required'].includes(status)||!Number.isSafeInteger(toolCount)||toolCount<0||toolCount>10000)return error(res,400,'MCP検査結果が正しくありません');const check=one(db,'SELECT c.name FROM mcp_checks c JOIN mcp_integrations m ON m.name=c.name WHERE c.name=? AND c.request_id=? AND m.device_id=? AND c.checked_at<c.requested_at',name,requestId,device.id);if(!check)return error(res,409,'MCP検査依頼が無効か処理済みです');run(db,'UPDATE mcp_checks SET checked_at=?,status=?,tool_count=?,error=? WHERE name=? AND request_id=?',Date.now(),status,toolCount,detail,name,requestId);return send(res,200,{ok:true});}
-    if(route==='connector/claim'&&req.method==='POST') {sweep(db);const updateRequired=device.version!==reiVersion;const job=updateRequired?null:claim(db,device,reiVersion);if(job?.project_id){const project=one(db,'SELECT name,objective FROM projects WHERE id=?',job.project_id);if(project){const notes=projectNotes(job.project_id,5).map(note=>({title:note.title,content:note.content.slice(0,1000)}));const recentWork=all(db,"SELECT text,status,result,error FROM tasks WHERE project_id=? AND kind='root' AND status IN ('completed','failed','needs_review') ORDER BY created_at DESC,id DESC LIMIT 5",job.project_id).map(task=>({text:task.text.slice(0,240),status:task.status,summary:String(task.result||task.error||'').slice(0,300)}));job.project={...project,notes,recentWork};}}const devices=all(db,'SELECT id,label,agent_name,capabilities,last_seen FROM devices WHERE revoked=0').map(d=>({id:d.id,label:d.label,agentName:d.agent_name,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{job,devices,updateRequired,hubVersion:reiVersion});}
+    if(route==='connector/claim'&&req.method==='POST') {sweep(db);const updateRequired=device.version!==reiVersion;const job=updateRequired?null:claim(db,device,reiVersion);if(job?.skill_id){const skill=one(db,'SELECT title,purpose,prompt,knowledge,department FROM playbooks WHERE id=?',job.skill_id);if(skill&&(skill.department==='all'||skill.department===job.department))job.skill=skill;}if(job?.project_id){const project=one(db,'SELECT name,objective FROM projects WHERE id=?',job.project_id);if(project){const notes=projectNotes(job.project_id,5).map(note=>({title:note.title,content:note.content.slice(0,1000)}));const recentWork=all(db,"SELECT text,status,result,error FROM tasks WHERE project_id=? AND kind='root' AND status IN ('completed','failed','needs_review') ORDER BY created_at DESC,id DESC LIMIT 5",job.project_id).map(task=>({text:task.text.slice(0,240),status:task.status,summary:String(task.result||task.error||'').slice(0,300)}));job.project={...project,notes,recentWork};}}const devices=all(db,'SELECT id,label,agent_name,capabilities,last_seen FROM devices WHERE revoked=0').map(d=>({id:d.id,label:d.label,agentName:d.agent_name,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{job,devices,updateRequired,hubVersion:reiVersion});}
     if(route==='connector/renew'&&req.method==='POST') {const data=await body(req);const changed=run(db,"UPDATE tasks SET lease_until=? WHERE id=? AND lease_id=? AND device_id=? AND status='running'",Date.now()+240000,String(data.taskId||''),String(data.leaseId||''),device.id);return send(res,200,{ok:changed.changes===1});}
     if(route==='connector/result'&&req.method==='POST') {const data=await body(req,8_000_000);const result=finishJob(db,device,data);if(result.ok)void sendPendingHuman(db,root).catch(e=>console.error('Chatwork:',e.message));return send(res,200,result);}
     return error(res,404,'端末APIが見つかりません');
@@ -144,31 +145,39 @@ async function api(req,res,route) {
     return send(res,200,{user,departments,workers,tasks,hasOlderTasks:recent.length>100,projects:projects(),humanPending,gateway:{reachable:readyConnector(),version:reiVersion,agent:'rei'}});
   }
   if(route==='report/today'&&req.method==='GET') {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,data);}
+  if(route==='skills/marketplace/search'&&req.method==='POST') {const query=text((await body(req)).query,100);try{return send(res,200,{results:await searchMarketplaceSkills(query),query});}catch(e){return error(res,502,`マーケットプレイスを検索できません: ${e.message}`);}}
   if(route==='playbooks'&&req.method==='GET') {
     const total=one(db,'SELECT COUNT(*) AS count FROM playbooks').count;
     const playbooks=all(db,'SELECT p.*,u.username FROM playbooks p JOIN users u ON u.id=p.created_by ORDER BY p.created_at DESC,p.id DESC LIMIT 100').map(playbookJson);
     return send(res,200,{playbooks,remaining:Math.max(0,total-playbooks.length)});
   }
   if(route==='playbooks/search'&&req.method==='POST') {
-    const query=String((await body(req)).query||'').trim();
-    if(!query||query.length>100)return error(res,400,'検索語を1〜100文字で入力してください');
-    const where='FROM playbooks p JOIN users u ON u.id=p.created_by WHERE instr(lower(p.title),lower(?))>0 OR instr(lower(p.purpose),lower(?))>0 OR instr(lower(p.prompt),lower(?))>0 OR instr(lower(u.username),lower(?))>0';
-    const args=[query,query,query,query],total=one(db,`SELECT COUNT(*) AS count ${where}`,...args).count;
+    const filters=await body(req),query=String(filters.query||'').trim(),department=String(filters.department||'all');
+    if(query.length>100||!query&&department==='all')return error(res,400,'検索語かセクションを選んでください');
+    if(department!=='all'&&!departments.some(item=>item.id===department))return error(res,400,'セクションを選んでください');
+    const terms=[],args=[];
+    if(query){terms.push('(instr(lower(p.title),lower(?))>0 OR instr(lower(p.purpose),lower(?))>0 OR instr(lower(p.prompt),lower(?))>0 OR instr(lower(p.knowledge),lower(?))>0 OR instr(lower(u.username),lower(?))>0)');args.push(query,query,query,query,query);}
+    if(department!=='all'){terms.push("(p.department=? OR p.department='all')");args.push(department);}
+    const where=`FROM playbooks p JOIN users u ON u.id=p.created_by WHERE ${terms.join(' AND ')}`;
+    const total=one(db,`SELECT COUNT(*) AS count ${where}`,...args).count;
     const playbooks=all(db,`SELECT p.*,u.username ${where} ORDER BY p.created_at DESC,p.id DESC LIMIT 100`,...args).map(playbookJson);
-    return send(res,200,{playbooks,remaining:Math.max(0,total-playbooks.length),query});
+    return send(res,200,{playbooks,remaining:Math.max(0,total-playbooks.length),query,department});
   }
   if(route==='playbooks/create'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'手順を追加する権限がありません');
-    const data=await body(req),title=text(data.title,120),purpose=text(data.purpose,1000),prompt=text(data.prompt,8000),id=uid(),now=Date.now();
-    transaction(db,()=>{run(db,'INSERT INTO playbooks(id,title,purpose,prompt,created_by,created_at) VALUES(?,?,?,?,?,?)',id,title,purpose,prompt,user.id,now);event(db,null,user.username,'playbook_created',title);});
+    const data=await body(req),title=text(data.title,120),purpose=text(data.purpose,1000),prompt=text(data.prompt,8000),knowledge=String(data.knowledge||'').trim(),department=String(data.department||'all'),id=uid(),now=Date.now();
+    if(knowledge.length>4000)return error(res,400,'参考知識は4000文字以内にしてください');
+    if(department!=='all'&&!departments.some(item=>item.id===department))return error(res,400,'セクションを選んでください');
+    transaction(db,()=>{run(db,'INSERT INTO playbooks(id,title,purpose,prompt,department,knowledge,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)',id,title,purpose,prompt,department,knowledge,user.id,now);event(db,null,user.username,'playbook_created',title);});
     return send(res,201,{playbook:playbookJson(one(db,'SELECT p.*,u.username FROM playbooks p JOIN users u ON u.id=p.created_by WHERE p.id=?',id))});
   }
   if(route==='command'&&req.method==='POST') {
     if(user.role==='viewer')return error(res,403,'指示する権限がありません');
-    const data=await body(req),message=text(data.text),department=departments.some(d=>d.id===data.department)?data.department:'operations',projectId=data.projectId?String(data.projectId):null;
+    const data=await body(req),message=text(data.text),department=departments.some(d=>d.id===data.department)?data.department:'operations',projectId=data.projectId?String(data.projectId):null,skillId=data.skillId?String(data.skillId):null;
     if(/今日.{0,12}(稼働|活動).{0,8}報告/.test(message)) {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,{kind:'report',report:data});}
     if(projectId&&!one(db,"SELECT id FROM projects WHERE id=? AND status='active'",projectId))return error(res,400,'稼働中のプロジェクトを選んでください');
-    const task=createTask(db,message,department,user.id,user.role==='requester',projectId);
+    if(skillId){const skill=one(db,'SELECT department FROM playbooks WHERE id=?',skillId);if(!skill||skill.department!=='all'&&skill.department!==department)return error(res,400,'このセクションで使えるスキルを選んでください');}
+    const task=createTask(db,message,department,user.id,user.role==='requester',projectId,skillId);
     return send(res,201,{kind:'task',task:taskJson(task)});
   }
   if(route==='projects/create'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'プロジェクトを作成する権限がありません');const data=await body(req),name=text(data.name,80),objective=text(data.objective,2000),id=uid(),now=Date.now();transaction(db,()=>{run(db,'INSERT INTO projects(id,name,objective,created_at,updated_at) VALUES(?,?,?,?,?)',id,name,objective,now,now);event(db,null,user.username,'project_created',name);});return send(res,201,{project:projectJson(one(db,'SELECT * FROM projects WHERE id=?',id))});}

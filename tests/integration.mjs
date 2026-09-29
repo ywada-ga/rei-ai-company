@@ -37,11 +37,16 @@ try {
   const api=async(route,data,auth)=>{const res=await fetch(`${base}/api?route=${route}`,{method:data?'POST':'GET',headers:{...(data?{'content-type':'application/json'}:{}),...(cookie?{cookie}:{}),...(auth?{authorization:`Bearer ${auth}`}:{})},body:data?JSON.stringify(data):undefined});const body=await res.json();assert.ok(res.ok,`${route}: ${res.status} ${JSON.stringify(body)}`);if(res.headers.get('set-cookie'))cookie=res.headers.get('set-cookie').split(';')[0];return body;};
   await api('setup/complete',{token:setup,username:'owner',password:'smoke-test-password-123'});
   await api('auth/login',{username:'owner',password:'smoke-test-password-123'});
-  const playbook=(await api('playbooks/create',{title:'LP制作',purpose:'LPの初稿を作る時',prompt:'商品情報を整理して構成案を作成'})).playbook;
+  const playbook=(await api('playbooks/create',{title:'LP制作',purpose:'LPの初稿を作る時',prompt:'商品情報を整理して構成案を作成',knowledge:'出典と公開条件を確認',department:'operations'})).playbook;
   assert.equal(playbook.author,'owner');
+  assert.equal(playbook.department,'operations');
+  assert.equal(playbook.knowledge,'出典と公開条件を確認');
   assert.equal((await api('playbooks')).playbooks[0].prompt,'商品情報を整理して構成案を作成');
   assert.equal((await api('playbooks/search',{query:'LP制作'})).playbooks[0].id,playbook.id);
   assert.equal((await api('playbooks/search',{query:'構成案'})).playbooks[0].id,playbook.id);
+  assert.equal((await api('playbooks/search',{query:'公開条件'})).playbooks[0].id,playbook.id);
+  assert.equal((await api('playbooks/search',{department:'operations'})).playbooks[0].id,playbook.id);
+  assert.deepEqual((await api('playbooks/search',{department:'research'})).playbooks,[]);
   assert.deepEqual((await api('playbooks/search',{query:'見つからない'})).playbooks,[]);
   const archivedDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   const authorId=archivedDb.prepare('SELECT id FROM users WHERE username=?').get('owner').id;
@@ -172,8 +177,11 @@ try {
   cleanupNotes.prepare('DELETE FROM project_notes WHERE project_id=?').run(otherProject.id);
   cleanupNotes.prepare('DELETE FROM projects WHERE id=?').run(otherProject.id);
   cleanupNotes.close();
-  const created=await api('command',{text:'テスト用の仕事をして',department:'operations',projectId:project.id});
+  const invalidSkill=await fetch(`${base}/api?route=command`,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({text:'失敗すべき仕事',department:'research',skillId:playbook.id})});
+  assert.equal(invalidSkill.status,400);
+  const created=await api('command',{text:'テスト用の仕事をして',department:'operations',projectId:project.id,skillId:playbook.id});
   assert.equal(created.task.projectId,project.id);
+  assert.equal(created.task.skillId,playbook.id);
   const projectBrief=await api(`projects/brief/${project.id}`);
   assert.equal(projectBrief.project.total,1);
   assert.equal(projectBrief.tasks[0].id,created.task.id);
@@ -196,6 +204,8 @@ try {
   await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning','execution']},auth);
   assert.equal((await api('bootstrap')).gateway.reachable,true);
   const plan=await api('connector/claim',{},auth);assert.equal(plan.job.kind,'plan');
+  assert.equal(plan.job.skill.title,'LP制作');
+  assert.equal(plan.job.skill.knowledge,'出典と公開条件を確認');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).agentName,'rei');
   assert.equal(plan.devices.find(device=>device.id===enrolled.device.id).online,true);
   assert.equal(plan.job.project.objective,'最初の成果を作る');
@@ -209,6 +219,7 @@ try {
   assert.equal((await api('connector/claim',{},auth)).job,null);
   await api('connector/heartbeat',{version:currentVersion,capabilities:['openclaw','planning','execution']},auth);
   const execute=await api('connector/claim',{},auth);assert.equal(execute.job.kind,'execute');
+  assert.equal(execute.job.skill.prompt,'商品情報を整理して構成案を作成');
   assert.equal(execute.job.project_id,project.id);
   assert.equal(execute.job.project.name,'新規事業');
   assert.equal(execute.job.project.notes[0].title,'引き継ぎ');

@@ -18,6 +18,9 @@ assert.equal(db.prepare('PRAGMA user_version').get().user_version,SCHEMA_VERSION
 assert.equal(db.prepare("SELECT value FROM settings WHERE key='sentinel'").get().value,'preserved');
 assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_notes'").get());
 assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='playbooks'").get());
+assert.ok(db.prepare('PRAGMA table_info(playbooks)').all().some(column=>column.name==='knowledge'));
+assert.ok(db.prepare('PRAGMA table_info(playbooks)').all().some(column=>column.name==='department'));
+assert.ok(db.prepare('PRAGMA table_info(tasks)').all().some(column=>column.name==='skill_id'));
 db.exec(`PRAGMA user_version=${SCHEMA_VERSION+1}`);
 db.close();
 

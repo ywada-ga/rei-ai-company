@@ -71,9 +71,6 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .field-grid{background:radial-gradient(circle at center,#5ae4ff13 0,transparent 42%,#00aaff0d 75%,transparent 82%)}
 .depth-tunnel{position:absolute;left:50%;top:50%;width:min(94%,600px);aspect-ratio:1;transform:translate(-50%,-50%) rotateX(16deg);transform-style:preserve-3d;pointer-events:none;filter:drop-shadow(0 0 15px #0eaaff88)}
 .depth-tunnel span{position:absolute;border-radius:50%;background:conic-gradient(from 15deg,transparent 0 11%,#2edcff 12% 15%,transparent 16% 28%,#82efff 29% 30%,transparent 31% 42%,#149dea 43% 52%,transparent 53% 67%,#2edcff 68% 73%,transparent 74% 88%,#81eeff 89% 91%,transparent 92%);mask-image:radial-gradient(circle,transparent 0 68%,#000 69% 73%,transparent 74%);animation:telemetry-turn 80s linear infinite}
-.depth-tunnel span:nth-child(1){inset:0;opacity:.43;transform:translateZ(-100px)}
-.depth-tunnel span:nth-child(2){inset:12%;opacity:.7;transform:translateZ(-24px);animation-duration:55s;animation-direction:reverse}
-.depth-tunnel span:nth-child(3){inset:24%;opacity:.95;transform:translateZ(75px);animation-duration:35s}
 .orbit-ring{border-color:#5edcff55;box-shadow:0 0 28px #00baff28,inset 0 0 25px #00dfff18}
 .ring-outer{border-color:#80dfff70}.ring-mid{border-color:#76e7ff55}.ring-inner{border-color:#a0f5ff90}
 .orbit-lines path{stroke:#58c9ff85;stroke-dasharray:3 9}
@@ -92,3 +89,21 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .rail-btn:focus-visible,.orbit-node:focus-visible,.central-core:focus-visible,.outline-button:focus-visible,.icon-button:focus-visible,.send-button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #c6faff;outline-offset:2px}
 @keyframes telemetry-turn{to{rotate:360deg}}
 @media(prefers-reduced-motion:reduce){.depth-tunnel span{animation:none}}
+
+/* Receding glass lenses and a bright front bezel make the core read as a portal. */
+.depth-well{position:absolute;left:50%;top:50%;width:57%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%) translateZ(-70px);background:radial-gradient(circle,#010912 0 27%,#062039 40%,#020b16 50%,#0c4264 59%,#041526 68%,#1677a4 72%,#020e1b 78%);box-shadow:0 0 0 13px #061d32df,0 0 0 15px #78eaff83,0 0 0 35px #04182ccc,0 0 0 37px #219ed06b,0 0 0 61px #052540aa,0 0 0 63px #42c8ff45,inset 0 0 36px 14px #000d,0 0 100px #008dff83}
+.depth-well:before,.depth-well:after{content:"";position:absolute;border-radius:50%;pointer-events:none}
+.depth-well:before{inset:9%;border:10px solid #081a2b;box-shadow:inset 0 0 25px #000,0 0 0 2px #3db7e5b3,0 0 18px #00aeff9c}
+.depth-well:after{inset:24%;border:2px solid #9cf4ff89;box-shadow:0 0 0 10px #042339aa,0 0 24px #4edfff,inset 0 0 25px #00111c;background:radial-gradient(circle,#09324d,#010d1b 75%)}
+.depth-tunnel span:nth-of-type(1){inset:0;opacity:.48;transform:translateZ(-130px);animation-duration:90s}
+.depth-tunnel span:nth-of-type(2){inset:12%;opacity:.78;transform:translateZ(-35px);animation-duration:52s;animation-direction:reverse}
+.depth-tunnel span:nth-of-type(3){inset:24%;opacity:1;transform:translateZ(92px);animation-duration:32s}
+.core-halo{width:202px;height:202px;filter:drop-shadow(0 0 23px #11baffaa)}
+.halo-one{box-shadow:0 0 0 9px #05203cdd,0 0 0 11px #88ebff99,0 0 26px 12px #00baff96,inset 0 0 39px #0078afba}
+.halo-two{inset:-21px;border-width:3px}.halo-three{inset:-42px;border-width:2px}
+.central-core{box-shadow:0 0 0 4px #072339,0 0 0 6px #adf7ffce,0 0 25px 10px #00baffc2,0 0 70px #0077c8,inset 0 0 18px #74e9ffa3,inset 0 0 42px 15px #001221}
+.central-core:before{content:"";position:absolute;inset:-15px;border-radius:50%;background:conic-gradient(from 45deg,#041d33 0 8%,#8cf5ff 9% 14%,#06324f 15% 31%,#6ce4ff 32% 36%,#031b32 37% 57%,#69deff 58% 64%,#04253f 65% 83%,#a7f7ff 84% 88%,#041d33 89%);mask-image:radial-gradient(circle,transparent 0 80%,#000 82%);pointer-events:none;filter:drop-shadow(0 0 8px #55dcff)}
+.central-core:after{content:"";position:absolute;inset:4px;border-radius:50%;background:radial-gradient(ellipse at 36% 21%,#d1fcff2e,transparent 41%);pointer-events:none}
+.central-core>*{position:relative;z-index:1}
+.orbit-node{box-shadow:inset 0 1px 0 #bbf7ff45,inset 0 -10px 23px #010b1a8c,0 0 21px #008fda66,0 15px 2px -8px #0009,0 22px 25px #000b}
+.center-stage{box-shadow:inset 0 0 100px #00aafa25,inset 0 0 2px #c6faff,0 0 28px #009def38,0 24px 48px #000c}

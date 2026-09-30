@@ -121,6 +121,75 @@ void main(){
   resize();start();
 }
 initWavePlane();
+// A rotating data globe sits in the background; REI remains unframed text.
+function initGlobeField() {
+  const canvas=$('globe-field'),field=document.querySelector('.orbit-field');
+  const context=canvas?.getContext('2d');
+  if(!context||!field)return;
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const beacons=[[-.47,-2.2],[.31,-1.65],[.68,-.42],[-.22,.35],[.42,1.28],[-.61,2.15],[.12,2.72]];
+  let width=0,height=0,last=0,running=false,visible=true;
+  const draw=time=>{
+    context.clearRect(0,0,width,height);
+    const radius=Math.min(width*.28,height*.31,185),cx=width*.52,cy=height*.50;
+    const yaw=time*.28,tilt=-.22;
+    const position=(lat,lon)=>{
+      const x=Math.cos(lat)*Math.sin(lon+yaw),y=Math.sin(lat),z=Math.cos(lat)*Math.cos(lon+yaw);
+      const py=y*Math.cos(tilt)-z*Math.sin(tilt),pz=y*Math.sin(tilt)+z*Math.cos(tilt);
+      const scale=1/(1-pz*.18);
+      return {x:cx+x*radius*scale,y:cy-py*radius*scale,z:pz};
+    };
+    const haze=context.createRadialGradient(cx-radius*.28,cy-radius*.32,radius*.08,cx,cy,radius*1.15);
+    haze.addColorStop(0,'rgba(24,123,137,.15)');haze.addColorStop(.65,'rgba(4,49,70,.17)');haze.addColorStop(1,'rgba(2,17,30,0)');
+    context.fillStyle=haze;context.beginPath();context.arc(cx,cy,radius*1.15,0,Math.PI*2);context.fill();
+    context.lineWidth=.8;
+    const segment=(a,b)=>{
+      const front=Math.max(-1,Math.min(1,(a.z+b.z)*.5));
+      context.strokeStyle=front>0?`rgba(91,225,235,${(.13+front*.27).toFixed(3)})`:'rgba(47,145,170,.09)';
+      context.beginPath();context.moveTo(a.x,a.y);context.lineTo(b.x,b.y);context.stroke();
+    };
+    for(let longitude=0;longitude<14;longitude++){
+      const lon=longitude*Math.PI/7;
+      for(let step=0;step<40;step++)segment(position(-Math.PI/2+step*Math.PI/40,lon),position(-Math.PI/2+(step+1)*Math.PI/40,lon));
+    }
+    for(let latitude=-4;latitude<=4;latitude++){
+      const lat=latitude*Math.PI/12;
+      for(let step=0;step<64;step++)segment(position(lat,step*Math.PI/32),position(lat,(step+1)*Math.PI/32));
+    }
+    const nodes=beacons.map(([lat,lon])=>position(lat,lon));
+    context.lineWidth=.8;
+    for(let index=0;index<nodes.length;index++){
+      const a=nodes[index],b=nodes[(index+2)%nodes.length];
+      if(a.z<0||b.z<0)continue;
+      context.strokeStyle='rgba(113,237,240,.28)';context.beginPath();context.moveTo(a.x,a.y);context.lineTo(b.x,b.y);context.stroke();
+    }
+    nodes.forEach((node,index)=>{
+      if(node.z<-.15)return;
+      const pulse=.7+.3*Math.sin(time*1.1+index*2.1),warm=index%3===0;
+      context.fillStyle=warm?`rgba(255,75,99,${pulse.toFixed(3)})`:`rgba(83,226,242,${pulse.toFixed(3)})`;
+      context.shadowColor=warm?'#ff4668':'#38d9f0';context.shadowBlur=10;
+      context.beginPath();context.arc(node.x,node.y,warm?2.8:2.1,0,Math.PI*2);context.fill();
+    });
+    context.shadowBlur=0;
+  };
+  const resize=()=>{
+    const rect=field.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+    width=rect.width;height=rect.height;
+    canvas.width=Math.max(1,Math.round(width*dpr));canvas.height=Math.max(1,Math.round(height*dpr));
+    context.setTransform(dpr,0,0,dpr,0,0);draw(0);
+  };
+  const frame=time=>{
+    if(document.hidden||!visible||!canvas.offsetWidth){running=false;return;}
+    if(time-last>=50){draw(time*.001);last=time;}
+    requestAnimationFrame(frame);
+  };
+  const start=()=>{if(!reduced&&!running&&!document.hidden&&visible&&canvas.offsetWidth){running=true;requestAnimationFrame(frame);}};
+  new ResizeObserver(()=>{resize();start();}).observe(field);
+  new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;if(visible)start();}).observe(canvas);
+  document.addEventListener('visibilitychange',start);
+  resize();start();
+}
+initGlobeField();
 function commandSkill(skill) {state.selectedCommandSkill=skill||null;$('command-skill').textContent=skill?`使用スキル: ${skill.title} ×`:'';$('command-skill').classList.toggle('hidden',!skill);}
 
 function setSkillPane(pane){if(pane==='create'&&state.data?.user.role==='viewer')pane='library';state.skillPane=pane;document.querySelector('.playbook-grid').classList.toggle('hidden',pane!=='library');$('playbook-search-form').classList.toggle('hidden',pane!=='library');$('playbook-total').classList.toggle('hidden',pane!=='library');$('playbook-form').classList.toggle('hidden',pane!=='create');document.querySelector('.marketplace-panel').classList.toggle('hidden',pane!=='marketplace');document.querySelector('[data-skill-pane="create"]').classList.toggle('hidden',state.data?.user.role==='viewer');document.querySelectorAll('[data-skill-pane]').forEach(button=>button.classList.toggle('active',button.dataset.skillPane===pane));}

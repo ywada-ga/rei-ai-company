@@ -137,3 +137,14 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .central-core strong{font-size:31px;letter-spacing:6px;margin:2px 0;color:#ebfbff;text-shadow:0 0 16px #35c6ffb3}
 .central-core .core-name{font-size:8px;letter-spacing:1.5px}
 .central-core small{font-size:8px}
+
+/* Circuit paths and restrained status lights echo the reference video's HUD. */
+.signal-traces{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;opacity:.65}
+.signal-traces>path{fill:none;stroke:#3bd2e2;stroke-width:1;stroke-dasharray:180 38 4 18;animation:signal-flow 18s linear infinite;filter:drop-shadow(0 0 4px #1acde6)}
+.signal-traces>path:nth-child(2){animation-direction:reverse;opacity:.65}
+.signal-lights circle{fill:#ff6677;opacity:.65;filter:drop-shadow(0 0 5px #ff384f);animation:signal-glow 4.8s ease-in-out infinite}
+.signal-lights circle:nth-child(even){animation-delay:-2.4s;fill:#61e6f5;filter:drop-shadow(0 0 4px #32d9ff)}
+.globe-field{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.92;mask-image:radial-gradient(ellipse at 52% 50%,#000 0 55%,transparent 79%)}
+@keyframes signal-flow{to{stroke-dashoffset:-240}}
+@keyframes signal-glow{50%{opacity:.2}}
+@media(prefers-reduced-motion:reduce){.signal-traces>path,.signal-lights circle{animation:none}}

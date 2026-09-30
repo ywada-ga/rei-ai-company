@@ -7,7 +7,7 @@ const labels = { queued:'待機', ready:'待機', planning:'計画中', approval
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
 // No.40 WAVE PLANE inspired this restrained, self-moving depth surface.
-// The line mesh is original, local, and intentionally slow enough for a work UI.
+// The line mesh is original and local. Slow wave phases remain visible at a glance.
 function initWavePlane() {
   let canvas=$('wave-plane');
   const field=document.querySelector('.orbit-field');
@@ -19,7 +19,7 @@ function initWavePlane() {
   for(let column=0;column<=cols;column++)for(let row=0;row<rows;row++)vertices.push(...point(column,row),...point(column,row+1));
   const gl=canvas.getContext('webgl2',{alpha:true,antialias:true,premultipliedAlpha:false});
   let width=0,height=0,last=0,running=false,visible=true;
-  const wave=(x,z,time)=>Math.sin(x*2.5+time*.06)*.15+Math.sin(z*3.2-time*.045)*.095+Math.sin((x+z)*2.1+time*.035)*.06;
+  const wave=(x,z,time)=>Math.sin(x*2.5+time*.22)*.15+Math.sin(z*3.2-time*.16)*.095+Math.sin((x+z)*2.1+time*.11)*.06;
   const project=(x,z,time)=>{
     const h=wave(x,z,time),depth=1-z*.12;
     return [width/2+x*width*.31*depth,height*(.59-z*.26-h*.37)];
@@ -40,7 +40,7 @@ uniform float uTime,uAspect;
 out float vHeight,vDepth,vEdge;
 void main(){
   float x=aPosition.x,z=aPosition.y;
-  float h=sin(x*2.5+uTime*.06)*.15+sin(z*3.2-uTime*.045)*.095+sin((x+z)*2.1+uTime*.035)*.06;
+  float h=sin(x*2.5+uTime*.22)*.15+sin(z*3.2-uTime*.16)*.095+sin((x+z)*2.1+uTime*.11)*.06;
   float sx=x*.62*(1.0-z*.12);
   float sy=-.18+z*.52+h*.74;
   gl_Position=vec4(sx,sy,0.0,1.0);
@@ -156,7 +156,7 @@ function setView(view) {
   document.querySelectorAll('.view').forEach(element => element.classList.toggle('hidden', element.id !== `${view}-view`));
   document.querySelectorAll('.rail-btn').forEach(element => element.classList.toggle('active', element.dataset.view === view));
   const copy = {
-    core:['レイ','COMMAND CENTER','レイに目的を伝える。AI会社が仕事を動かす。'],
+    core:['REI','COMMAND CENTER','REIに目的を伝える。AI会社が仕事を動かす。'],
     missions:['ミッション','MISSION CONTROL','指示から実行、結果までを追跡します。'],
     projects:['プロジェクト','PROJECT COMMAND','目的ごとに仕事と進捗をまとめます。'],
     playbooks:['スキル','CREATE / FIND SKILL','チームの手順と知識をセクション別に共有し、仕事に指定できます。'],
@@ -190,7 +190,7 @@ function render() {
     const active = tasks.filter(task => task.department === department.id && task.status === 'running').length;
     return `<button class="orbit-node node-${index} ${state.selectedDepartment === department.id ? 'selected' : ''}" data-department="${escapeHtml(department.id)}"><span class="node-icon">${icons[index]}</span><span class="node-copy"><small>SECTOR 0${index+1}</small><strong>${escapeHtml(department.name)}</strong><em>${active ? `${active} ACTIVE` : 'STANDBY'}</em></span></button>`;
   }).join('');
-  $('mission-feed').innerHTML = tasks.length ? tasks.slice(0,3).map(task => `<div class="exchange"><div class="exchange-user"><small>YOU / ${formatTime(task.createdAt)}</small><p>${escapeHtml(task.text)}</p></div><div class="exchange-rei"><small>REI / ${escapeHtml(labels[task.status] || task.status)}</small><p>${escapeHtml((task.result || task.error || '承知しました。実行しています…').slice(0,420))}</p></div><button data-task="${escapeHtml(task.id)}">詳細を見る ↗</button></div>`).join('') : `<div class="panel-empty"><span>○</span><strong>おかえりなさい</strong><small>レイは次の指示をお待ちしています。</small></div>`;
+  $('mission-feed').innerHTML = tasks.length ? tasks.slice(0,3).map(task => `<div class="exchange"><div class="exchange-user"><small>YOU / ${formatTime(task.createdAt)}</small><p>${escapeHtml(task.text)}</p></div><div class="exchange-rei"><small>REI / ${escapeHtml(labels[task.status] || task.status)}</small><p>${escapeHtml((task.result || task.error || '承知しました。実行しています…').slice(0,420))}</p></div><button data-task="${escapeHtml(task.id)}">詳細を見る ↗</button></div>`).join('') : `<div class="panel-empty"><span>○</span><strong>おかえりなさい</strong><small>REIは次の指示をお待ちしています。</small></div>`;
   const primaryPlanner=workers.some(w=>w.planner&&w.connected&&w.version===gateway.version&&w.capabilities?.includes('planning'));
   const standbyPlanner=workers.some(w=>w.connected&&w.version===gateway.version&&w.capabilities?.includes('planning'));
   const pendingResults=workers.reduce((count,worker)=>count+(worker.pendingResults||0),0);
@@ -209,7 +209,7 @@ function render() {
   const reply = tasks.find(task => task.id === state.pendingReplyTaskId);
   if (reply && ['completed','failed','interrupted','needs_review'].includes(reply.status)) {
     state.pendingReplyTaskId = null;
-    feedback(reply.status === 'completed' ? 'レイから返答が届きました' : 'レイから確認が必要な報告があります', reply.status !== 'completed');
+    feedback(reply.status === 'completed' ? 'REIから返答が届きました' : 'REIから確認が必要な報告があります', reply.status !== 'completed');
     if (state.voiceOn) speak(reply.result || reply.error || '処理を完了できませんでした。');
   }
   document.querySelectorAll('[data-department]').forEach(element => element.onclick = () => { state.selectedDepartment = element.dataset.department; if(state.selectedCommandSkill&&state.selectedCommandSkill.department!=='all'&&state.selectedCommandSkill.department!==state.selectedDepartment)commandSkill(null); render(); });
@@ -344,7 +344,7 @@ function renderProjects() {
   const tasks=work?.tasks||[];
   const workMarkup=work?(tasks.length?tasks.map(task=>`<button class="project-task" data-project-task="${escapeHtml(task.id)}"><span>${escapeHtml(task.text)}</span><em>${escapeHtml(labels[task.status]||task.status)}</em></button>`).join(''):`<p class="project-empty">${state.projectWorkQuery?'一致する仕事はありません':'このプロジェクトの仕事はまだありません。'}</p>`)+(work.remaining?`<p class="project-empty">${state.projectWorkQuery?'ほかの一致する仕事':'古い仕事'}が${work.remaining}件あります。</p>`:''):'<p class="project-empty">仕事を読み込み中…</p>';
   const workSearchMarkup=`<form id="project-work-search-form" class="project-work-search"><label>仕事を検索<input id="project-work-search" maxlength="100" value="${escapeHtml(state.projectWorkQuery)}" placeholder="依頼・結果・失敗内容"></label><button type="submit" class="outline-button">検索</button>${state.projectWorkQuery?'<button id="project-work-search-clear" type="button" class="outline-button">解除</button>':''}</form>`;
-  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>仕事の履歴</h4>${workSearchMarkup}${workMarkup}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでレイに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
+  $('project-detail').innerHTML=project?`<div class="project-detail-inner" data-project-id="${escapeHtml(project.id)}"><span class="overline">PROJECT / ${escapeHtml(project.id.slice(0,8).toUpperCase())}</span><h3>${escapeHtml(project.name)}</h3><p>${escapeHtml(project.objective)}</p><div class="project-progress"><span style="width:${project.total?Math.round(project.completed/project.total*100):0}%"></span></div><div class="project-stats"><span>${project.total}件の依頼</span><span>${project.completed}件完了</span><span>${project.failed}件失敗</span><span>${project.attention}件要確認</span></div><div class="project-share"><button id="project-share" type="button" class="outline-button">進捗メモをコピー ↗</button><span id="project-share-status" role="status"></span></div>${['owner','admin'].includes(state.data.user.role)?`<label class="project-status-label">状態 <select id="project-status"><option value="active" ${project.status==='active'?'selected':''}>稼働中</option><option value="paused" ${project.status==='paused'?'selected':''}>保留</option><option value="completed" ${project.status==='completed'?'selected':''}>完了</option></select></label>`:''}${projectNotesMarkup(project)}<h4>仕事の履歴</h4>${workSearchMarkup}${workMarkup}${project.status==='active'?'<button id="project-assign" class="outline-button">このプロジェクトでREIに依頼 ↗</button>':''}</div>`:'<div class="panel-empty tall"><span>◇</span><strong>プロジェクトを選択</strong></div>';
   if(project?.id===previousProject&&$('project-note-title')){$('project-note-title').value=draftTitle;$('project-note-content').value=draftContent;$('project-note-status').textContent=draftStatus;$('project-work-search').value=draftWorkQuery;}
   document.querySelectorAll('[data-project]').forEach(button=>button.onclick=()=>{state.selectedProject=button.dataset.project;state.projectNotesQuery='';state.projectWorkQuery='';renderProjects();void loadProjectNotes();void loadProjectWork();});
   document.querySelectorAll('[data-project-task]').forEach(button=>button.onclick=()=>{state.selectedTask=button.dataset.projectTask;setView('missions');});
@@ -487,14 +487,14 @@ $('command-form').onsubmit = async event => {
   if (!text) return;
   const button = event.target.querySelector('[type="submit"]');
   button.disabled = true;
-  feedback('レイに伝えています...');
+  feedback('REIに伝えています...');
   try {
     const result = await request('/api/command', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-AI-Company':'1' }, body:JSON.stringify({ text, department:state.selectedDepartment || 'operations', projectId:$('command-project').value||null,skillId:state.selectedCommandSkill?.id||null }) });
     input.value = '';
     commandSkill(null);
     await refresh();
     if (result.kind === 'report') { state.report = result.report; state.reportLoadedAt=Date.now(); setView('briefing'); feedback('DAILY BRIEFING READY'); }
-    else { state.selectedTask = result.task.id; state.pendingReplyTaskId = result.task.id; setView('core'); feedback('レイが仕事を進めています'); }
+    else { state.selectedTask = result.task.id; state.pendingReplyTaskId = result.task.id; setView('core'); feedback('REIが仕事を進めています'); }
   } catch (error) { feedback(error.message, true); }
   finally { button.disabled = false; }
 };
@@ -512,7 +512,7 @@ $('voice-output').onclick = () => {
   $('voice-output').textContent = `音声応答 ${state.voiceOn ? 'ON' : 'OFF'}`;
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
   if (!state.voiceOn) window.speechSynthesis.cancel();
-  feedback(state.voiceOn ? 'レイの音声応答を有効にしました' : '音声応答を停止しました');
+  feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
 };
 $('voice-button').onclick = () => {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -577,7 +577,7 @@ function showAuth() {
   $('agent-count').textContent='00';
   $('running-count').textContent='00';
   $('auth-screen').classList.remove('hidden');
-  $('auth-title').textContent = setupToken ? 'レイの初期登録' : 'レイにログイン';
+  $('auth-title').textContent = setupToken ? 'REIの初期登録' : 'REIにログイン';
   $('auth-help').textContent = setupToken ? '所有者のユーザー名とパスワードを設定してください。' : 'あなたの司令室に入ります。';
   $('auth-form').dataset.mode = setupToken ? 'setup' : 'login';
   $('auth-password').autocomplete = setupToken ? 'new-password' : 'current-password';
@@ -666,7 +666,7 @@ $('auth-form').onsubmit=async event=>{
   if(mode==='setup')data.token=new URLSearchParams(location.search).get('setup');
   try {
     await request(mode==='setup'?'/api/setup/complete':'/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
-    if(mode==='setup') {history.replaceState(null,'',location.pathname);$('auth-form').dataset.mode='login';$('auth-title').textContent='レイにログイン';$('auth-help').textContent='登録完了。設定した情報でログインしてください。';$('auth-password').value='';}
+    if(mode==='setup') {history.replaceState(null,'',location.pathname);$('auth-form').dataset.mode='login';$('auth-title').textContent='REIにログイン';$('auth-help').textContent='登録完了。設定した情報でログインしてください。';$('auth-password').value='';}
     else {$('auth-screen').classList.add('hidden');await refresh();}
   } catch(e) {$('auth-error').textContent=e.message;}
 };

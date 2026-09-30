@@ -129,3 +129,11 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .central-core:after{background:linear-gradient(150deg,#d8fdff19,transparent 48%)}
 .orbit-node{transform:none}
 .orbit-node.node-0,.orbit-node.node-3{transform:translateX(-50%)}
+
+/* REI is a text control above the surface, without a surrounding dial. */
+.central-core{width:180px;height:112px;border:0;border-radius:0;background:transparent;box-shadow:none;gap:4px}
+.central-core:hover,.central-core:focus-visible{background:#051a2b9c;box-shadow:none}
+.central-core:after{display:none}
+.central-core strong{font-size:31px;letter-spacing:6px;margin:2px 0;color:#ebfbff;text-shadow:0 0 16px #35c6ffb3}
+.central-core .core-name{font-size:8px;letter-spacing:1.5px}
+.central-core small{font-size:8px}

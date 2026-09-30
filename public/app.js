@@ -6,7 +6,7 @@ const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, se
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
-// AIBL Motion Gallery's public TILT DECK demo informed the restrained
+// https://motion.aibl-portal.com/motion/14-tilt-deck informed the restrained
 // perspective, moving highlight and eased pointer response used here.
 function initHologramMotion() {
   const field=document.querySelector('.orbit-field');
@@ -34,6 +34,64 @@ function initHologramMotion() {
   field.addEventListener('pointerleave',()=>{targetX=targetY=0;schedule();});
 }
 initHologramMotion();
+// https://motion.aibl-portal.com/motion/41-galaxy inspired this small, offline 3D
+// projection. Canvas stays behind the controls and uses no external assets.
+function initHologramParticles() {
+  const canvas=$('hologram-particles'),field=document.querySelector('.orbit-field');
+  const context=canvas?.getContext('2d');
+  if(!context||!field)return;
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const points=Array.from({length:150},(_,index)=>{
+    const angle=index*2.399963;
+    const radius=Math.sqrt((index+.5)/150);
+    return {x:Math.cos(angle)*radius,y:Math.sin(angle)*radius,z:Math.sin(index*12.9898)*.8,size:index%13===0?1.8:.9};
+  });
+  let width=0,height=0,last=0,running=false,viewX=0,viewY=0;
+  const resize=()=>{
+    const rect=field.getBoundingClientRect();
+    width=rect.width;height=rect.height;
+    const dpr=Math.min(devicePixelRatio||1,2);
+    canvas.width=Math.max(1,Math.round(width*dpr));
+    canvas.height=Math.max(1,Math.round(height*dpr));
+    context.setTransform(dpr,0,0,dpr,0,0);
+    if(reduced)draw(0);
+  };
+  const draw=time=>{
+    context.clearRect(0,0,width,height);
+    const phase=reduced?0:time*.000055;
+    const cp=Math.cos(phase),sp=Math.sin(phase),yaw=viewX*.15,pitch=viewY*.12;
+    const cy=Math.cos(yaw),sy=Math.sin(yaw),cx=Math.cos(pitch),sx=Math.sin(pitch);
+    const reach=Math.min(width,height)*.44;
+    for(const point of points){
+      const px=point.x*cp-point.y*sp,py=point.x*sp+point.y*cp;
+      const x=px*cy+point.z*sy,z=point.z*cy-px*sy;
+      const y=py*cx-z*sx,depth=py*sx+z*cx;
+      const scale=1/(1-depth*.26);
+      const alpha=Math.max(.07,Math.min(.48,.21+depth*.17));
+      context.fillStyle=`rgba(97,220,255,${alpha})`;
+      context.beginPath();
+      context.arc(width/2+x*reach*scale,height/2+y*reach*scale,point.size*scale,0,Math.PI*2);
+      context.fill();
+    }
+  };
+  const frame=time=>{
+    if(document.hidden||!canvas.offsetWidth){running=false;return;}
+    if(time-last>30){draw(time);last=time;}
+    requestAnimationFrame(frame);
+  };
+  const start=()=>{if(!reduced&&!running&&!document.hidden&&canvas.offsetWidth){running=true;requestAnimationFrame(frame);}};
+  field.addEventListener('pointermove',event=>{
+    const rect=field.getBoundingClientRect();
+    viewX=(event.clientX-rect.left)/rect.width*2-1;
+    viewY=(event.clientY-rect.top)/rect.height*2-1;
+  });
+  field.addEventListener('pointerleave',()=>{viewX=viewY=0;});
+  new ResizeObserver(()=>{resize();start();}).observe(field);
+  new IntersectionObserver(entries=>{if(entries[0].isIntersecting)start();}).observe(canvas);
+  document.addEventListener('visibilitychange',start);
+  resize();start();
+}
+initHologramParticles();
 function commandSkill(skill) {state.selectedCommandSkill=skill||null;$('command-skill').textContent=skill?`使用スキル: ${skill.title} ×`:'';$('command-skill').classList.toggle('hidden',!skill);}
 
 function setSkillPane(pane){if(pane==='create'&&state.data?.user.role==='viewer')pane='library';state.skillPane=pane;document.querySelector('.playbook-grid').classList.toggle('hidden',pane!=='library');$('playbook-search-form').classList.toggle('hidden',pane!=='library');$('playbook-total').classList.toggle('hidden',pane!=='library');$('playbook-form').classList.toggle('hidden',pane!=='create');document.querySelector('.marketplace-panel').classList.toggle('hidden',pane!=='marketplace');document.querySelector('[data-skill-pane="create"]').classList.toggle('hidden',state.data?.user.role==='viewer');document.querySelectorAll('[data-skill-pane]').forEach(button=>button.classList.toggle('active',button.dataset.skillPane===pane));}

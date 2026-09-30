@@ -111,6 +111,7 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 /* Pointer parallax follows the public AIBL TILT DECK technique: a parent
    perspective, shallow 3D rotation, and a highlight moving with the pointer. */
 .orbit-field{--holo-x:0px;--holo-y:0px;--holo-rotate-x:0deg;--holo-rotate-y:0deg;--holo-glint-x:50%;--holo-glint-y:50%;perspective:900px}
+.hologram-particles{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.72}
 .depth-tunnel{transform:translate(calc(-50% - var(--holo-x)),calc(-50% - var(--holo-y))) rotateX(calc(16deg + var(--holo-rotate-x))) rotateY(var(--holo-rotate-y))}
 .core-halo{transform:translate(calc(-50% + var(--holo-x) * .45),calc(-50% + var(--holo-y) * .45)) rotateX(var(--holo-rotate-x)) rotateY(var(--holo-rotate-y));transform-style:preserve-3d}
 .central-core{transform:translate(calc(-50% + var(--holo-x) * .65),calc(-50% + var(--holo-y) * .65)) rotateX(var(--holo-rotate-x)) rotateY(var(--holo-rotate-y));transform-style:preserve-3d}

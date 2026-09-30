@@ -165,3 +165,29 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .panel-heading{color:#6ba3b8}
 .axis-label{opacity:.55}
 @media(max-width:750px){.central-core{top:74%}.node-3{bottom:0}}
+
+/* REI command reactor: the standalone HUD translated to the live control room. */
+.center-stage{background:radial-gradient(ellipse at 50% 48%,#073047 0,#041522 38%,#020810 75%,#000 100%);border-color:#1e7282;box-shadow:inset 0 0 90px #001521,0 18px 46px #000b}
+.center-stage:after{inset:0;opacity:.2;mask-image:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='84'%3E%3Cpath d='M12 0H36L48 21L36 42H12L0 21Z M12 42H36L48 63L36 84H12L0 63Z M48 21H72L84 42L72 63H48L36 42Z' fill='none' stroke='%23277b91' stroke-width='.7'/%3E%3C/svg%3E")}
+.orbit-field{isolation:isolate}
+.field-grid{background:radial-gradient(circle at center,#08b6e213 0,transparent 50%),linear-gradient(90deg,transparent 49.9%,#32b5cc13 50%,transparent 50.1%),linear-gradient(0deg,transparent 49.9%,#32b5cc13 50%,transparent 50.1%);pointer-events:none}
+.rei-reactor{position:absolute;left:50%;top:50%;width:min(100%,min(70vh,620px));aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;filter:drop-shadow(0 0 11px #00e8ff80);z-index:1}
+.rei-reactor svg{display:block;width:100%;height:100%;overflow:visible}
+.rei-reactor svg *{vector-effect:non-scaling-stroke}
+.rei-spin-a,.rei-spin-b,.rei-spin-c,.rei-spin-d,.rei-spin-e,.rei-spin-f,.rei-spin-g{transform-origin:300px 300px;animation-timing-function:linear;animation-iteration-count:infinite}
+.rei-spin-a{animation-name:rei-rotate;animation-duration:80s}.rei-spin-b{animation-name:rei-reverse;animation-duration:28s}.rei-spin-c{animation-name:rei-rotate;animation-duration:48s}.rei-spin-d{animation-name:rei-reverse;animation-duration:18s}.rei-spin-e{animation-name:rei-rotate;animation-duration:11s}.rei-spin-f{animation-name:rei-reverse;animation-duration:34s}.rei-spin-g{animation-name:rei-rotate;animation-duration:7s}
+.rei-ring-ghost{fill:none;stroke:#2ba9bd52;stroke-width:1}.rei-ring-soft{fill:none;stroke:#59e7ed8c;stroke-width:1.3;filter:drop-shadow(0 0 6px #00dfff)}.rei-ring-hot{fill:none;stroke:#8dffff;stroke-width:2.4;filter:drop-shadow(0 0 5px #00f3ff) drop-shadow(0 0 15px #00aaff)}.rei-ring-mint{fill:none;stroke:#40ffcb;stroke-width:2;filter:drop-shadow(0 0 7px #40ffcb)}.rei-ring-red{fill:none;stroke:#ff003c;stroke-width:2;filter:drop-shadow(0 0 8px #ff003c)}.rei-ring-gold{fill:none;stroke:#f4d25c;stroke-width:2;filter:drop-shadow(0 0 7px #f4d25c)}
+@keyframes rei-rotate{to{transform:rotate(360deg)}}@keyframes rei-reverse{to{transform:rotate(-360deg)}}
+.central-core{top:50%;width:160px;height:112px;border:0;border-radius:0;background:transparent;box-shadow:none;z-index:3;gap:3px;transform:translate(-50%,-50%)}
+.central-core:hover,.central-core:focus-visible{background:#061b2a9c;box-shadow:0 0 25px #00e8ff44;outline:1px solid #00e8ff66}
+.central-core strong{font:400 30px 'Courier New',monospace;letter-spacing:.26em;margin:2px 0 2px 8px;color:#e9ffff;text-shadow:0 0 9px #9dffff,0 0 22px #00f3ff}
+.central-core .core-name{font:8px 'Courier New',monospace;letter-spacing:.22em;color:#6ec8d4;margin:0}
+.central-core small{font:8px 'Courier New',monospace;letter-spacing:.2em;color:#40ffcb;text-shadow:0 0 10px #40ffcb}
+.glass-panel{border-color:#1d6a7c88;background:linear-gradient(135deg,#092937c9 0,#031421e6 55%,#02111cd9 100%);box-shadow:inset 0 1px 0 #5feaff22,inset 0 0 22px #00bbd514,0 10px 28px #0006;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+.glass-panel:before{width:100%;border-top-color:#54e4ed9c;box-shadow:0 0 12px #00e2ff;opacity:1}
+.panel-heading{color:#70c4d2}.stage-top,.stage-bottom{color:#6bbac5}.stage-top span:last-child{color:#40ffcb}
+.orbit-node{z-index:4;min-width:122px;border-left:1px solid #53cfe0;background:linear-gradient(90deg,#061d2de8,#061d2b9c);box-shadow:0 0 10px #00b8df25}
+.node-0{top:0}.node-1{right:0;top:15%}.node-2{right:0;bottom:17%}.node-3{bottom:0}.node-4{left:0;bottom:17%}.node-5{left:0;top:15%}
+@media(max-width:1100px){.rei-reactor{width:min(100%,min(62vh,520px))}.orbit-node{min-width:109px;max-width:128px}}
+@media(max-width:750px){.rei-reactor{width:min(100%,410px)}.central-core{top:50%}.orbit-node{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.rei-spin-a,.rei-spin-b,.rei-spin-c,.rei-spin-d,.rei-spin-e,.rei-spin-f,.rei-spin-g{animation:none}}

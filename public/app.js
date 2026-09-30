@@ -6,211 +6,35 @@ const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, se
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
-// No.40 WAVE PLANE inspired this restrained, self-moving depth surface.
-// The line mesh is original and local. Slow wave phases remain visible at a glance.
-function initWavePlane() {
-  let canvas=$('wave-plane');
-  const field=document.querySelector('.orbit-field');
-  if(!canvas||!field)return;
-  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cols=72,rows=48,vertices=[];
-  const point=(column,row)=>[(column/cols-.5)*2.8,(row/rows-.5)*2];
-  for(let row=0;row<=rows;row++)for(let column=0;column<cols;column++)vertices.push(...point(column,row),...point(column+1,row));
-  for(let column=0;column<=cols;column++)for(let row=0;row<rows;row++)vertices.push(...point(column,row),...point(column,row+1));
-  const gl=canvas.getContext('webgl2',{alpha:true,antialias:true,premultipliedAlpha:false});
-  let width=0,height=0,last=0,running=false,visible=true;
-  const wave=(x,z,time)=>Math.sin(x*2.5+time*.22)*.15+Math.sin(z*3.2-time*.16)*.095+Math.sin((x+z)*2.1+time*.11)*.06;
-  const project=(x,z,time)=>{
-    const h=wave(x,z,time),depth=1-z*.12;
-    return [width/2+x*width*.31*depth,height*(.59-z*.26-h*.37)];
-  };
-  const shader=(type,source)=>{
-    const value=gl.createShader(type);gl.shaderSource(value,source);gl.compileShader(value);
-    if(!gl.getShaderParameter(value,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(value));
-    return value;
-  };
-  let render;
-  try {
-    if(gl){
-      const program=gl.createProgram();
-      gl.attachShader(program,shader(gl.VERTEX_SHADER,`#version 300 es
-precision highp float;
-in vec2 aPosition;
-uniform float uTime,uAspect;
-out float vHeight,vDepth,vEdge;
-void main(){
-  float x=aPosition.x,z=aPosition.y;
-  float h=sin(x*2.5+uTime*.22)*.15+sin(z*3.2-uTime*.16)*.095+sin((x+z)*2.1+uTime*.11)*.06;
-  float sx=x*.62*(1.0-z*.12);
-  float sy=-.18+z*.52+h*.74;
-  gl_Position=vec4(sx,sy,0.0,1.0);
-  vHeight=h;vDepth=z;vEdge=1.0-smoothstep(1.0,1.4,abs(x));
-}`));
-      gl.attachShader(program,shader(gl.FRAGMENT_SHADER,`#version 300 es
-precision highp float;
-in float vHeight,vDepth,vEdge;
-out vec4 outColor;
-void main(){
-  float tint=clamp(vHeight*1.4+.5,0.0,1.0);
-  vec3 color=mix(vec3(.18,.68,.83),vec3(.47,.84,.96),tint);
-  float depthFade=mix(.36,.78,clamp((vDepth+1.0)*.5,0.0,1.0));
-  outColor=vec4(color,depthFade*vEdge);
-}`));
-      gl.linkProgram(program);
-      if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));
-      gl.useProgram(program);
-      const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
-      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.STATIC_DRAW);
-      const position=gl.getAttribLocation(program,'aPosition');gl.enableVertexAttribArray(position);
-      gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
-      const timeUniform=gl.getUniformLocation(program,'uTime');
-      const aspectUniform=gl.getUniformLocation(program,'uAspect');
-      render=time=>{
-        gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-        gl.uniform1f(timeUniform,time);gl.uniform1f(aspectUniform,width/Math.max(height,1));
-        gl.drawArrays(gl.LINES,0,vertices.length/2);
-      };
-    }
-  }catch(error){console.warn('Wave plane WebGL unavailable',error);}
-  if(!render){
-    // A separate canvas is needed after a failed WebGL context request.
-    const fallback=document.createElement('canvas');fallback.className=canvas.className;
-    fallback.setAttribute('aria-hidden','true');canvas.replaceWith(fallback);
-    canvas=fallback;
-    const context=canvas.getContext('2d');
-    if(!context)return;
-    render=time=>{
-      context.clearRect(0,0,width,height);
-      context.lineWidth=1;context.strokeStyle='rgba(87,207,241,.49)';
-      for(let row=0;row<=rows;row++){
-        context.beginPath();
-        for(let column=0;column<=cols;column++){
-          const [x,y]=project(...point(column,row),time);
-          if(column===0)context.moveTo(x,y);else context.lineTo(x,y);
-        }
-        context.stroke();
-      }
-      for(let column=0;column<=cols;column++){
-        context.beginPath();
-        for(let row=0;row<=rows;row++){
-          const [x,y]=project(...point(column,row),time);
-          if(row===0)context.moveTo(x,y);else context.lineTo(x,y);
-        }
-        context.stroke();
-      }
-    };
+// The reactor is presentation only. Operational status comes from the existing API.
+function initReiReactor() {
+  const ns='http://www.w3.org/2000/svg', ticks=$('rei-ticks'), blocks=$('rei-blocks');
+  if (!ticks || !blocks) return;
+  for (let index=0;index<144;index++) {
+    const angle=index*Math.PI/72, major=index%12===0, medium=index%3===0;
+    const inner=major?253:medium?258:262, outer=major?271:medium?268:266;
+    const line=document.createElementNS(ns,'line');
+    line.setAttribute('x1',300+Math.cos(angle)*inner);
+    line.setAttribute('y1',300+Math.sin(angle)*inner);
+    line.setAttribute('x2',300+Math.cos(angle)*outer);
+    line.setAttribute('y2',300+Math.sin(angle)*outer);
+    line.setAttribute('stroke',major?'#a4ffff':'#32afc3');
+    line.setAttribute('stroke-opacity',major?'.82':'.45');
+    line.setAttribute('stroke-width',major?'1.5':'.65');
+    ticks.append(line);
   }
-  const resize=()=>{
-    const rect=field.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
-    width=rect.width;height=rect.height;
-    canvas.width=Math.max(1,Math.round(width*dpr));canvas.height=Math.max(1,Math.round(height*dpr));
-    if(gl&&render&&canvas===field.querySelector('#wave-plane'))gl.viewport(0,0,canvas.width,canvas.height);
-    else canvas.getContext('2d')?.setTransform(dpr,0,0,dpr,0,0);
-    render(0);
-  };
-  const frame=time=>{
-    if(document.hidden||!visible||!canvas.offsetWidth){running=false;return;}
-    if(time-last>=50){render(time*.001);last=time;}
-    requestAnimationFrame(frame);
-  };
-  const start=()=>{if(!reduced&&!running&&!document.hidden&&visible&&canvas.offsetWidth){running=true;requestAnimationFrame(frame);}};
-  new ResizeObserver(()=>{resize();start();}).observe(field);
-  new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;if(visible)start();}).observe(canvas);
-  document.addEventListener('visibilitychange',start);
-  resize();start();
+  for (let index=0;index<64;index++) {
+    const rect=document.createElementNS(ns,'rect');
+    rect.setAttribute('x','297');rect.setAttribute('y','142');
+    rect.setAttribute('width','6');rect.setAttribute('height',index%8===0?'13':'7');
+    rect.setAttribute('rx','1');rect.setAttribute('fill',index%8===0?'#80f7ff':'#236c80');
+    rect.setAttribute('opacity',index%8===0?'.86':'.64');
+    rect.setAttribute('transform',`rotate(${index*360/64} 300 300)`);
+    blocks.append(rect);
+  }
 }
-initWavePlane();
-// A quiet particle globe gives the room depth without putting REI inside a dial.
-function initGlobeField() {
-  const canvas=$('globe-field'),field=document.querySelector('.orbit-field');
-  const context=canvas?.getContext('2d');
-  if(!context||!field)return;
-  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let seed=314159;
-  const random=()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296);
-  const particles=Array.from({length:1700},()=>({lat:Math.asin(random()*2-1),lon:random()*Math.PI*2,size:.35+random()*.95,tint:random()}));
-  const beacons=[[-.35,-1.9],[.32,-.8],[-.16,.35],[.52,1.3],[-.48,2.4]];
-  let width=0,height=0,last=0,running=false,visible=true;
-  const draw=time=>{
-    context.clearRect(0,0,width,height);
-    const radius=Math.min(width*.33,height*.34,215),cx=width*.50,cy=height*.43;
-    const yaw=time*.23,tilt=-.19;
-    const position=(lat,lon)=>{
-      const x=Math.cos(lat)*Math.sin(lon+yaw),y=Math.sin(lat),z=Math.cos(lat)*Math.cos(lon+yaw);
-      const py=y*Math.cos(tilt)-z*Math.sin(tilt),pz=y*Math.sin(tilt)+z*Math.cos(tilt);
-      const scale=1/(1-pz*.12);
-      return {x:cx+x*radius*scale,y:cy-py*radius*scale,z:pz};
-    };
-    const aura=context.createRadialGradient(cx-radius*.15,cy-radius*.18,radius*.12,cx,cy,radius*1.42);
-    aura.addColorStop(0,'rgba(18,110,151,.20)');aura.addColorStop(.49,'rgba(5,46,79,.21)');aura.addColorStop(.75,'rgba(3,38,64,.16)');aura.addColorStop(1,'rgba(0,17,32,0)');
-    context.fillStyle=aura;context.beginPath();context.arc(cx,cy,radius*1.42,0,Math.PI*2);context.fill();
-    const body=context.createRadialGradient(cx-radius*.34,cy-radius*.42,radius*.08,cx,cy,radius*1.06);
-    body.addColorStop(0,'rgba(43,144,172,.29)');body.addColorStop(.57,'rgba(6,49,77,.61)');body.addColorStop(.88,'rgba(2,19,39,.72)');body.addColorStop(1,'rgba(20,126,162,.07)');
-    context.fillStyle=body;context.beginPath();context.arc(cx,cy,radius,0,Math.PI*2);context.fill();
-    context.save();context.shadowColor='#41c9ed';context.shadowBlur=24;
-    context.lineWidth=1.4;context.strokeStyle='rgba(74,211,237,.34)';
-    context.beginPath();context.arc(cx,cy,radius*.995,-2.22,-.43);context.stroke();context.restore();
-    for(const particle of particles){
-      const point=position(particle.lat,particle.lon);
-      if(point.z<-.12)continue;
-      const front=Math.max(0,point.z),alpha=(.10+front*.63)*(particle.tint>.95?1.5:1);
-      context.fillStyle=particle.tint>.89?`rgba(146,237,255,${alpha})`:`rgba(45,179,213,${alpha})`;
-      context.beginPath();context.arc(point.x,point.y,particle.size*(.55+front*.8),0,Math.PI*2);context.fill();
-    }
-    for(const [lat,start,length] of [[-.38,-1.2,1.15],[.19,.3,1.0],[.57,2.4,.9]]){
-      context.beginPath();let drawing=false;
-      for(let step=0;step<=60;step++){
-        const point=position(lat,start+step/60*length);
-        if(point.z<.02){drawing=false;continue;}
-        if(!drawing){context.moveTo(point.x,point.y);drawing=true;}else context.lineTo(point.x,point.y);
-      }
-      context.strokeStyle='rgba(83,208,230,.31)';context.lineWidth=.9;context.stroke();
-    }
-    for(const [angle,offset] of [[-.42,0],[.24,1.9]]){
-      context.beginPath();
-      for(let step=0;step<=108;step++){
-        const t=offset+step/108*Math.PI*1.33+time*.11;
-        const x=Math.cos(t)*radius*1.18,y=Math.sin(t)*radius*.34;
-        const px=cx+x*Math.cos(angle)-y*Math.sin(angle),py=cy+x*Math.sin(angle)+y*Math.cos(angle);
-        if(step===0)context.moveTo(px,py);else context.lineTo(px,py);
-      }
-      context.strokeStyle='rgba(91,207,230,.17)';context.lineWidth=1;context.stroke();
-    }
-    const nodes=beacons.map(([lat,lon])=>position(lat,lon));
-    context.lineWidth=.65;
-    for(let index=0;index<nodes.length;index++){
-      const a=nodes[index],b=nodes[(index+1)%nodes.length];
-      if(a.z<.05||b.z<.05)continue;
-      context.strokeStyle='rgba(118,218,235,.15)';context.beginPath();context.moveTo(a.x,a.y);context.lineTo(b.x,b.y);context.stroke();
-    }
-    nodes.forEach((node,index)=>{
-      if(node.z<.05)return;
-      const pulse=.73+.27*Math.sin(time*1.2+index*2),warm=index===1;
-      context.fillStyle=warm?`rgba(255,108,116,${pulse})`:`rgba(138,235,247,${pulse})`;
-      context.shadowColor=warm?'#ff6c74':'#4ed8ef';context.shadowBlur=12;
-      context.beginPath();context.arc(node.x,node.y,warm?3:2.5,0,Math.PI*2);context.fill();
-    });
-    context.shadowBlur=0;
-  };
-  const resize=()=>{
-    const rect=field.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
-    width=rect.width;height=rect.height;
-    canvas.width=Math.max(1,Math.round(width*dpr));canvas.height=Math.max(1,Math.round(height*dpr));
-    context.setTransform(dpr,0,0,dpr,0,0);draw(0);
-  };
-  const frame=time=>{
-    if(document.hidden||!visible||!canvas.offsetWidth){running=false;return;}
-    if(time-last>=50){draw(time*.001);last=time;}
-    requestAnimationFrame(frame);
-  };
-  const start=()=>{if(!reduced&&!running&&!document.hidden&&visible&&canvas.offsetWidth){running=true;requestAnimationFrame(frame);}};
-  new ResizeObserver(()=>{resize();start();}).observe(field);
-  new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;if(visible)start();}).observe(canvas);
-  document.addEventListener('visibilitychange',start);
-  resize();start();
-}
-initGlobeField();
+initReiReactor();
+
 function commandSkill(skill) {state.selectedCommandSkill=skill||null;$('command-skill').textContent=skill?`使用スキル: ${skill.title} ×`:'';$('command-skill').classList.toggle('hidden',!skill);}
 
 function setSkillPane(pane){if(pane==='create'&&state.data?.user.role==='viewer')pane='library';state.skillPane=pane;document.querySelector('.playbook-grid').classList.toggle('hidden',pane!=='library');$('playbook-search-form').classList.toggle('hidden',pane!=='library');$('playbook-total').classList.toggle('hidden',pane!=='library');$('playbook-form').classList.toggle('hidden',pane!=='create');document.querySelector('.marketplace-panel').classList.toggle('hidden',pane!=='marketplace');document.querySelector('[data-skill-pane="create"]').classList.toggle('hidden',state.data?.user.role==='viewer');document.querySelectorAll('[data-skill-pane]').forEach(button=>button.classList.toggle('active',button.dataset.skillPane===pane));}

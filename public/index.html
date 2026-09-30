@@ -37,8 +37,22 @@
           <div class="stage-top"><span>ORGANIZATION TOPOLOGY</span><span id="stage-status">CONNECTING...</span></div>
           <div class="orbit-field">
             <div class="field-grid" aria-hidden="true"></div>
-            <canvas id="wave-plane" class="wave-plane" aria-hidden="true"></canvas>
-            <canvas id="globe-field" class="globe-field" aria-hidden="true"></canvas>
+            <div class="rei-reactor" aria-hidden="true">
+              <svg viewBox="0 0 600 600">
+                <defs><radialGradient id="rei-core-well"><stop offset="0" stop-color="#0a4152" stop-opacity=".7"/><stop offset=".52" stop-color="#062436" stop-opacity=".42"/><stop offset="1" stop-color="#000611" stop-opacity="0"/></radialGradient></defs>
+                <circle cx="300" cy="300" r="279" fill="url(#rei-core-well)"/>
+                <g class="rei-spin-a"><circle class="rei-ring-ghost" cx="300" cy="300" r="274" stroke-dasharray="1 7"/><circle class="rei-ring-soft" cx="300" cy="300" r="270" stroke-dasharray="138 55 26 129 75 217 41 930"/></g>
+                <g id="rei-ticks" class="rei-spin-b"></g>
+                <g class="rei-spin-c"><circle class="rei-ring-ghost" cx="300" cy="300" r="238"/><circle class="rei-ring-hot" cx="300" cy="300" r="238" stroke-dasharray="192 52 68 211 139 834"/><circle class="rei-ring-red" cx="300" cy="300" r="245" stroke-dasharray="4 523 10 980"/></g>
+                <g class="rei-spin-d"><circle class="rei-ring-soft" cx="300" cy="300" r="213" stroke-dasharray="6 11"/><circle class="rei-ring-mint" cx="300" cy="300" r="207" stroke-dasharray="55 131 81 1034"/></g>
+                <g class="rei-spin-e"><circle class="rei-ring-ghost" cx="300" cy="300" r="186"/><circle class="rei-ring-hot" cx="300" cy="300" r="179" stroke-dasharray="88 59 139 163 35 641"/><circle class="rei-ring-gold" cx="300" cy="300" r="188" stroke-dasharray="9 579 14 579"/></g>
+                <g id="rei-blocks" class="rei-spin-f"></g>
+                <g class="rei-spin-g"><circle class="rei-ring-soft" cx="300" cy="300" r="145" stroke-dasharray="2 7"/><circle class="rei-ring-hot" cx="300" cy="300" r="132" stroke-dasharray="113 52 34 631"/></g>
+                <circle class="rei-ring-ghost" cx="300" cy="300" r="116"/><circle class="rei-ring-soft" cx="300" cy="300" r="105" stroke-dasharray="5 12"/>
+                <circle cx="300" cy="300" r="94" fill="#021522" fill-opacity=".76" stroke="#33bfcc" stroke-opacity=".6"/>
+                <path d="M300 20V77M300 523V580M20 300H77M523 300H580" stroke="#56cbd7" stroke-opacity=".57" stroke-width="1"/>
+              </svg>
+            </div>
             <div id="department-orbit"></div>
             <button class="central-core" id="core-button" aria-label="REIに話しかける"><span class="core-name">EXECUTIVE ASSISTANT</span><strong>REI</strong><small id="core-state">STANDBY</small></button>
             <div class="axis-label axis-left">INTELLIGENCE LAYER <span>◀─────</span></div><div class="axis-label axis-right"><span>─────▶</span> EXECUTION LAYER</div>

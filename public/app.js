@@ -7,12 +7,18 @@ const labels = { queued:'待機', ready:'待機', planning:'計画中', approval
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
 // https://motion.aibl-portal.com/motion/14-tilt-deck informed the restrained
-// perspective, moving highlight and eased pointer response used here.
+// perspective and eased response. The idle camera keeps moving without a mouse.
 function initHologramMotion() {
   const field=document.querySelector('.orbit-field');
-  if(!field||matchMedia('(prefers-reduced-motion: reduce)').matches||!matchMedia('(pointer: fine)').matches)return;
-  let targetX=0,targetY=0,currentX=0,currentY=0,frame=0;
-  const paint=()=>{
+  if(!field||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const finePointer=matchMedia('(pointer: fine)').matches;
+  let pointerX=0,pointerY=0,pointerActive=false,currentX=0,currentY=0,running=false,last=0;
+  const paint=time=>{
+    if(document.hidden||!field.offsetWidth){running=false;return;}
+    if(time-last<30){requestAnimationFrame(paint);return;}
+    last=time;
+    const targetX=pointerActive?pointerX:Math.sin(time*.00031)*.45;
+    const targetY=pointerActive?pointerY:Math.cos(time*.00023)*.38;
     currentX+=(targetX-currentX)*.12;
     currentY+=(targetY-currentY)*.12;
     field.style.setProperty('--holo-x',`${(currentX*11).toFixed(2)}px`);
@@ -21,30 +27,114 @@ function initHologramMotion() {
     field.style.setProperty('--holo-rotate-y',`${(currentX*5).toFixed(2)}deg`);
     field.style.setProperty('--holo-glint-x',`${(50+currentX*23).toFixed(2)}%`);
     field.style.setProperty('--holo-glint-y',`${(50+currentY*23).toFixed(2)}%`);
-    if(Math.abs(targetX-currentX)+Math.abs(targetY-currentY)>.002)frame=requestAnimationFrame(paint);
-    else frame=0;
+    requestAnimationFrame(paint);
   };
-  const schedule=()=>{if(!frame)frame=requestAnimationFrame(paint);};
+  const start=()=>{if(!running&&!document.hidden&&field.offsetWidth){running=true;requestAnimationFrame(paint);}};
   field.addEventListener('pointermove',event=>{
+    if(!finePointer)return;
     const rect=field.getBoundingClientRect();
-    targetX=Math.max(-1,Math.min(1,(event.clientX-rect.left)/rect.width*2-1));
-    targetY=Math.max(-1,Math.min(1,(event.clientY-rect.top)/rect.height*2-1));
-    schedule();
+    pointerX=Math.max(-1,Math.min(1,(event.clientX-rect.left)/rect.width*2-1));
+    pointerY=Math.max(-1,Math.min(1,(event.clientY-rect.top)/rect.height*2-1));
+    pointerActive=true;
   });
-  field.addEventListener('pointerleave',()=>{targetX=targetY=0;schedule();});
+  field.addEventListener('pointerleave',()=>{pointerActive=false;});
+  new IntersectionObserver(entries=>{if(entries[0].isIntersecting)start();}).observe(field);
+  document.addEventListener('visibilitychange',start);
+  start();
 }
 initHologramMotion();
-// https://motion.aibl-portal.com/motion/41-galaxy inspired this small, offline 3D
-// projection. Canvas stays behind the controls and uses no external assets.
+// https://motion.aibl-portal.com/motion/154-curl-noise-smoke inspired this
+// self-moving luminous vortex. The shader stays offline and behind controls.
+function initWebGLSmoke(canvas,field) {
+  const gl=canvas.getContext('webgl2',{alpha:true,antialias:false,premultipliedAlpha:false});
+  if(!gl)return false;
+  const vertex=`#version 300 es
+precision highp float;
+in vec4 aSeed;
+uniform float uTime,uAspect,uPixel;
+out float vAlpha;
+void main(){
+  float age=fract(aSeed.w+uTime*.105);
+  float flow=aSeed.x*6.28318+age*7.7+uTime*.23;
+  float curl=sin(aSeed.y*15.0+age*16.0+uTime*.53)*.17
+            +cos(aSeed.z*9.0+age*11.0-uTime*.41)*.11;
+  float radius=.16+age*.84+curl;
+  vec3 p=vec3(cos(flow)*radius,sin(flow)*radius*.88,
+              aSeed.z*.62+sin(flow*2.3+age*10.0)*.25);
+  float yaw=sin(uTime*.31)*.24,pitch=cos(uTime*.23)*.19;
+  p=vec3(p.x*cos(yaw)+p.z*sin(yaw),p.y,p.z*cos(yaw)-p.x*sin(yaw));
+  p=vec3(p.x,p.y*cos(pitch)-p.z*sin(pitch),p.y*sin(pitch)+p.z*cos(pitch));
+  float perspective=1.0/(1.0-p.z*.38);
+  gl_Position=vec4(p.x*perspective*.88/uAspect,p.y*perspective*.88,0.0,1.0);
+  gl_PointSize=min((4.0+6.0*(1.0-age))*uPixel*perspective,22.0);
+  vAlpha=smoothstep(0.0,.13,age)*(1.0-smoothstep(.65,1.0,age))
+         *(.42+.36*clamp(p.z+1.0,0.0,1.0));
+}`;
+  const fragment=`#version 300 es
+precision highp float;
+in float vAlpha;
+out vec4 outColor;
+void main(){
+  float radius=length(gl_PointCoord*2.0-1.0);
+  float glow=pow(max(0.0,1.0-radius),1.25);
+  outColor=vec4(.45,.88,1.0,vAlpha*glow);
+}`;
+  const shader=(type,source)=>{const value=gl.createShader(type);gl.shaderSource(value,source);gl.compileShader(value);return value;};
+  const program=gl.createProgram();
+  gl.attachShader(program,shader(gl.VERTEX_SHADER,vertex));
+  gl.attachShader(program,shader(gl.FRAGMENT_SHADER,fragment));
+  gl.linkProgram(program);
+  if(!gl.getProgramParameter(program,gl.LINK_STATUS)){console.warn('Hologram shader unavailable',gl.getProgramInfoLog(program));return true;}
+  gl.useProgram(program);
+  const count=6144,seeds=new Float32Array(count*4);
+  for(let index=0;index<count;index++){
+    seeds[index*4]=(index%3)/3+(Math.random()-.5)*.12;
+    seeds[index*4+1]=Math.random();
+    seeds[index*4+2]=Math.random()*2-1;
+    seeds[index*4+3]=Math.random();
+  }
+  const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,seeds,gl.STATIC_DRAW);
+  const location=gl.getAttribLocation(program,'aSeed');gl.enableVertexAttribArray(location);gl.vertexAttribPointer(location,4,gl.FLOAT,false,0,0);
+  const timeUniform=gl.getUniformLocation(program,'uTime');
+  const aspectUniform=gl.getUniformLocation(program,'uAspect');
+  const pixelUniform=gl.getUniformLocation(program,'uPixel');
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let width=0,height=0,last=0,running=false;
+  const resize=()=>{
+    const rect=field.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);
+    width=rect.width;height=rect.height;
+    canvas.width=Math.max(1,Math.round(width*dpr));canvas.height=Math.max(1,Math.round(height*dpr));
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.uniform1f(aspectUniform,width/Math.max(height,1));gl.uniform1f(pixelUniform,dpr);
+    if(reduced)draw(0);
+  };
+  const draw=time=>{
+    gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+    gl.uniform1f(timeUniform,time*.001);gl.drawArrays(gl.POINTS,0,count);
+  };
+  const frame=time=>{
+    if(document.hidden||!canvas.offsetWidth){running=false;return;}
+    if(time-last>30){draw(time);last=time;}
+    requestAnimationFrame(frame);
+  };
+  const start=()=>{if(!reduced&&!running&&!document.hidden&&canvas.offsetWidth){running=true;requestAnimationFrame(frame);}};
+  new ResizeObserver(()=>{resize();start();}).observe(field);
+  new IntersectionObserver(entries=>{if(entries[0].isIntersecting)start();}).observe(canvas);
+  document.addEventListener('visibilitychange',start);
+  resize();start();
+  return true;
+}
+// Canvas fallback retains an animated 3D projection on devices without WebGL2.
 function initHologramParticles() {
   const canvas=$('hologram-particles'),field=document.querySelector('.orbit-field');
+  if(!canvas||!field||initWebGLSmoke(canvas,field))return;
   const context=canvas?.getContext('2d');
   if(!context||!field)return;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const points=Array.from({length:150},(_,index)=>{
-    const angle=index*2.399963;
-    const radius=Math.sqrt((index+.5)/150);
-    return {x:Math.cos(angle)*radius,y:Math.sin(angle)*radius,z:Math.sin(index*12.9898)*.8,size:index%13===0?1.8:.9};
+  const points=Array.from({length:2200},(_,index)=>{
+    const along=Math.floor(index/3)/734,stream=index%3;
+    return {along,stream,phase:Math.sin(index*12.9898)*.75,depth:Math.sin(index*7.213)*.7,size:index%29===0?2.3:1.05};
   });
   let width=0,height=0,last=0,running=false,viewX=0,viewY=0;
   const resize=()=>{
@@ -58,21 +148,32 @@ function initHologramParticles() {
   };
   const draw=time=>{
     context.clearRect(0,0,width,height);
-    const phase=reduced?0:time*.000055;
-    const cp=Math.cos(phase),sp=Math.sin(phase),yaw=viewX*.15,pitch=viewY*.12;
+    const phase=reduced?0:time*.001;
+    const yaw=Math.sin(phase*.32)*.22+viewX*.09;
+    const pitch=Math.cos(phase*.24)*.19+viewY*.07;
     const cy=Math.cos(yaw),sy=Math.sin(yaw),cx=Math.cos(pitch),sx=Math.sin(pitch);
-    const reach=Math.min(width,height)*.44;
+    const reach=Math.min(width,height)*.42;
+    context.globalCompositeOperation='lighter';
+    context.shadowColor='#40caff';
     for(const point of points){
-      const px=point.x*cp-point.y*sp,py=point.x*sp+point.y*cp;
-      const x=px*cy+point.z*sy,z=point.z*cy-px*sy;
+      const travel=point.along*Math.PI*3.4+point.stream*Math.PI*2/3+phase*.48;
+      const curl=.19*Math.sin(point.depth*3.7+phase*.57+point.phase);
+      const angle=travel+curl+point.phase*.13;
+      const radius=.19+point.along*.84+.075*Math.sin(travel*2+point.phase);
+      const px=Math.cos(angle)*radius,py=Math.sin(angle)*radius*.86;
+      const pz=point.depth*.7+.23*Math.sin(travel*1.7+phase*.41+point.phase);
+      const x=px*cy+pz*sy,z=pz*cy-px*sy;
       const y=py*cx-z*sx,depth=py*sx+z*cx;
-      const scale=1/(1-depth*.26);
-      const alpha=Math.max(.07,Math.min(.48,.21+depth*.17));
-      context.fillStyle=`rgba(97,220,255,${alpha})`;
+      const scale=1/(1-depth*.34);
+      const alpha=Math.max(.15,Math.min(.8,.4+depth*.27));
+      context.fillStyle=`rgba(111,225,255,${alpha})`;
+      context.shadowBlur=point.size>2?9:0;
       context.beginPath();
       context.arc(width/2+x*reach*scale,height/2+y*reach*scale,point.size*scale,0,Math.PI*2);
       context.fill();
     }
+    context.shadowBlur=0;
+    context.globalCompositeOperation='source-over';
   };
   const frame=time=>{
     if(document.hidden||!canvas.offsetWidth){running=false;return;}

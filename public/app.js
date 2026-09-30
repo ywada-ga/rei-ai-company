@@ -121,54 +121,75 @@ void main(){
   resize();start();
 }
 initWavePlane();
-// A rotating data globe sits in the background; REI remains unframed text.
+// A quiet particle globe gives the room depth without putting REI inside a dial.
 function initGlobeField() {
   const canvas=$('globe-field'),field=document.querySelector('.orbit-field');
   const context=canvas?.getContext('2d');
   if(!context||!field)return;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const beacons=[[-.47,-2.2],[.31,-1.65],[.68,-.42],[-.22,.35],[.42,1.28],[-.61,2.15],[.12,2.72]];
+  let seed=314159;
+  const random=()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296);
+  const particles=Array.from({length:1700},()=>({lat:Math.asin(random()*2-1),lon:random()*Math.PI*2,size:.35+random()*.95,tint:random()}));
+  const beacons=[[-.35,-1.9],[.32,-.8],[-.16,.35],[.52,1.3],[-.48,2.4]];
   let width=0,height=0,last=0,running=false,visible=true;
   const draw=time=>{
     context.clearRect(0,0,width,height);
-    const radius=Math.min(width*.28,height*.31,185),cx=width*.52,cy=height*.50;
-    const yaw=time*.28,tilt=-.22;
+    const radius=Math.min(width*.33,height*.34,215),cx=width*.50,cy=height*.43;
+    const yaw=time*.23,tilt=-.19;
     const position=(lat,lon)=>{
       const x=Math.cos(lat)*Math.sin(lon+yaw),y=Math.sin(lat),z=Math.cos(lat)*Math.cos(lon+yaw);
       const py=y*Math.cos(tilt)-z*Math.sin(tilt),pz=y*Math.sin(tilt)+z*Math.cos(tilt);
-      const scale=1/(1-pz*.18);
+      const scale=1/(1-pz*.12);
       return {x:cx+x*radius*scale,y:cy-py*radius*scale,z:pz};
     };
-    const haze=context.createRadialGradient(cx-radius*.28,cy-radius*.32,radius*.08,cx,cy,radius*1.15);
-    haze.addColorStop(0,'rgba(24,123,137,.15)');haze.addColorStop(.65,'rgba(4,49,70,.17)');haze.addColorStop(1,'rgba(2,17,30,0)');
-    context.fillStyle=haze;context.beginPath();context.arc(cx,cy,radius*1.15,0,Math.PI*2);context.fill();
-    context.lineWidth=.8;
-    const segment=(a,b)=>{
-      const front=Math.max(-1,Math.min(1,(a.z+b.z)*.5));
-      context.strokeStyle=front>0?`rgba(91,225,235,${(.13+front*.27).toFixed(3)})`:'rgba(47,145,170,.09)';
-      context.beginPath();context.moveTo(a.x,a.y);context.lineTo(b.x,b.y);context.stroke();
-    };
-    for(let longitude=0;longitude<14;longitude++){
-      const lon=longitude*Math.PI/7;
-      for(let step=0;step<40;step++)segment(position(-Math.PI/2+step*Math.PI/40,lon),position(-Math.PI/2+(step+1)*Math.PI/40,lon));
+    const aura=context.createRadialGradient(cx-radius*.15,cy-radius*.18,radius*.12,cx,cy,radius*1.42);
+    aura.addColorStop(0,'rgba(18,110,151,.20)');aura.addColorStop(.49,'rgba(5,46,79,.21)');aura.addColorStop(.75,'rgba(3,38,64,.16)');aura.addColorStop(1,'rgba(0,17,32,0)');
+    context.fillStyle=aura;context.beginPath();context.arc(cx,cy,radius*1.42,0,Math.PI*2);context.fill();
+    const body=context.createRadialGradient(cx-radius*.34,cy-radius*.42,radius*.08,cx,cy,radius*1.06);
+    body.addColorStop(0,'rgba(43,144,172,.29)');body.addColorStop(.57,'rgba(6,49,77,.61)');body.addColorStop(.88,'rgba(2,19,39,.72)');body.addColorStop(1,'rgba(20,126,162,.07)');
+    context.fillStyle=body;context.beginPath();context.arc(cx,cy,radius,0,Math.PI*2);context.fill();
+    context.save();context.shadowColor='#41c9ed';context.shadowBlur=24;
+    context.lineWidth=1.4;context.strokeStyle='rgba(74,211,237,.34)';
+    context.beginPath();context.arc(cx,cy,radius*.995,-2.22,-.43);context.stroke();context.restore();
+    for(const particle of particles){
+      const point=position(particle.lat,particle.lon);
+      if(point.z<-.12)continue;
+      const front=Math.max(0,point.z),alpha=(.10+front*.63)*(particle.tint>.95?1.5:1);
+      context.fillStyle=particle.tint>.89?`rgba(146,237,255,${alpha})`:`rgba(45,179,213,${alpha})`;
+      context.beginPath();context.arc(point.x,point.y,particle.size*(.55+front*.8),0,Math.PI*2);context.fill();
     }
-    for(let latitude=-4;latitude<=4;latitude++){
-      const lat=latitude*Math.PI/12;
-      for(let step=0;step<64;step++)segment(position(lat,step*Math.PI/32),position(lat,(step+1)*Math.PI/32));
+    for(const [lat,start,length] of [[-.38,-1.2,1.15],[.19,.3,1.0],[.57,2.4,.9]]){
+      context.beginPath();let drawing=false;
+      for(let step=0;step<=60;step++){
+        const point=position(lat,start+step/60*length);
+        if(point.z<.02){drawing=false;continue;}
+        if(!drawing){context.moveTo(point.x,point.y);drawing=true;}else context.lineTo(point.x,point.y);
+      }
+      context.strokeStyle='rgba(83,208,230,.31)';context.lineWidth=.9;context.stroke();
+    }
+    for(const [angle,offset] of [[-.42,0],[.24,1.9]]){
+      context.beginPath();
+      for(let step=0;step<=108;step++){
+        const t=offset+step/108*Math.PI*1.33+time*.11;
+        const x=Math.cos(t)*radius*1.18,y=Math.sin(t)*radius*.34;
+        const px=cx+x*Math.cos(angle)-y*Math.sin(angle),py=cy+x*Math.sin(angle)+y*Math.cos(angle);
+        if(step===0)context.moveTo(px,py);else context.lineTo(px,py);
+      }
+      context.strokeStyle='rgba(91,207,230,.17)';context.lineWidth=1;context.stroke();
     }
     const nodes=beacons.map(([lat,lon])=>position(lat,lon));
-    context.lineWidth=.8;
+    context.lineWidth=.65;
     for(let index=0;index<nodes.length;index++){
-      const a=nodes[index],b=nodes[(index+2)%nodes.length];
-      if(a.z<0||b.z<0)continue;
-      context.strokeStyle='rgba(113,237,240,.28)';context.beginPath();context.moveTo(a.x,a.y);context.lineTo(b.x,b.y);context.stroke();
+      const a=nodes[index],b=nodes[(index+1)%nodes.length];
+      if(a.z<.05||b.z<.05)continue;
+      context.strokeStyle='rgba(118,218,235,.15)';context.beginPath();context.moveTo(a.x,a.y);context.lineTo(b.x,b.y);context.stroke();
     }
     nodes.forEach((node,index)=>{
-      if(node.z<-.15)return;
-      const pulse=.7+.3*Math.sin(time*1.1+index*2.1),warm=index%3===0;
-      context.fillStyle=warm?`rgba(255,75,99,${pulse.toFixed(3)})`:`rgba(83,226,242,${pulse.toFixed(3)})`;
-      context.shadowColor=warm?'#ff4668':'#38d9f0';context.shadowBlur=10;
-      context.beginPath();context.arc(node.x,node.y,warm?2.8:2.1,0,Math.PI*2);context.fill();
+      if(node.z<.05)return;
+      const pulse=.73+.27*Math.sin(time*1.2+index*2),warm=index===1;
+      context.fillStyle=warm?`rgba(255,108,116,${pulse})`:`rgba(138,235,247,${pulse})`;
+      context.shadowColor=warm?'#ff6c74':'#4ed8ef';context.shadowBlur=12;
+      context.beginPath();context.arc(node.x,node.y,warm?3:2.5,0,Math.PI*2);context.fill();
     });
     context.shadowBlur=0;
   };

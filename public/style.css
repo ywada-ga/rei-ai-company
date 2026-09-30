@@ -138,13 +138,30 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .central-core .core-name{font-size:8px;letter-spacing:1.5px}
 .central-core small{font-size:8px}
 
-/* Circuit paths and restrained status lights echo the reference video's HUD. */
-.signal-traces{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;opacity:.65}
-.signal-traces>path{fill:none;stroke:#3bd2e2;stroke-width:1;stroke-dasharray:180 38 4 18;animation:signal-flow 18s linear infinite;filter:drop-shadow(0 0 4px #1acde6)}
-.signal-traces>path:nth-child(2){animation-direction:reverse;opacity:.65}
-.signal-lights circle{fill:#ff6677;opacity:.65;filter:drop-shadow(0 0 5px #ff384f);animation:signal-glow 4.8s ease-in-out infinite}
-.signal-lights circle:nth-child(even){animation-delay:-2.4s;fill:#61e6f5;filter:drop-shadow(0 0 4px #32d9ff)}
 .globe-field{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.92;mask-image:radial-gradient(ellipse at 52% 50%,#000 0 55%,transparent 79%)}
-@keyframes signal-flow{to{stroke-dashoffset:-240}}
-@keyframes signal-glow{50%{opacity:.2}}
-@media(prefers-reduced-motion:reduce){.signal-traces>path,.signal-lights circle{animation:none}}
+
+/* A cinematic control room: one luminous subject, with quieter instruments. */
+.workspace:before{opacity:.22}
+.center-stage{background:radial-gradient(ellipse at 50% 38%,#0a3046 0,#071d2f 39%,#020b16 83%);border-color:#2a6680;box-shadow:inset 0 0 95px #001323,0 15px 40px #000a}
+.center-stage:before{opacity:.17}
+.center-stage:after{opacity:.12}
+.stage-corners i{opacity:.55}
+.field-grid{background:radial-gradient(ellipse at 50% 45%,#0d58731c,transparent 61%)}
+.wave-plane{opacity:.42;mask-image:linear-gradient(to bottom,transparent 0 48%,#000 78%,transparent 100%)}
+.globe-field{opacity:1;mask-image:radial-gradient(ellipse at 50% 43%,#000 0 59%,transparent 82%)}
+.central-core{top:79%;height:77px;gap:3px}
+.central-core:hover,.central-core:focus-visible{background:#051a2b66}
+.central-core strong{font-size:29px;font-weight:500;letter-spacing:9px;text-shadow:0 0 18px #76dfff8c}
+.central-core .core-name{color:#78b8c8;font-size:7px;letter-spacing:2px}
+.central-core small{color:#76c5c8;font-size:7px;letter-spacing:1.5px}
+.orbit-node{min-width:120px;max-width:150px;padding:6px 8px;background:linear-gradient(90deg,#061c2ba8,#061c2b4d);border:0;border-left:1px solid #57bed297;border-radius:0;box-shadow:none;backdrop-filter:blur(4px)}
+.orbit-node:hover,.orbit-node.selected{background:#0b3a4ad9;border-color:#a0eced;box-shadow:0 0 16px #3bcfff38}
+.node-icon{font-size:13px;opacity:.78}
+.node-copy strong{font-size:9px;font-weight:500}
+.node-copy small,.node-copy em{font-size:7px}
+.node-0{top:0}.node-1{top:13%}.node-2{bottom:25%}.node-3{bottom:0}.node-4{bottom:25%}.node-5{top:13%}
+.glass-panel{border-color:#27546b;background:linear-gradient(145deg,#0a2434d9,#061624e8);box-shadow:inset 0 1px 0 #a7efff0c,0 10px 28px #0006}
+.glass-panel:before{opacity:.46}
+.panel-heading{color:#6ba3b8}
+.axis-label{opacity:.55}
+@media(max-width:750px){.central-core{top:74%}.node-3{bottom:0}}

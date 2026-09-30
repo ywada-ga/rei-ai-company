@@ -107,3 +107,14 @@ body{background:radial-gradient(ellipse at 51% 43%,#07395b 0,#041a2d 38%,#020710
 .central-core>*{position:relative;z-index:1}
 .orbit-node{box-shadow:inset 0 1px 0 #bbf7ff45,inset 0 -10px 23px #010b1a8c,0 0 21px #008fda66,0 15px 2px -8px #0009,0 22px 25px #000b}
 .center-stage{box-shadow:inset 0 0 100px #00aafa25,inset 0 0 2px #c6faff,0 0 28px #009def38,0 24px 48px #000c}
+
+/* Pointer parallax follows the public AIBL TILT DECK technique: a parent
+   perspective, shallow 3D rotation, and a highlight moving with the pointer. */
+.orbit-field{--holo-x:0px;--holo-y:0px;--holo-rotate-x:0deg;--holo-rotate-y:0deg;--holo-glint-x:50%;--holo-glint-y:50%;perspective:900px}
+.depth-tunnel{transform:translate(calc(-50% - var(--holo-x)),calc(-50% - var(--holo-y))) rotateX(calc(16deg + var(--holo-rotate-x))) rotateY(var(--holo-rotate-y))}
+.core-halo{transform:translate(calc(-50% + var(--holo-x) * .45),calc(-50% + var(--holo-y) * .45)) rotateX(var(--holo-rotate-x)) rotateY(var(--holo-rotate-y));transform-style:preserve-3d}
+.central-core{transform:translate(calc(-50% + var(--holo-x) * .65),calc(-50% + var(--holo-y) * .65)) rotateX(var(--holo-rotate-x)) rotateY(var(--holo-rotate-y));transform-style:preserve-3d}
+.central-core:after{background:radial-gradient(ellipse at var(--holo-glint-x) var(--holo-glint-y),#d8fdff61,transparent 43%)}
+.orbit-node{transform:translate3d(calc(var(--holo-x) * .35),calc(var(--holo-y) * .35),0) rotateX(calc(var(--holo-rotate-x) * .35)) rotateY(calc(var(--holo-rotate-y) * .35));transform-style:preserve-3d}
+.orbit-node.node-0,.orbit-node.node-3{transform:translateX(-50%) translate3d(calc(var(--holo-x) * .35),calc(var(--holo-y) * .35),0) rotateX(calc(var(--holo-rotate-x) * .35)) rotateY(calc(var(--holo-rotate-y) * .35))}
+@media(prefers-reduced-motion:reduce){.depth-tunnel,.core-halo,.central-core{transform:translate(-50%,-50%)}.orbit-node{transform:none}.orbit-node.node-0,.orbit-node.node-3{transform:translateX(-50%)}}

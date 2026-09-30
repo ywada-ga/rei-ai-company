@@ -6,6 +6,34 @@ const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, se
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
+// AIBL Motion Gallery's public TILT DECK demo informed the restrained
+// perspective, moving highlight and eased pointer response used here.
+function initHologramMotion() {
+  const field=document.querySelector('.orbit-field');
+  if(!field||matchMedia('(prefers-reduced-motion: reduce)').matches||!matchMedia('(pointer: fine)').matches)return;
+  let targetX=0,targetY=0,currentX=0,currentY=0,frame=0;
+  const paint=()=>{
+    currentX+=(targetX-currentX)*.12;
+    currentY+=(targetY-currentY)*.12;
+    field.style.setProperty('--holo-x',`${(currentX*11).toFixed(2)}px`);
+    field.style.setProperty('--holo-y',`${(currentY*9).toFixed(2)}px`);
+    field.style.setProperty('--holo-rotate-x',`${(-currentY*5).toFixed(2)}deg`);
+    field.style.setProperty('--holo-rotate-y',`${(currentX*5).toFixed(2)}deg`);
+    field.style.setProperty('--holo-glint-x',`${(50+currentX*23).toFixed(2)}%`);
+    field.style.setProperty('--holo-glint-y',`${(50+currentY*23).toFixed(2)}%`);
+    if(Math.abs(targetX-currentX)+Math.abs(targetY-currentY)>.002)frame=requestAnimationFrame(paint);
+    else frame=0;
+  };
+  const schedule=()=>{if(!frame)frame=requestAnimationFrame(paint);};
+  field.addEventListener('pointermove',event=>{
+    const rect=field.getBoundingClientRect();
+    targetX=Math.max(-1,Math.min(1,(event.clientX-rect.left)/rect.width*2-1));
+    targetY=Math.max(-1,Math.min(1,(event.clientY-rect.top)/rect.height*2-1));
+    schedule();
+  });
+  field.addEventListener('pointerleave',()=>{targetX=targetY=0;schedule();});
+}
+initHologramMotion();
 function commandSkill(skill) {state.selectedCommandSkill=skill||null;$('command-skill').textContent=skill?`使用スキル: ${skill.title} ×`:'';$('command-skill').classList.toggle('hidden',!skill);}
 
 function setSkillPane(pane){if(pane==='create'&&state.data?.user.role==='viewer')pane='library';state.skillPane=pane;document.querySelector('.playbook-grid').classList.toggle('hidden',pane!=='library');$('playbook-search-form').classList.toggle('hidden',pane!=='library');$('playbook-total').classList.toggle('hidden',pane!=='library');$('playbook-form').classList.toggle('hidden',pane!=='create');document.querySelector('.marketplace-panel').classList.toggle('hidden',pane!=='marketplace');document.querySelector('[data-skill-pane="create"]').classList.toggle('hidden',state.data?.user.role==='viewer');document.querySelectorAll('[data-skill-pane]').forEach(button=>button.classList.toggle('active',button.dataset.skillPane===pane));}

@@ -607,7 +607,7 @@ function showAuth() {
   for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
   for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');
   $('command-input').value='';
-  closeVoiceConversation();voiceScope='';
+  closeVoiceConversation();voiceScope='';voiceConversation.history=[];voiceConversation.answer='';voiceConversation.transcript='';voiceConversation.emit('idle');
   state.knowledge=null;state.knowledgeRequest++;state.selectedKnowledge=null;state.knowledgeSettingsDirty=false;state.knowledgeFormSignature='';$('knowledge-history').textContent='';$('knowledge-answer').textContent='';$('knowledge-groups').textContent='';
   document.querySelectorAll('input[type="password"],textarea').forEach(input=>input.value='');
   setView('core');

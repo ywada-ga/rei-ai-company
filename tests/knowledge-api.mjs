@@ -1,0 +1,68 @@
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
+const version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
+const dir=mkdtempSync(path.join(os.tmpdir(),'rei-knowledge-api-'));
+const reservation=createServer();await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
+const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
+const base=`http://127.0.0.1:${port}`;
+const hub=spawn(process.execPath,['hub.mjs'],{cwd:root,env:{...process.env,REI_DATA_DIR:dir,REI_PORT:String(port)},stdio:['ignore','pipe','pipe']});
+let output='',cookie='';hub.stdout.on('data',chunk=>output+=chunk);hub.stderr.on('data',chunk=>output+=chunk);
+const api=async(route,data,token,expected=200)=>{
+  const response=await fetch(`${base}/api?route=${encodeURIComponent(route)}`,{method:data===undefined?'GET':'POST',headers:{...(data===undefined?{}:{'content-type':'application/json'}),...(token?{authorization:`Bearer ${token}`}:{cookie})},body:data===undefined?undefined:JSON.stringify(data)});
+  const result=await response.json();assert.equal(response.status,expected,`${route}: ${JSON.stringify(result)}`);
+  if(response.headers.get('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];return result;
+};
+try {
+  for(let i=0;i<100&&!output.includes('REI Hub:');i++)await new Promise(resolve=>setTimeout(resolve,100));
+  assert.match(output,/REI Hub:/);
+  await api('setup/complete',{token:output.match(/\?setup=([^\s]+)/)[1],username:'owner',password:'knowledge-test-password'},undefined,201);
+  await api('auth/login',{username:'owner',password:'knowledge-test-password'});
+  await api('knowledge/ask',{question:'決定事項は？'},undefined,409);
+  const device=await api('devices/enroll',{label:'Synapse test',isPlanner:true},undefined,201);
+  const mcp=await api('mcp/add',{label:'SynapseConnect',deviceId:device.device.id,url:'https://mcp.synapse-connect.ai/mcp',auth:'oauth'},undefined,201);
+  await api('connector/heartbeat',{version,capabilities:['planning','execution'],mcpStatuses:[{name:mcp.name,status:'configured'}]},device.token);
+  await api('knowledge/ask',{question:'決定事項は？'},undefined,409);
+  const catalog=(await api('knowledge/catalog',{},undefined,201)).task;
+  const job=(await api('connector/claim',{},device.token)).job;
+  assert.equal(job.knowledge_mode,'catalog');assert.equal(job.kind,'execute');
+  const groups=[{id:'shared-company',name:'会社共有',visibility:'shared'}];
+  await api('connector/result',{taskId:job.id,leaseId:job.lease_id,success:true,result:JSON.stringify({status:'catalog',answer:'共有グループを確認しました',searchedGroups:[],uncertainties:[],sources:[],suggestions:[],groups})},device.token);
+  const settings={enabled:true,intervalHours:6,groups:groups.map(({id,name})=>({id,name}))};
+  await api('knowledge/settings',{...settings,groups:[{id:'private',name:'個人記録'}]},undefined,400);
+  await api('knowledge/settings',settings);
+  const task=(await api('knowledge/ask',{question:'決定事項は？'},undefined,201)).task;
+  await api('knowledge/ask',{question:'二重送信'},undefined,409);
+  const work=(await api('connector/claim',{},device.token)).job;
+  assert.equal(work.knowledge_mode,'answer');assert.deepEqual(JSON.parse(work.knowledge_scope),settings.groups);
+  const result={status:'answered',answer:'検証用の決定は公開資料の準備です。record-1',searchedGroups:['会社共有'],uncertainties:['これは検証用の回答です'],sources:[{recordId:'record-1',groupId:'shared-company',group:'会社共有',title:'検証用の決定',recordedAt:'2026-10-06T00:00:00Z',url:null}],suggestions:[{title:'資料の構成案を作る',reason:'決定を進めるため',sourceIds:['record-1'],prompt:'検証用の資料構成案を作成してください。'}]};
+  const report={taskId:work.id,leaseId:work.lease_id,success:true,result:JSON.stringify(result)};
+  await api('connector/result',report,device.token);
+  assert.equal((await api('connector/result',report,device.token)).alreadyRecorded,true);
+  const status=await api('knowledge/status');assert.equal(status.tasks.find(item=>item.id===task.id).intelligence.sources[0].recordId,'record-1');
+  assert.equal(status.groups[0].id,'shared-company');assert.equal(status.settings.enabled,true);
+  assert.equal((await api('bootstrap')).tasks.some(item=>item.id===task.id),false);
+  assert.equal((await api('tasks')).tasks.some(item=>item.id===task.id),false);
+  assert.equal((await api('report/today')).tasks.some(item=>item.id===task.id),false);
+  const ownerCookie=cookie,invite=(await api('users/invite',{role:'requester'},undefined,201)).token;
+  await api('setup/complete',{token:invite,username:'requester',password:'knowledge-test-password'},undefined,201);
+  await api('auth/login',{username:'requester',password:'knowledge-test-password'});
+  await api('knowledge/status',undefined,undefined,403);
+  await api(`tasks/detail/${task.id}`,undefined,undefined,403);
+  await api(`tasks/events/${task.id}`,{beforeTime:Date.now()+1000,beforeId:task.id},undefined,403);
+  assert.equal((await api('bootstrap')).tasks.some(item=>item.id===task.id),false);
+  cookie=ownerCookie;
+  await api('knowledge/settings',{...settings,enabled:false});
+  if(process.env.REI_KEEP_TEST_HUB==='1') {
+    console.log(`UI_FIXTURE ${base} DATA ${dir}`);
+    await new Promise(()=>{});
+  }
+  console.log('PASS knowledge API scope discovery, answers, role boundaries, and proposal persistence');
+} finally {
+  hub.kill('SIGTERM');await new Promise(resolve=>hub.once('close',resolve));rmSync(dir,{recursive:true,force:true});
+}

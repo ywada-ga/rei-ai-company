@@ -8,6 +8,8 @@ import { StringDecoder } from 'node:string_decoder';
 import { openStorage, one, all, run, transaction } from './storage.mjs';
 import { random, hash, encodePassword, checkPassword, cookies, sessionUser, connectorDevice, setCookie, sameOrigin } from './security.mjs';
 import { departments, event, createTask, cancellable, cancelTask, retryPlan, claim, sweep, finishJob, finishRoot, report } from './workflow.mjs';
+import { knowledgeSettings, saveKnowledgeSettings, scanQuestion } from './intelligence.mjs';
+import { knowledgeDevice, queueKnowledge, scanKnowledgeIfDue } from './knowledge-service.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
 import { searchMarketplaceSkills } from './skill-marketplace.mjs';
@@ -49,7 +51,7 @@ const send=(res,code,data)=>{res.writeHead(code,{'content-type':'application/jso
 const error=(res,code,message)=>send(res,code,{error:message});
 const text=(value,max=8000)=>{const result=String(value??'').trim();if(!result||result.length>max)throw Object.assign(new Error(`1〜${max}文字で入力してください`),{status:400});return result;};
 async function body(req,maxBytes=200000) {let raw='',bytes=0;const decoder=new StringDecoder('utf8');for await(const chunk of req){bytes+=chunk.length;if(bytes>maxBytes)throw Object.assign(new Error('送信内容が長すぎます'),{status:413});raw+=decoder.write(chunk);}raw+=decoder.end();try{return JSON.parse(raw||'{}');}catch{throw Object.assign(new Error('JSONが正しくありません'),{status:400});}}
-function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.kind,text:t.text,department:t.department,projectId:t.project_id||null,skillId:t.skill_id||null,status:t.status,assignedDeviceId:t.device_id,result:brief?t.result.slice(0,500):t.result,error:brief?t.error.slice(0,500):t.error,createdAt:new Date(t.created_at).toISOString(),startedAt:t.started_at?new Date(t.started_at).toISOString():null,finishedAt:t.finished_at?new Date(t.finished_at).toISOString():null};}
+function taskJson(t,brief=false) {return {id:t.id,parentId:t.parent_id,kind:t.kind,text:t.text,department:t.department,projectId:t.project_id||null,skillId:t.skill_id||null,knowledgeMode:t.knowledge_mode||'work',intelligence:!brief&&t.knowledge_report?JSON.parse(t.knowledge_report):null,status:t.status,assignedDeviceId:t.device_id,result:brief?t.result.slice(0,500):t.result,error:brief?t.error.slice(0,500):t.error,createdAt:new Date(t.created_at).toISOString(),startedAt:t.started_at?new Date(t.started_at).toISOString():null,finishedAt:t.finished_at?new Date(t.finished_at).toISOString():null};}
 function projectJson(p) {return {id:p.id,name:p.name,objective:p.objective,status:p.status,createdAt:new Date(p.created_at).toISOString(),updatedAt:new Date(p.updated_at).toISOString(),total:p.total||0,completed:p.completed||0,failed:p.failed||0,attention:p.attention||0};}
 function projectNoteJson(n) {return {id:n.id,projectId:n.project_id,title:n.title,content:n.content,author:n.username,createdAt:new Date(n.created_at).toISOString()};}
 function projectNotes(id,limit=50) {return all(db,'SELECT n.*,u.username FROM project_notes n JOIN users u ON u.id=n.created_by WHERE n.project_id=? ORDER BY n.created_at DESC,n.id DESC LIMIT ?',id,limit).map(projectNoteJson);}
@@ -139,10 +141,37 @@ async function api(req,res,route) {
     sweep(db);
     const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,agent_name,pending_results,version FROM devices WHERE revoked=0 ORDER BY rowid');
     const workers=devices.map(d=>({id:d.id,name:d.label,kind:'AI',machine:d.label,agentName:d.agent_name,pendingResults:d.pending_results,version:d.version,capabilities:JSON.parse(d.capabilities),connected:Date.now()-d.last_seen<30000,planner:!!d.planner}));
-    const recent=all(db,"SELECT * FROM tasks WHERE kind='root' ORDER BY created_at DESC,id DESC LIMIT 101");
+    const recent=all(db,"SELECT * FROM tasks WHERE kind='root' AND knowledge_mode='work' ORDER BY created_at DESC,id DESC LIMIT 101");
     const tasks=recent.slice(0,100).map(task=>taskJson(task,true));
     const humanPending=all(db,"SELECT DISTINCT parent_id FROM tasks WHERE kind='human' AND status IN ('waiting_human','waiting_reply','sending') AND parent_id IS NOT NULL ORDER BY created_at DESC LIMIT 100").map(item=>item.parent_id);
     return send(res,200,{user,departments,workers,tasks,hasOlderTasks:recent.length>100,projects:projects(),humanPending,gateway:{reachable:readyConnector(),version:reiVersion,agent:'rei'}});
+  }
+  if(route.startsWith('knowledge/')) {
+    if(!['owner','admin'].includes(user.role))return error(res,403,'会社の記憶は所有者・管理者が利用できます');
+    if(route==='knowledge/status'&&req.method==='GET') {
+      const device=knowledgeDevice(db,reiVersion),settings=knowledgeSettings(db);
+      const latestScan=one(db,"SELECT created_at FROM tasks WHERE kind='root' AND knowledge_mode='scan' ORDER BY created_at DESC LIMIT 1");
+      if(settings.enabled&&latestScan)settings.nextRunAt=Math.max(settings.nextRunAt,latestScan.created_at+settings.intervalHours*3600000);
+      const tasks=all(db,"SELECT * FROM tasks WHERE kind='root' AND knowledge_mode!='work' ORDER BY created_at DESC,id DESC LIMIT 30").map(task=>taskJson(task));
+      const catalog=all(db,"SELECT knowledge_report FROM tasks WHERE kind='root' AND knowledge_mode='catalog' AND status='completed' AND knowledge_report!='' ORDER BY created_at DESC LIMIT 10").map(task=>JSON.parse(task.knowledge_report)).find(report=>report.groups.length);
+      return send(res,200,{settings,device:device?{id:device.id,label:device.label}:null,groups:catalog?.groups||[],tasks});
+    }
+    if(route==='knowledge/settings'&&req.method==='POST') {
+      if(user.role!=='owner')return error(res,403,'所有者だけが検索範囲と定期確認を設定できます');
+      const data=await body(req),current=knowledgeSettings(db);
+      const catalogs=all(db,"SELECT knowledge_report FROM tasks WHERE kind='root' AND knowledge_mode='catalog' AND status='completed' AND knowledge_report!='' ORDER BY created_at DESC LIMIT 10").flatMap(task=>JSON.parse(task.knowledge_report).groups);
+      const available=[...current.groups,...catalogs];
+      if(!Array.isArray(data.groups)||data.groups.some(group=>!available.some(item=>item.id===group.id&&item.name===group.name)))return error(res,400,'SynapseConnectで確認した共有グループを選んでください');
+      const settings=saveKnowledgeSettings(db,data,user.id);
+      event(db,null,user.username,'knowledge_settings',`${settings.groups.length}共有グループ / 定期確認${settings.enabled?'有効':'停止'}`);
+      return send(res,200,{settings});
+    }
+    if(['knowledge/ask','knowledge/scan','knowledge/catalog'].includes(route)&&req.method==='POST') {
+      const mode=route==='knowledge/ask'?'answer':route==='knowledge/scan'?'scan':'catalog';
+      const question=mode==='answer'?text((await body(req)).question,4000):mode==='scan'?scanQuestion:'会社の記憶として検索できる共有グループを確認してください';
+      const task=queueKnowledge(db,reiVersion,mode,question,user.id);
+      return send(res,201,{task:taskJson(task)});
+    }
   }
   if(route==='report/today'&&req.method==='GET') {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,data);}
   if(route==='skills/marketplace/search'&&req.method==='POST') {const query=text((await body(req)).query,100);try{return send(res,200,{results:await searchMarketplaceSkills(query),query});}catch(e){return error(res,502,`マーケットプレイスを検索できません: ${e.message}`);}}
@@ -229,7 +258,7 @@ async function api(req,res,route) {
   if(route==='tasks/project'&&req.method==='POST') {
     if(!['owner','admin'].includes(user.role))return error(res,403,'仕事の所属を変更する権限がありません');
     const data=await body(req),taskId=String(data.taskId||''),projectId=data.projectId?String(data.projectId):null;
-    const task=one(db,"SELECT id,project_id,status FROM tasks WHERE id=? AND kind='root'",taskId);
+    const task=one(db,"SELECT id,project_id,status FROM tasks WHERE id=? AND kind='root' AND knowledge_mode='work'",taskId);
     if(!task)return error(res,404,'仕事が見つかりません');
     if(!['completed','failed','cancelled'].includes(task.status))return error(res,409,'終了した仕事だけ所属を変更できます');
     if(projectId&&!one(db,'SELECT id FROM projects WHERE id=?',projectId))return error(res,404,'プロジェクトが見つかりません');
@@ -244,6 +273,7 @@ async function api(req,res,route) {
     if(!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'仕事IDが正しくありません');
     const root=one(db,"SELECT * FROM tasks WHERE id=? AND kind='root'",id);
     if(!root)return error(res,404,'仕事が見つかりません');
+    if(root.knowledge_mode!=='work'&&!['owner','admin'].includes(user.role))return error(res,403,'会社の記憶を参照する権限がありません');
     const children=all(db,'SELECT * FROM tasks WHERE parent_id=? ORDER BY created_at,id',id);
     const receipts=all(db,'SELECT r.task_id,r.report,r.success FROM late_result_receipts r JOIN tasks t ON t.id=r.task_id WHERE t.parent_id=?',id);
     const byTask=new Map(receipts.map(receipt=>[receipt.task_id,receipt]));
@@ -257,7 +287,9 @@ async function api(req,res,route) {
   if(route.startsWith('tasks/events/')&&req.method==='POST') {
     const id=route.slice('tasks/events/'.length),data=await body(req),before=Number(data.beforeTime),beforeId=String(data.beforeId||'');
     if(!/^[a-f0-9-]{36}$/.test(id)||!Number.isSafeInteger(before)||before<=0||!/^[a-f0-9-]{36}$/.test(beforeId))return error(res,400,'履歴の位置が正しくありません');
-    if(!one(db,"SELECT id FROM tasks WHERE id=? AND kind='root'",id))return error(res,404,'仕事が見つかりません');
+    const parent=one(db,"SELECT knowledge_mode FROM tasks WHERE id=? AND kind='root'",id);
+    if(!parent)return error(res,404,'仕事が見つかりません');
+    if(parent.knowledge_mode!=='work'&&!['owner','admin'].includes(user.role))return error(res,403,'会社の記憶を参照する権限がありません');
     const rows=all(db,'SELECT id,actor,type,detail,created_at,task_id FROM events WHERE (task_id=? OR task_id IN (SELECT id FROM tasks WHERE parent_id=?)) AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 101',id,id,before,before,beforeId);
     return send(res,200,{events:rows.slice(0,100).reverse().map(item=>({id:item.id,actor:item.actor,type:item.type,detail:item.detail,taskId:item.task_id,createdAt:new Date(item.created_at).toISOString()})),hasMore:rows.length>100});
   }
@@ -283,8 +315,8 @@ async function api(req,res,route) {
   if(route==='tasks/reassign'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'担当PCを変更する権限がありません');const data=await body(req),id=String(data.taskId||''),deviceId=String(data.deviceId||'');const device=one(db,"SELECT id,label,capabilities FROM devices WHERE id=? AND revoked=0 AND last_seen>? AND version=?",deviceId,Date.now()-30000,reiVersion);if(!device||!JSON.parse(device.capabilities||'[]').includes('execution'))return error(res,400,'接続中で実行可能なPCを選んでください');const accepted=transaction(db,()=>{const task=one(db,"SELECT id,device_id FROM tasks WHERE id=? AND kind='execute' AND status='ready'",id);if(!task||task.device_id===device.id)return false;run(db,'UPDATE tasks SET device_id=? WHERE id=?',device.id,id);event(db,id,user.username,'reassigned',`担当PCを${device.label}に変更`);return true;});if(!accepted)return error(res,409,'未着手の別PC向け工程が見つかりません');return send(res,200,{ok:true});}
   if(route==='human/respond'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'人の回答を記録する権限がありません');const data=await body(req),id=String(data.taskId||''),answer=text(data.answer,8000);const accepted=transaction(db,()=>{const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind='human' AND status IN ('waiting_human','waiting_reply')",id);if(!task)return false;run(db,"UPDATE tasks SET status='completed',result=?,finished_at=? WHERE id=?",answer,Date.now(),id);event(db,id,user.username,'human_reply','画面から回答を記録');finishRoot(db,task.parent_id);return true;});if(!accepted)return error(res,409,'回答待ちの仕事が見つかりません');return send(res,200,{ok:true});}
   if(route==='tasks/reconcile'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'結果を確認する権限がありません');const data=await body(req),id=String(data.taskId||''),resolution=String(data.resolution||''),note=text(data.note,8000);if(!['completed','failed'].includes(resolution))return error(res,400,'確認結果が正しくありません');const accepted=transaction(db,()=>{const task=one(db,"SELECT * FROM tasks WHERE id=? AND kind IN ('execute','human') AND status='needs_review'",id);if(!task)return false;run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_id=CASE WHEN kind=? THEN lease_id ELSE NULL END,lease_until=0 WHERE id=?',resolution,resolution==='completed'?note:'',resolution==='failed'?note:'',Date.now(),'execute',id);event(db,id,user.username,'reconciled',`${resolution}: ${note.slice(0,300)}`);finishRoot(db,task.parent_id);return true;});if(!accepted)return error(res,409,'確認待ちの工程が見つかりません');return send(res,200,{ok:true});}
-  if(route==='tasks/history'&&req.method==='POST') {const data=await body(req),before=Number(data.beforeTime),id=String(data.beforeId||'');if(!Number.isSafeInteger(before)||before<=0||!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'履歴の位置が正しくありません');const rows=all(db,"SELECT * FROM tasks WHERE kind='root' AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 101",before,before,id);return send(res,200,{tasks:rows.slice(0,100).map(task=>taskJson(task,true)),hasMore:rows.length>100});}
-  if(route==='tasks'&&req.method==='GET') {const tasks=all(db,'SELECT * FROM tasks ORDER BY created_at DESC LIMIT 300').map(task=>taskJson(task,true));return send(res,200,{tasks});}
+  if(route==='tasks/history'&&req.method==='POST') {const data=await body(req),before=Number(data.beforeTime),id=String(data.beforeId||'');if(!Number.isSafeInteger(before)||before<=0||!/^[a-f0-9-]{36}$/.test(id))return error(res,400,'履歴の位置が正しくありません');const rows=all(db,"SELECT * FROM tasks WHERE kind='root' AND knowledge_mode='work' AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 101",before,before,id);return send(res,200,{tasks:rows.slice(0,100).map(task=>taskJson(task,true)),hasMore:rows.length>100});}
+  if(route==='tasks'&&req.method==='GET') {const tasks=all(db,"SELECT * FROM tasks WHERE knowledge_mode='work' ORDER BY created_at DESC LIMIT 300").map(task=>taskJson(task,true));return send(res,200,{tasks});}
   if(route==='devices'&&req.method==='GET') {const devices=all(db,'SELECT id,label,planner,capabilities,last_seen,revoked,agent_name,pending_results,version FROM devices WHERE revoked=0 ORDER BY rowid').map(d=>({...d,capabilities:JSON.parse(d.capabilities),online:Date.now()-d.last_seen<30000}));return send(res,200,{devices,localConnector:localConnectorStatus(),bundledMac:process.platform==='darwin'&&!!process.env.REI_OPENCLAW_ENTRY,hubVersion:reiVersion});}
   if(route==='mcp/list'&&req.method==='GET') {const integrations=all(db,'SELECT m.name,m.label,m.url,m.auth,m.device_id,d.label AS device_label,s.status,s.updated_at,c.requested_at AS check_requested_at,c.checked_at,c.status AS check_status,c.tool_count,c.error AS check_error FROM mcp_integrations m JOIN devices d ON d.id=m.device_id LEFT JOIN device_mcp_status s ON s.name=m.name AND s.device_id=m.device_id LEFT JOIN mcp_checks c ON c.name=m.name ORDER BY m.created_at DESC');return send(res,200,{integrations});}
   if(route==='mcp/check'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけが接続を確認できます');const data=await body(req),name=String(data.name||'');const integration=one(db,'SELECT m.name FROM mcp_integrations m JOIN devices d ON d.id=m.device_id WHERE m.name=? AND d.revoked=0',name);if(!integration)return error(res,404,'連携が見つかりません');const requestId=uid(),requestedAt=Date.now();run(db,"INSERT INTO mcp_checks(name,request_id,requested_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET request_id=excluded.request_id,requested_at=excluded.requested_at,checked_at=0,status='queued',tool_count=0,error=''",name,requestId,requestedAt);return send(res,202,{ok:true});}
@@ -387,4 +419,4 @@ async function dailyBackup() {
 }
 setTimeout(()=>void dailyBackup(),60000).unref();
 setInterval(()=>void dailyBackup(),3600000).unref();
-setInterval(()=>{try{sweep(db);void sendPendingHuman(db,root).catch(e=>console.error('REI Chatwork送信:',e.message));void pollChatwork(db,root).catch(e=>console.error('REI Chatwork取得:',e.message));}catch(e){console.error('REI background:',e.message);}},30000).unref();
+setInterval(()=>{try{sweep(db);scanKnowledgeIfDue(db,reiVersion);void sendPendingHuman(db,root).catch(e=>console.error('REI Chatwork送信:',e.message));void pollChatwork(db,root).catch(e=>console.error('REI Chatwork取得:',e.message));}catch(e){console.error('REI background:',e.message);}},30000).unref();

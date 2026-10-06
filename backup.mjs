@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','mcp-sync.json.tmp','pending-results.json','pending-results.json.tmp'];
+const allowed=['rei.sqlite','chatwork.key','connector.json','mcp-sync.json','mcp-sync.json.tmp','synapse-tool-access.json','synapse-tool-access.json.tmp','pending-results.json','pending-results.json.tmp'];
 const dataDir=()=>process.env.REI_DATA_DIR||path.join(root,'data');
 export function backupDirectory(source=dataDir()) {
   const configured=process.env.REI_BACKUP_DIR?.trim();

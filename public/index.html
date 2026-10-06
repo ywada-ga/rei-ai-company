@@ -14,6 +14,7 @@
       <div class="rail-brand" aria-label="AI Company">◈</div>
       <nav>
         <button class="rail-btn active" data-view="core" title="司令室" aria-label="司令室">⌘</button>
+        <button class="rail-btn" data-view="knowledge" title="会社の記憶" aria-label="会社の記憶">◎</button>
         <button class="rail-btn" data-view="missions" title="ミッション" aria-label="ミッション">▤</button>
         <button class="rail-btn" data-view="projects" title="プロジェクト" aria-label="プロジェクト">◈</button>
         <button class="rail-btn" data-view="playbooks" title="スキル" aria-label="スキル">▣</button>
@@ -62,6 +63,18 @@
         <div class="right-column">
           <section class="glass-panel agents-panel"><div class="panel-heading"><span>03 / NETWORK</span><span id="network-count">01 / 06</span></div><h2>接続ユニット</h2><div id="unit-list"></div></section>
           <section class="glass-panel focus-panel"><div class="panel-heading"><span>04 / FOCUS</span><span>ACTIVE SELECTION</span></div><div id="focus-content"></div></section>
+        </div>
+      </section>
+      <section id="knowledge-view" class="view list-view hidden">
+        <div class="section-title"><div><span>COMPANY MEMORY / SYNAPSE CONNECT</span><h2>会社のことを、REIに聞く</h2></div><button type="button" id="knowledge-refresh" class="outline-button">結果を更新</button></div>
+        <div class="knowledge-layout">
+          <div class="glass-panel knowledge-controls"><h3>会社の記憶</h3><p id="knowledge-connection" class="setting-guide"></p>
+            <form id="knowledge-question-form"><label>知りたいこと<textarea id="knowledge-question" rows="3" maxlength="4000" required placeholder="例：この案件の決定事項と、次に準備することは？"></textarea></label><button type="submit" class="outline-button">会社の記憶から答える ↗</button></form>
+            <div class="knowledge-scan"><h3>先回りして確認</h3><p>期限・停滞・未対応を記録から確認し、根拠付きの次の行動を提案します。</p><button type="button" id="knowledge-scan" class="outline-button">今、次にすることを確認</button></div>
+            <form id="knowledge-settings-form"><h3>検索する共有グループ</h3><p class="setting-guide">選択したグループの回答と提案を、REIの所有者・管理者で共有します。個人専用のグループは対象に含めません。</p><button type="button" id="knowledge-catalog" class="outline-button">共有グループを確認</button><div id="knowledge-groups"></div><label class="check-line"><input type="checkbox" id="knowledge-enabled">定期的に次の行動を提案する</label><label>確認間隔<select id="knowledge-interval"><option value="6">6時間ごと</option><option value="12">12時間ごと</option><option value="24">24時間ごと</option></select></label><button type="submit" class="outline-button">検索範囲と定期確認を保存</button><p id="knowledge-next-run" class="setting-guide"></p></form>
+            <p id="knowledge-feedback" role="status" class="setting-guide"></p>
+          </div>
+          <div class="glass-panel knowledge-results"><div id="knowledge-history"></div><article id="knowledge-answer"></article></div>
         </div>
       </section>
       <section id="missions-view" class="view list-view hidden"><div class="section-title"><div><span>MISSION CONTROL</span><h2>仕事の指令と結果</h2></div><strong id="mission-total">00 MISSIONS</strong></div><div class="mission-grid"><div class="glass-panel" id="mission-list"></div><div class="glass-panel" id="mission-detail"></div></div></section>

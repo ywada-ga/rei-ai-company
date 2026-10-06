@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { one, all, run, transaction } from './storage.mjs';
+import { parseIntelligence, intelligenceText, intelligenceModes } from './intelligence.mjs';
 
 const id=()=>crypto.randomUUID();
 const now=()=>Date.now();
@@ -18,6 +19,16 @@ export function createTask(db,text,department,userId,requiresApproval=false,proj
     run(db,'INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?)',root,'root',text,department,requiresApproval?'approval_pending':'planning',userId,time,projectId,skillId);
     run(db,'INSERT INTO tasks(id,parent_id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?,?)',plan,root,'plan',text,department,requiresApproval?'blocked':'ready',userId,time,projectId,skillId);
     event(db,root,'user','created',text.slice(0,200));
+    return one(db,'SELECT * FROM tasks WHERE id=?',root);
+  });
+}
+export function createKnowledgeTask(db,text,mode,userId,deviceId,groups=[],time=now()) {
+  if(!intelligenceModes.includes(mode))throw new Error('会社情報の依頼種別を確認してください');
+  return transaction(db,()=>{
+    const root=id(),child=id(),scope=JSON.stringify(groups);
+    run(db,"INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,knowledge_mode,knowledge_scope) VALUES(?,'root',?,'operations','running',?,?,?,?)",root,text,userId,time,mode,scope);
+    run(db,"INSERT INTO tasks(id,parent_id,kind,text,department,status,device_id,created_by,created_at,knowledge_mode,knowledge_scope) VALUES(?,?,'execute',?,'operations','ready',?,?,?,?,?)",child,root,text,deviceId,userId,time,mode,scope);
+    event(db,root,'user','created',mode==='scan'?'会社の記憶から次の提案を確認':mode==='catalog'?'共有グループを確認':'会社への質問');
     return one(db,'SELECT * FROM tasks WHERE id=?',root);
   });
 }
@@ -98,6 +109,13 @@ export function finishRoot(db,rootId) {
   if(!rootId) return;
   const steps=all(db,"SELECT * FROM tasks WHERE parent_id=? AND kind IN ('execute','human') ORDER BY created_at",rootId);
   if(!steps.length||steps.some(s=>!['completed','failed','needs_review','cancelled'].includes(s.status))) return;
+  const root=one(db,'SELECT knowledge_mode FROM tasks WHERE id=?',rootId);
+  if(root?.knowledge_mode!=='work') {
+    const step=steps[0],success=steps.length===1&&step.status==='completed'&&!!step.knowledge_report;
+    run(db,"UPDATE tasks SET status=?,result=?,error=?,knowledge_report=?,finished_at=? WHERE id=? AND status IN ('running','needs_review')",success?'completed':'needs_review',step.result,success?'':step.error||'会社情報の回答を確認してください',success?step.knowledge_report:'',now(),rootId);
+    event(db,rootId,'rei',success?'completed':'needs_review','会社情報の結果を受信');
+    return;
+  }
   const status=steps.every(s=>s.status==='completed')?'completed':'needs_review';
   const result=steps.map((s,i)=>`${i+1}. ${s.status==='completed'?'完了':'要確認'}: ${(s.result||s.error).slice(0,1000)}`).join('\n');
   run(db,"UPDATE tasks SET status=?,result=?,error='',finished_at=? WHERE id=? AND status IN ('planning','running','needs_review')",status,result,now(),rootId);
@@ -105,13 +123,15 @@ export function finishRoot(db,rootId) {
 }
 export function finishJob(db,device,input) {
   const result=String(input.result||'');
-  const lateResult=(input.success?result:String(input.error||'').slice(0,4000))||'端末から結果が返りましたが、内容は空でした';
-  const lateFingerprint=crypto.createHash('sha256').update(JSON.stringify([!!input.success,lateResult])).digest('hex');
+  const rawLateResult=(input.success?result:String(input.error||'').slice(0,4000))||'端末から結果が返りましたが、内容は空でした';
+  const lateFingerprint=crypto.createHash('sha256').update(JSON.stringify([!!input.success,rawLateResult])).digest('hex');
   const job=one(db,'SELECT * FROM tasks WHERE id=? AND device_id=? AND lease_id=?',input.taskId,device.id,input.leaseId);
   if(!job) {
     const receipt=one(db,'SELECT r.fingerprint FROM late_result_receipts r JOIN tasks t ON t.id=r.task_id WHERE r.task_id=? AND r.lease_id=? AND t.device_id=?',input.taskId,input.leaseId,device.id);
     return receipt?.fingerprint===lateFingerprint?{ok:true,alreadyRecorded:true}:{ok:false,duplicate:true};
   }
+  const lateKnowledge=job.knowledge_mode!=='work'&&input.success?parseIntelligence(result,job.knowledge_mode,JSON.parse(job.knowledge_scope)):null;
+  const lateResult=job.knowledge_mode==='work'?rawLateResult:lateKnowledge?intelligenceText(lateKnowledge):'会社情報の結果が届きましたが、出典の形式を確認できなかったため本文は保存していません。';
   if(job.kind==='execute') {
     const receipt=one(db,'SELECT fingerprint FROM late_result_receipts WHERE task_id=?',job.id);
     if(receipt)return receipt.fingerprint===lateFingerprint?{ok:true,needsReview:job.status==='needs_review',alreadyRecorded:true}:{ok:false,duplicate:true};
@@ -135,16 +155,19 @@ export function finishJob(db,device,input) {
     return {ok:true,needsReview:true};
   }
   if(job.status!=='running') {
-    const sameResult=job.result===result;
-    const sameOutcome=job.status==='completed'?!!input.success:job.status==='failed'&&(!!input.success&&job.kind==='plan'||!input.success&&job.error===String(input.error||'').slice(0,4000));
+    if(job.knowledge_mode!=='work'&&job.knowledge_result_hash)return job.knowledge_result_hash===lateFingerprint?{ok:true,alreadyRecorded:true}:{ok:false,duplicate:true};
+    const replayReport=job.knowledge_mode!=='work'&&input.success?parseIntelligence(result,job.knowledge_mode,JSON.parse(job.knowledge_scope)):null;
+    const sameResult=job.result===result||!!replayReport&&JSON.stringify(replayReport)===job.knowledge_report;
+    const sameOutcome=job.status==='completed'?!!input.success:job.status==='failed'&&(!!input.success&&(job.kind==='plan'||job.knowledge_mode!=='work'&&!replayReport)||!input.success&&job.error===String(input.error||'').slice(0,4000));
     return sameResult&&sameOutcome?{ok:true,alreadyRecorded:true}:{ok:false,duplicate:true};
   }
   const devices=job.kind==='plan'?all(db,'SELECT id,label FROM devices WHERE revoked=0'):[];
   const steps=job.kind==='plan'&&input.success?parsePlan(result,devices):null;
-  const success=!!input.success&&(job.kind!=='plan'||!!steps);
-  const error=success?'':job.kind==='plan'&&input.success&&!steps?'計画の形式または担当PCを確認できませんでした。計画だけ再実行してください':String(input.error||'').slice(0,4000);
+  const knowledge=job.knowledge_mode!=='work',knowledgeReport=knowledge&&input.success?parseIntelligence(result,job.knowledge_mode,JSON.parse(job.knowledge_scope)):null;
+  const success=!!input.success&&(job.kind!=='plan'||!!steps)&&(!knowledge||!!knowledgeReport);
+  const error=success?'':knowledge&&input.success&&!knowledgeReport?'回答の出典・共有範囲・提案の根拠を確認できませんでした。内容を確認して再依頼してください':job.kind==='plan'&&input.success&&!steps?'計画の形式または担当PCを確認できませんでした。計画だけ再実行してください':String(input.error||'').slice(0,4000);
   transaction(db,()=>{
-    run(db,'UPDATE tasks SET status=?,result=?,error=?,finished_at=?,lease_until=0 WHERE id=?',success?'completed':'failed',result,error,now(),job.id);
+    run(db,'UPDATE tasks SET status=?,result=?,error=?,knowledge_report=?,knowledge_result_hash=?,finished_at=?,lease_until=0 WHERE id=?',success?'completed':'failed',knowledgeReport?intelligenceText(knowledgeReport):knowledge?'':result,error,knowledgeReport?JSON.stringify(knowledgeReport):'',knowledge?lateFingerprint:'',now(),job.id);
     event(db,job.id,device.label,success?'completed':'failed',success?'結果を受信':error);
     if(job.kind==='plan') {
       if(!success) {run(db,"UPDATE tasks SET status='needs_review',error=?,finished_at=? WHERE id=?",error||'計画に失敗しました',now(),job.parent_id);return;}
@@ -164,8 +187,8 @@ export function finishJob(db,device,input) {
 export function report(db) {
   const day=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const start=new Date(`${day}T00:00:00+09:00`).getTime(),end=start+86400000;
-  const tasks=all(db,"SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE t.kind='root' AND ((t.created_at>=? AND t.created_at<?) OR (t.finished_at>=? AND t.finished_at<?) OR t.status IN ('running','planning')) ORDER BY MAX(t.created_at,t.finished_at) DESC",start,end,start,end);
-  const backlogWhere="t.kind='root' AND t.status='needs_review' AND t.created_at<? AND t.finished_at<?";
+  const tasks=all(db,"SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE t.kind='root' AND t.knowledge_mode='work' AND ((t.created_at>=? AND t.created_at<?) OR (t.finished_at>=? AND t.finished_at<?) OR t.status IN ('running','planning')) ORDER BY MAX(t.created_at,t.finished_at) DESC",start,end,start,end);
+  const backlogWhere="t.kind='root' AND t.knowledge_mode='work' AND t.status='needs_review' AND t.created_at<? AND t.finished_at<?";
   const attentionBacklog={
     total:one(db,`SELECT COUNT(*) AS count FROM tasks t WHERE ${backlogWhere}`,start,start).count,
     tasks:all(db,`SELECT t.id,t.text,t.error,t.result,t.created_at,t.finished_at,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id WHERE ${backlogWhere} ORDER BY MAX(t.created_at,t.finished_at) DESC LIMIT 10`,start,start).map(task=>({id:task.id,text:task.text,projectName:task.project_name||null,activityAt:new Date(Math.max(task.created_at,task.finished_at)).toISOString(),summary:(task.result||task.error).slice(0,220)}))

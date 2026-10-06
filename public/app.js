@@ -2,7 +2,7 @@ import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
-const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectWorkQuery:'', projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbookDepartment:'all', skillPane:'library', playbooksRequest:0, selectedPlaybook:null, selectedCommandSkill:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'' };
+const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectWorkQuery:'', projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbookDepartment:'all', skillPane:'library', playbooksRequest:0, selectedPlaybook:null, selectedCommandSkill:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'', knowledge:null, knowledgeRequest:0, selectedKnowledge:null, knowledgeSettingsDirty:false, knowledgeFormSignature:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
@@ -71,6 +71,7 @@ function setView(view) {
   document.querySelectorAll('.rail-btn').forEach(element => element.classList.toggle('active', element.dataset.view === view));
   const copy = {
     core:['REI','COMMAND CENTER','REIに目的を伝える。AI会社が仕事を動かす。'],
+    knowledge:['会社の記憶','SYNAPSE CONNECT','会社の情報を確認し、次の行動を根拠付きで提案します。'],
     missions:['ミッション','MISSION CONTROL','指示から実行、結果までを追跡します。'],
     projects:['プロジェクト','PROJECT COMMAND','目的ごとに仕事と進捗をまとめます。'],
     playbooks:['スキル','CREATE / FIND SKILL','チームの手順と知識をセクション別に共有し、仕事に指定できます。'],
@@ -83,15 +84,17 @@ function setView(view) {
   if (view === 'playbooks') {setSkillPane(state.skillPane);void loadPlaybooks();}
   if (view === 'briefing' && Date.now()-state.reportLoadedAt>10000) void loadReport();
   if (view === 'missions') void loadTaskDetail();
+  if (view === 'knowledge') void loadKnowledge();
 }
 async function refresh() {
   const epoch=state.authEpoch;
-  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='projects')void loadProjectWork(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
+  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; if(state.view==='knowledge')void loadKnowledge(); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='projects')void loadProjectWork(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
   catch (error) { if(epoch!==state.authEpoch||error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {
   if (!state.data) return;
   const { departments, workers, tasks, gateway } = state.data;
+  document.querySelector('[data-view="knowledge"]').classList.toggle('hidden',!['owner','admin'].includes(state.data.user.role));
   const live = gateway.reachable;
   $('system-status').textContent = live ? 'ONLINE' : 'NO AGENT';
   $('system-status').classList.toggle('offline', !live);
@@ -412,6 +415,72 @@ $('command-form').onsubmit = async event => {
   } catch (error) { feedback(error.message, true); }
   finally { button.disabled = false; }
 };
+async function loadKnowledge() {
+  if(!['owner','admin'].includes(state.data?.user.role))return;
+  const epoch=state.authEpoch,requestId=++state.knowledgeRequest;
+  try {
+    const data=await request('/api/knowledge/status');
+    if(epoch!==state.authEpoch||requestId!==state.knowledgeRequest)return;
+    state.knowledge=data;
+    renderKnowledge();
+  } catch(error){if(epoch===state.authEpoch)$('knowledge-feedback').textContent=error.message;}
+}
+function renderKnowledge() {
+  const data=state.knowledge;if(!data)return;
+  const owner=state.data.user.role==='owner',settings=data.settings;
+  if(!data.tasks.some(task=>task.id===state.selectedKnowledge))state.selectedKnowledge=data.tasks[0]?.id||null;
+  $('knowledge-connection').textContent=data.device?`SynapseConnect登録済みの端末: ${data.device.label}。検索できた範囲は各回答に表示します。`:'SynapseConnectの実行端末が接続していません。端末・設定から確認してください。';
+  const pending=mode=>data.tasks.some(task=>task.knowledgeMode===mode&&task.status==='running');
+  $('knowledge-question-form').querySelector('button').disabled=!data.device||!settings.groups.length||pending('answer');
+  $('knowledge-scan').disabled=!data.device||!settings.groups.length||pending('scan');
+  $('knowledge-catalog').disabled=!owner||!data.device||pending('catalog');
+  const groups=[...data.groups,...settings.groups.filter(group=>!data.groups.some(item=>item.id===group.id))];
+  const signature=JSON.stringify([groups,settings,owner]);
+  if(!state.knowledgeSettingsDirty&&signature!==state.knowledgeFormSignature) {
+    state.knowledgeFormSignature=signature;
+    $('knowledge-groups').innerHTML=groups.length?groups.map(group=>`<label class="check-line"><input type="checkbox" data-knowledge-group="${escapeHtml(group.id)}" ${settings.groups.some(item=>item.id===group.id)?'checked':''} ${owner?'':'disabled'}>${escapeHtml(group.name)}</label>`).join(''):'<p class="setting-guide">共有グループを確認して、検索する範囲を選んでください。</p>';
+    $('knowledge-enabled').checked=settings.enabled;
+    $('knowledge-interval').value=String(settings.intervalHours);
+  }
+  $('knowledge-enabled').disabled=!owner;$('knowledge-interval').disabled=!owner;
+  $('knowledge-settings-form').querySelector('[type="submit"]').disabled=!owner;
+  $('knowledge-next-run').textContent=settings.enabled?`定期確認は有効です。次回: ${formatTime(settings.nextRunAt)}。端末が停止中のときは、再接続してから確認します。`:'定期確認は停止中です。確認結果から「仕事の下書きへ」を選ぶと、依頼内容を編集できます。';
+  $('knowledge-history').innerHTML=data.tasks.length?data.tasks.map(task=>`<button type="button" data-knowledge-task="${escapeHtml(task.id)}" class="knowledge-history-item ${state.selectedKnowledge===task.id?'selected':''}"><strong>${escapeHtml(task.knowledgeMode==='catalog'?'共有グループの確認':task.text)}</strong><small>${formatTime(task.createdAt)} · ${escapeHtml(labels[task.status]||task.status)}</small></button>`).join(''):'<p class="setting-guide">会社への質問と次の提案がここに残ります。</p>';
+  const task=data.tasks.find(item=>item.id===state.selectedKnowledge)||data.tasks[0];
+  const report=task?.intelligence;
+  const status={answered:'根拠を確認した回答',no_match:'検索範囲では根拠が見つかりません',unavailable:'接続・アクセスを確認できません',catalog:'共有グループの確認'};
+  $('knowledge-answer').innerHTML=task?`<div class="detail-header"><span>${escapeHtml(status[report?.status]||labels[task.status]||task.status)}</span><time>${formatTime(task.finishedAt||task.createdAt)}</time></div><h3>${escapeHtml(task.text)}</h3>${report?`<p class="knowledge-response">${escapeHtml(report.answer)}</p><p class="setting-guide">確認したグループ: ${escapeHtml(report.searchedGroups.join('、')||'本文は未確認')}</p>${report.uncertainties.length?`<div class="knowledge-limit"><h4>未確認のこと・検索の範囲</h4>${report.uncertainties.map(item=>`<p>${escapeHtml(item)}</p>`).join('')}</div>`:''}${report.sources.length?`<h4>情報源</h4><div class="knowledge-sources">${report.sources.map(source=>`<div><strong>${escapeHtml(source.title)}</strong><small>${escapeHtml(source.group)} · 記録時点 ${escapeHtml(source.recordedAt)}</small><code>${escapeHtml(source.recordId)}</code>${source.url?`<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">元の記録を開く ↗</a>`:'<small>直接リンクは未提供</small>'}</div>`).join('')}</div>`:''}${report.suggestions.length?`<h4>次にするとよいこと</h4>${report.suggestions.map((suggestion,index)=>`<div class="knowledge-suggestion"><h4>${escapeHtml(suggestion.title)}</h4><p>${escapeHtml(suggestion.reason)}</p><small>根拠: ${escapeHtml(suggestion.sourceIds.join('、'))}</small><button type="button" data-knowledge-suggestion="${index}" class="outline-button">仕事の下書きへ ↗</button></div>`).join('')}`:''}`:`<p class="knowledge-response">${escapeHtml(task.error||'会社の記憶を確認しています。結果はここに表示されます。')}</p>${task.status==='needs_review'?'<p class="setting-guide">根拠の形式を確認できなかった回答は、会社の回答として掲載していません。接続状態と依頼内容を確認してください。</p>':''}`}`:'';
+  document.querySelectorAll('[data-knowledge-task]').forEach(button=>button.onclick=()=>{state.selectedKnowledge=button.dataset.knowledgeTask;renderKnowledge();});
+  document.querySelectorAll('[data-knowledge-suggestion]').forEach(button=>button.onclick=()=>{
+    const suggestion=report.suggestions[Number(button.dataset.knowledgeSuggestion)];
+    const sources=report.sources.filter(source=>suggestion.sourceIds.includes(source.recordId));
+    const prompt=`${suggestion.prompt}\n\n提案の理由: ${suggestion.reason}\n参考情報（実行前に最新状態を確認）: ${sources.map(source=>`${source.group} / ${source.recordId} / ${source.recordedAt}`).join('、')}`;
+    $('command-input').value=prompt.slice(0,8000);$('command-project').value='';commandSkill(null);setView('core');$('command-input').focus();feedback(prompt.length>8000?'下書きを8000文字に収めました。確認・編集してから送信してください':'下書きを用意しました。確認・編集してから送信してください');
+  });
+}
+async function submitKnowledge(route,body={}) {
+  $('knowledge-feedback').textContent='会社の記憶を確認する依頼を送っています…';
+  try {
+    const result=await request(`/api/knowledge/${route}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    state.selectedKnowledge=result.task.id;
+    if(route==='ask')$('knowledge-question').value='';
+    await loadKnowledge();$('knowledge-feedback').textContent='確認を始めました。結果は自動で更新されます。';
+  } catch(error){$('knowledge-feedback').textContent=error.message;}
+}
+$('knowledge-refresh').onclick=()=>void loadKnowledge();
+$('knowledge-question-form').onsubmit=event=>{event.preventDefault();void submitKnowledge('ask',{question:$('knowledge-question').value.trim()});};
+$('knowledge-scan').onclick=()=>void submitKnowledge('scan');
+$('knowledge-catalog').onclick=()=>void submitKnowledge('catalog');
+$('knowledge-settings-form').onchange=()=>{state.knowledgeSettingsDirty=true;};
+$('knowledge-settings-form').onsubmit=async event=>{
+  event.preventDefault();const data=state.knowledge;if(!data)return;
+  const available=[...data.groups,...data.settings.groups];
+  const groups=[...document.querySelectorAll('[data-knowledge-group]:checked')].map(input=>available.find(group=>group.id===input.dataset.knowledgeGroup)).filter(Boolean).map(group=>({id:group.id,name:group.name}));
+  try {
+    await request('/api/knowledge/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({groups,enabled:$('knowledge-enabled').checked,intervalHours:Number($('knowledge-interval').value)})});
+    state.knowledgeSettingsDirty=false;await loadKnowledge();$('knowledge-feedback').textContent='検索範囲と定期確認を保存しました。';
+  } catch(error){$('knowledge-feedback').textContent=error.message;}
+};
 function speak(text) {
   if (!('speechSynthesis' in window)) return feedback('このブラウザでは音声応答を利用できません', true);
   window.speechSynthesis.cancel();
@@ -483,6 +552,7 @@ function showAuth() {
   for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
   for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');
   $('command-input').value='';
+  state.knowledge=null;state.knowledgeRequest++;state.selectedKnowledge=null;state.knowledgeSettingsDirty=false;state.knowledgeFormSignature='';$('knowledge-history').textContent='';$('knowledge-answer').textContent='';$('knowledge-groups').textContent='';
   document.querySelectorAll('input[type="password"],textarea').forEach(input=>input.value='');
   setView('core');
   $('settings-screen').classList.add('hidden');

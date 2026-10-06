@@ -22,12 +22,12 @@ export function createTask(db,text,department,userId,requiresApproval=false,proj
     return one(db,'SELECT * FROM tasks WHERE id=?',root);
   });
 }
-export function createKnowledgeTask(db,text,mode,userId,deviceId,groups=[],time=now()) {
+export function createKnowledgeTask(db,text,mode,userId,deviceId,groups=[],time=now(),context=[],voice=false) {
   if(!intelligenceModes.includes(mode))throw new Error('会社情報の依頼種別を確認してください');
   return transaction(db,()=>{
     const root=id(),child=id(),scope=JSON.stringify(groups);
-    run(db,"INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,knowledge_mode,knowledge_scope) VALUES(?,'root',?,'operations','running',?,?,?,?)",root,text,userId,time,mode,scope);
-    run(db,"INSERT INTO tasks(id,parent_id,kind,text,department,status,device_id,created_by,created_at,knowledge_mode,knowledge_scope) VALUES(?,?,'execute',?,'operations','ready',?,?,?,?,?)",child,root,text,deviceId,userId,time,mode,scope);
+    run(db,"INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,knowledge_mode,knowledge_scope,knowledge_context,knowledge_voice) VALUES(?,'root',?,'operations','running',?,?,?,?,?,?)",root,text,userId,time,mode,scope,JSON.stringify(context),voice?1:0);
+    run(db,"INSERT INTO tasks(id,parent_id,kind,text,department,status,device_id,created_by,created_at,knowledge_mode,knowledge_scope,knowledge_context,knowledge_voice) VALUES(?,?,'execute',?,'operations','ready',?,?,?,?,?,?,?)",child,root,text,deviceId,userId,time,mode,scope,JSON.stringify(context),voice?1:0);
     event(db,root,'user','created',mode==='scan'?'会社の記憶から次の提案を確認':mode==='catalog'?'共有グループを確認':'会社への質問');
     return one(db,'SELECT * FROM tasks WHERE id=?',root);
   });

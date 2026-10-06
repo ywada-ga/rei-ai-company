@@ -1,3 +1,4 @@
+import { VoiceConversation } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
@@ -423,6 +424,7 @@ async function loadKnowledge() {
     if(epoch!==state.authEpoch||requestId!==state.knowledgeRequest)return;
     state.knowledge=data;
     renderKnowledge();
+    if(!voiceConversation.active)$('voice-conversation-start').disabled=!data.device||!data.settings.groups.length;
   } catch(error){if(epoch===state.authEpoch)$('knowledge-feedback').textContent=error.message;}
 }
 function renderKnowledge() {
@@ -481,7 +483,60 @@ $('knowledge-settings-form').onsubmit=async event=>{
     state.knowledgeSettingsDirty=false;await loadKnowledge();$('knowledge-feedback').textContent='検索範囲と定期確認を保存しました。';
   } catch(error){$('knowledge-feedback').textContent=error.message;}
 };
+let voiceScope='';
+const voiceConversation=new VoiceConversation({ask:async(question,context,signal)=>{
+  if(/^(?:こんにちは|こんばんは|おはよう(?:ございます)?|よろしく(?:お願いします)?)[。！]?$/u.test(question))return 'こんにちは。REIです。会社のことや、次に準備することを聞いてください。';
+  const current=await request('/api/knowledge/status',{signal});
+  const scope=JSON.stringify(current.settings.groups);
+  if(voiceScope!==scope)context=[];
+  voiceScope=scope;
+  const result=await request('/api/knowledge/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,context,voice:true}),signal});
+  state.selectedKnowledge=result.task.id;setView('knowledge');
+  while(!signal.aborted) {
+    const data=await request('/api/knowledge/status',{signal});
+    state.knowledge=data;renderKnowledge();
+    const task=data.tasks.find(item=>item.id===result.task.id);
+    if(task?.status==='completed'&&task.intelligence) {
+      let answer=task.intelligence.answer.replace(/https?:\/\/\S+/g,'元の記録').replace(/[*`#]/g,'');
+      for(const source of task.intelligence.sources)if(source.recordId.length>15)answer=answer.split(source.recordId).join('');
+      return answer;
+    }
+    if(task&&['needs_review','failed','cancelled'].includes(task.status))throw new Error(task.error||'会社の記憶の回答を確認できませんでした。画面で確認してください。');
+    await new Promise((resolve,reject)=>{
+      const aborted=()=>{clearTimeout(timer);reject(new DOMException('会話を終了しました','AbortError'));};
+      const timer=setTimeout(()=>{signal.removeEventListener('abort',aborted);resolve();},1500);
+      signal.addEventListener('abort',aborted,{once:true});if(signal.aborted)aborted();
+    });
+  }
+  throw new DOMException('会話を終了しました','AbortError');
+},onChange:data=>{
+  const labels={idle:'会話を開始すると、話しかけて質問できます。',listening:'聞いています。話し終えると、そのまま質問を送ります。',thinking:'会社の記憶を確認しています…',speaking:'REIが話しています。続けて質問できます。',error:'会話を再開できます。'};
+  $('voice-conversation-status').textContent=data.message||labels[data.phase];
+  $('voice-orb').dataset.phase=data.phase;
+  $('voice-conversation-transcript').textContent=data.transcript||'ここに聞き取った言葉を表示します。';
+  $('voice-conversation-answer').textContent=data.answer||'会社の記憶を確認して、音声で答えます。';
+  $('voice-conversation-start').disabled=data.active;
+  $('voice-conversation-stop').disabled=!data.active;
+  $('voice-conversation-interrupt').disabled=data.phase!=='speaking';
+}});
+$('voice-conversation-open').onclick=()=>{
+  if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);
+  $('voice-conversation-screen').classList.remove('hidden');document.querySelector('.app-shell').inert=true;$('voice-conversation-close').focus();$('voice-conversation-start').disabled=true;
+  if(!voiceConversation.supported)$('voice-conversation-status').textContent='このブラウザは音声会話に対応していません。ChromeでREIを開いてください。';
+  void loadKnowledge().then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';});
+};
+$('voice-conversation-start').onclick=()=>{try{voiceConversation.start();}catch(error){$('voice-conversation-status').textContent=error.message;}};
+$('voice-conversation-stop').onclick=()=>voiceConversation.stop();
+$('voice-conversation-interrupt').onclick=()=>voiceConversation.interrupt();
+function closeVoiceConversation(){voiceConversation.stop();$('voice-conversation-screen').classList.add('hidden');document.querySelector('.app-shell').inert=false;$('voice-conversation-open').focus();}
+$('voice-conversation-close').onclick=closeVoiceConversation;
+$('voice-conversation-knowledge').onclick=()=>{closeVoiceConversation();setView('knowledge');};
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('voice-conversation-screen').classList.contains('hidden'))closeVoiceConversation();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&voiceConversation.active)voiceConversation.stop('画面を離れたため音声会話を停止しました。戻ってから再開できます。');});
+window.addEventListener('pagehide',()=>voiceConversation.stop());
 function speak(text) {
+  if(voiceConversation.active)return;
+
   if (!('speechSynthesis' in window)) return feedback('このブラウザでは音声応答を利用できません', true);
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(String(text).slice(0,800));
@@ -552,6 +607,7 @@ function showAuth() {
   for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
   for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');
   $('command-input').value='';
+  closeVoiceConversation();voiceScope='';
   state.knowledge=null;state.knowledgeRequest++;state.selectedKnowledge=null;state.knowledgeSettingsDirty=false;state.knowledgeFormSignature='';$('knowledge-history').textContent='';$('knowledge-answer').textContent='';$('knowledge-groups').textContent='';
   document.querySelectorAll('input[type="password"],textarea').forEach(input=>input.value='');
   setView('core');

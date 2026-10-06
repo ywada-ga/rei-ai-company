@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
-export const SCHEMA_VERSION=5;
+export const SCHEMA_VERSION=6;
 
 export function openStorage(root) {
   const dir=process.env.REI_DATA_DIR||path.join(root,'data');
@@ -51,6 +51,8 @@ export function openStorage(root) {
   if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='knowledge_scope'))db.exec("ALTER TABLE tasks ADD COLUMN knowledge_scope TEXT NOT NULL DEFAULT '[]'");
   if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='knowledge_report'))db.exec("ALTER TABLE tasks ADD COLUMN knowledge_report TEXT NOT NULL DEFAULT ''");
   if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='knowledge_result_hash'))db.exec("ALTER TABLE tasks ADD COLUMN knowledge_result_hash TEXT NOT NULL DEFAULT ''");
+  if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='knowledge_context'))db.exec("ALTER TABLE tasks ADD COLUMN knowledge_context TEXT NOT NULL DEFAULT '[]'");
+  if(!all(db,'PRAGMA table_info(tasks)').some(column=>column.name==='knowledge_voice'))db.exec("ALTER TABLE tasks ADD COLUMN knowledge_voice INTEGER NOT NULL DEFAULT 0");
   db.exec('CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id,kind,created_at)');
   if(currentVersion<SCHEMA_VERSION)db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   try { chmodSync(path.join(dir,'rei.sqlite'),0o600); } catch {}

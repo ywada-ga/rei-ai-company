@@ -33,8 +33,9 @@ export function jobTimeoutSeconds(value=process.env.REI_JOB_TIMEOUT_SECONDS) {
   return seconds;
 }
 
-export function spawnOpenClaw(agent,key,instruction,timeoutSeconds=jobTimeoutSeconds()) {
+export function spawnOpenClaw(agent,key,instruction,timeoutSeconds=jobTimeoutSeconds(),options={}) {
   const args=['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout',String(timeoutSeconds)];
+  if(options.thinking==='low')args.push('--thinking','low');
   if(process.env.REI_OPENCLAW_ENTRY)return spawn(process.execPath,[bundledEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   return spawn('openclaw',args,{stdio:['ignore','pipe','pipe']});

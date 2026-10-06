@@ -36,10 +36,12 @@ try {
   const settings={enabled:true,intervalHours:6,groups:groups.map(({id,name})=>({id,name}))};
   await api('knowledge/settings',{...settings,groups:[{id:'private',name:'個人記録'}]},undefined,400);
   await api('knowledge/settings',settings);
-  const task=(await api('knowledge/ask',{question:'決定事項は？'},undefined,201)).task;
+  await api('knowledge/ask',{question:'確認',context:[{question:'前の質問',answer:'x'.repeat(2001)}]},undefined,400);
+  const context=[{question:'前の質問',answer:'前の回答は参考情報'}];
+  const task=(await api('knowledge/ask',{question:'決定事項は？',context,voice:true},undefined,201)).task;
   await api('knowledge/ask',{question:'二重送信'},undefined,409);
   const work=(await api('connector/claim',{},device.token)).job;
-  assert.equal(work.knowledge_mode,'answer');assert.deepEqual(JSON.parse(work.knowledge_scope),settings.groups);
+  assert.equal(work.knowledge_mode,'answer');assert.equal(work.knowledge_voice,1);assert.deepEqual(JSON.parse(work.knowledge_scope),settings.groups);assert.deepEqual(JSON.parse(work.knowledge_context),context);
   const result={status:'answered',answer:'検証用の決定は公開資料の準備です。record-1',searchedGroups:['会社共有'],uncertainties:['これは検証用の回答です'],sources:[{recordId:'record-1',groupId:'shared-company',group:'会社共有',title:'検証用の決定',recordedAt:'2026-10-06T00:00:00Z',url:null}],suggestions:[{title:'資料の構成案を作る',reason:'決定を進めるため',sourceIds:['record-1'],prompt:'検証用の資料構成案を作成してください。'}]};
   const report={taskId:work.id,leaseId:work.lease_id,success:true,result:JSON.stringify(result)};
   await api('connector/result',report,device.token);
@@ -60,7 +62,8 @@ try {
   await api('knowledge/settings',{...settings,enabled:false});
   if(process.env.REI_KEEP_TEST_HUB==='1') {
     console.log(`UI_FIXTURE ${base} DATA ${dir}`);
-    await new Promise(()=>{});
+    const pulse=setInterval(()=>void api('connector/heartbeat',{version,capabilities:['planning','execution'],mcpStatuses:[{name:mcp.name,status:'configured'}]},device.token),10000);
+    await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});clearInterval(pulse);
   }
   console.log('PASS knowledge API scope discovery, answers, role boundaries, and proposal persistence');
 } finally {

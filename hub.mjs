@@ -8,7 +8,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { openStorage, one, all, run, transaction } from './storage.mjs';
 import { random, hash, encodePassword, checkPassword, cookies, sessionUser, connectorDevice, setCookie, sameOrigin } from './security.mjs';
 import { departments, event, createTask, cancellable, cancelTask, retryPlan, claim, sweep, finishJob, finishRoot, report } from './workflow.mjs';
-import { knowledgeSettings, saveKnowledgeSettings, scanQuestion } from './intelligence.mjs';
+import { knowledgeSettings, saveKnowledgeSettings, scanQuestion, knowledgeContext } from './intelligence.mjs';
 import { knowledgeDevice, queueKnowledge, scanKnowledgeIfDue } from './knowledge-service.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
@@ -168,8 +168,11 @@ async function api(req,res,route) {
     }
     if(['knowledge/ask','knowledge/scan','knowledge/catalog'].includes(route)&&req.method==='POST') {
       const mode=route==='knowledge/ask'?'answer':route==='knowledge/scan'?'scan':'catalog';
-      const question=mode==='answer'?text((await body(req)).question,4000):mode==='scan'?scanQuestion:'会社の記憶として検索できる共有グループを確認してください';
-      const task=queueKnowledge(db,reiVersion,mode,question,user.id);
+      const input=mode==='answer'?await body(req):{};
+      const context=mode==='answer'?knowledgeContext(input.context):[];
+      if(input.voice!==undefined&&typeof input.voice!=='boolean')return error(res,400,'音声会話の形式が正しくありません');
+      const question=mode==='answer'?text(input.question,4000):mode==='scan'?scanQuestion:'会社の記憶として検索できる共有グループを確認してください';
+      const task=queueKnowledge(db,reiVersion,mode,question,user.id,Date.now(),context,input.voice===true);
       return send(res,201,{task:taskJson(task)});
     }
   }
@@ -396,7 +399,7 @@ async function api(req,res,route) {
   if(route==='chatwork/poll'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'権限がありません');return send(res,200,await pollChatwork(db,root));}
   return error(res,404,'APIが見つかりません');
 }
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
   try {

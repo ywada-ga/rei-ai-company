@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync, existsSy
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import { checkOpenClaw, spawnOpenClaw, parseOpenClawResult, jobTimeoutSeconds } from './openclaw-process.mjs';
+import { checkOpenClaw, spawnOpenClaw, stopOpenClaw, parseOpenClawResult, jobTimeoutSeconds } from './openclaw-process.mjs';
 import { ensureReiAgent } from './rei-agent.mjs';
 import { certificateForInvite, parseLanInvite, pinnedFetch } from './lan.mjs';
 import { intelligencePrompt, companyKnowledgePolicy } from './intelligence.mjs';
@@ -114,16 +114,19 @@ function runOpenClaw(agent,job,devices) {
     ? `あなたはREIというAI秘書の計画担当です。実行はしないでください。次の依頼を1〜12個の仕事に分け、JSONだけで返してください。各工程は他の工程を待たずに着手できる独立した仕事にしてください。順序が必要な作業は同じ工程にまとめてください。形式: {"steps":[{"title":"短い仕事名","prompt":"担当AIへ渡す具体的な指示","department":"operations|research|production|sales|support|people","deviceId":"指定する場合は登録端末ID","human":false}]}。登録端末（agentNameは担当AI名、onlineは現在の接続状態）: ${JSON.stringify(list)}。PCを指定する場合は現在接続中の端末を優先し、停止中の端末を選ぶときは待機が必要な理由を工程に書いてください。人への依頼が必要ならhuman:true。端末指定が不要ならdeviceIdを省略。実行できない部分は正直に記述。${skillContext}${projectContext}依頼: ${job.text}`
     : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。${sharedKnowledge}${skillContext}${projectContext}依頼: ${job.text}`;
   return new Promise((resolve,reject)=>{
-    const key=`agent:${agent}:rei-${job.kind}-${job.id}`;
-    const child=spawnOpenClaw(agent,key,instruction,jobTimeout,{local:!!job.knowledge_mode&&job.knowledge_mode!=='work',...(job.knowledge_voice||job.knowledge_mode==='catalog'?{thinking:'low'}:{})});
+    const knowledge=!!job.knowledge_mode&&job.knowledge_mode!=='work';
+    const key=knowledge?`agent:${agent}:rei-memory-${Date.now()}`:`agent:${agent}:rei-${job.kind}-${job.id}`;
+    console.log(`OpenClaw実行: ${JSON.stringify({kind:job.kind,knowledgeMode:job.knowledge_mode||null,local:!!job.knowledge_mode&&job.knowledge_mode!=='work',runtime:process.execPath})}`);
+    const timeout=knowledge?(job.knowledge_mode==='catalog'||job.knowledge_voice?90:240):jobTimeout;
+    const child=spawnOpenClaw(agent,key,instruction,timeout,{local:knowledge,...(job.knowledge_voice||job.knowledge_mode==='catalog'?{thinking:'low'}:{})});
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     let out='',err='',timedOut=false,killTimer;
-    const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},jobTimeout*1000+15000);
-    child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)child.kill('SIGTERM');});
-    child.stderr.on('data',chunk=>{err+=chunk;if(err.length>100_000)child.kill('SIGTERM');});
+    const timer=setTimeout(()=>{timedOut=true;stopOpenClaw(child);killTimer=setTimeout(()=>stopOpenClaw(child,'SIGKILL'),10000);},timeout*1000+15000);
+    child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)stopOpenClaw(child);});
+    child.stderr.on('data',chunk=>{err+=chunk;if(err.length>100_000)stopOpenClaw(child);});
     child.on('error',e=>{clearTimeout(timer);clearTimeout(killTimer);reject(e);});
-    child.on('close',code=>{clearTimeout(timer);clearTimeout(killTimer);if(timedOut)return reject(new Error(`OpenClawが${jobTimeout}秒以内に完了しませんでした`));if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
+    child.on('close',code=>{clearTimeout(timer);clearTimeout(killTimer);if(timedOut)return reject(new Error(`OpenClawが${timeout}秒以内に完了しませんでした`));if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
   });
 }
 async function main() {

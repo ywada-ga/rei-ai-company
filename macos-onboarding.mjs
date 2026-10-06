@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { macosRuntimeExecutable } from './macos-runtime.mjs';
 
 if(process.platform!=='darwin')throw new Error('Mac用の起動画面です');
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +31,7 @@ function serviceNeedsRepair(label,script) {
   const argument=spawnSync('/usr/bin/plutil',['-extract','ProgramArguments.1','raw','-o','-',service],{encoding:'utf8'});
   const workingDirectory=spawnSync('/usr/bin/plutil',['-extract','WorkingDirectory','raw','-o','-',service],{encoding:'utf8'});
   const loaded=spawnSync('launchctl',['print',`gui/${process.getuid()}/${label}`],{encoding:'utf8'});
-  return program.status!==0||argument.status!==0||workingDirectory.status!==0||program.stdout.trim()!==process.execPath||argument.stdout.trim()!==script||workingDirectory.stdout.trim()!==root||loaded.status!==0;
+  return program.status!==0||argument.status!==0||workingDirectory.status!==0||program.stdout.trim()!==macosRuntimeExecutable(data)||argument.stdout.trim()!==script||workingDirectory.stdout.trim()!==root||loaded.status!==0;
 }
 function repairService(mode) {
   const installed=spawnSync(process.execPath,[path.join(root,'install-macos.mjs'),mode],{cwd:root,env:process.env,encoding:'utf8',timeout:30000});

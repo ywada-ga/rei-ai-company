@@ -115,3 +115,5 @@ public/voice.jsは聞き取り・調査中・読み上げ・待機・エラー�
 会社への質問APIは最大3往復のquestion/answerを受け取り、長さと形式を検査する。tasks.knowledge_contextへ参考会話を保存し、以前の回答を根拠として扱わず再検索する指示を付ける。knowledge_voiceで音声用の短い回答と小さい検索範囲を指定し、OpenClawはlowの思考設定を使う。形式変更に伴いデータ形式を版6へ更新した。音声データはHubに送信しない。音声を扱うサービスはブラウザが提供する。音声を直接処理するRealtime APIは使っていない。
 
 会社情報の工程はOpenClaw agent --localを使う。GatewayへのRPC待ちを避け、同梱版でも現在の担当AIのモデル・認証設定を使って実行する。結果はGateway形式（result.payloads）とローカル形式（payloads）の両方を読み、どちらもabortedを拒否する。通常の仕事の実行経路は従来のものを維持する。
+
+Macの常駐処理はmacos-runtime.mjsで同梱Node.jsを保存領域のruntimeへコピーして使う。SHA-256で同梱元と照合し、不一致・リンク・不正な保存先を上書きしない。アプリ内の実行ファイルを常駐させた場合にOpenClawが停止する環境で、アプリ外の同一バイナリによる実行を確認した。起動時の修復判定も保存した実行環境を参照する。

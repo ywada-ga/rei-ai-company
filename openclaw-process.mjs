@@ -37,9 +37,13 @@ export function spawnOpenClaw(agent,key,instruction,timeoutSeconds=jobTimeoutSec
   const args=['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout',String(timeoutSeconds)];
   if(options.local===true)args.push('--local');
   if(options.thinking==='low')args.push('--thinking','low');
-  if(process.env.REI_OPENCLAW_ENTRY)return spawn(process.execPath,[bundledEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+  if(process.env.REI_OPENCLAW_ENTRY)return spawn(process.execPath,[bundledEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true,detached:process.platform!=='win32'});
   if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
-  return spawn('openclaw',args,{stdio:['ignore','pipe','pipe']});
+  return spawn('openclaw',args,{stdio:['ignore','pipe','pipe'],detached:true});
+}
+export function stopOpenClaw(child,signal='SIGTERM') {
+  if(process.platform==='win32'){spawn('taskkill',['/pid',String(child.pid),'/t','/f'],{stdio:'ignore',windowsHide:true});return;}
+  try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')child.kill(signal);}
 }
 
 function bundledEntry() {

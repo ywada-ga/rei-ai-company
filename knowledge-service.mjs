@@ -3,7 +3,7 @@ import { createKnowledgeTask } from './workflow.mjs';
 import { knowledgeSettings, scanQuestion } from './intelligence.mjs';
 
 export function knowledgeDevice(db,version,time=Date.now()) {
-  return all(db,"SELECT DISTINCT d.id,d.label,d.capabilities FROM devices d JOIN mcp_integrations m ON m.device_id=d.id JOIN device_mcp_status s ON s.device_id=d.id AND s.name=m.name WHERE d.revoked=0 AND d.last_seen>? AND d.version=? AND m.url='https://mcp.synapse-connect.ai/mcp' AND s.status='configured' ORDER BY d.planner DESC,d.rowid",time-30000,version).find(device=>JSON.parse(device.capabilities).includes('execution'))||null;
+  return all(db,"SELECT DISTINCT d.id,d.label,d.capabilities,s.status AS registrationStatus FROM devices d JOIN mcp_integrations m ON m.device_id=d.id LEFT JOIN device_mcp_status s ON s.device_id=d.id AND s.name=m.name WHERE d.revoked=0 AND d.last_seen>? AND d.version=? AND m.url='https://mcp.synapse-connect.ai/mcp' ORDER BY CASE s.status WHEN 'configured' THEN 0 ELSE 1 END,d.planner DESC,d.rowid",time-30000,version).find(device=>JSON.parse(device.capabilities).includes('execution'))||null;
 }
 export function queueKnowledge(db,version,mode,question,userId,time=Date.now(),context=[],voice=false) {
   const device=knowledgeDevice(db,version,time);

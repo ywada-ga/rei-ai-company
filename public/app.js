@@ -431,7 +431,7 @@ function renderKnowledge() {
   const data=state.knowledge;if(!data)return;
   const owner=state.data.user.role==='owner',settings=data.settings;
   if(!data.tasks.some(task=>task.id===state.selectedKnowledge))state.selectedKnowledge=data.tasks[0]?.id||null;
-  $('knowledge-connection').textContent=data.device?`SynapseConnect登録済みの端末: ${data.device.label}。検索できた範囲は各回答に表示します。`:'SynapseConnectの実行端末が接続していません。端末・設定から確認してください。';
+  $('knowledge-connection').textContent=data.device?`SynapseConnectの実行端末: ${data.device.label}。${data.device.registrationStatus==='configured'?'OpenClawに登録済みです。':'OpenClaw側の登録検査は未完了です。担当AIによる検索結果で接続を確認してください。'}検索できた範囲は各回答に表示します。`:'SynapseConnectの実行端末が接続していません。端末・設定から確認してください。';
   const pending=mode=>data.tasks.some(task=>task.knowledgeMode===mode&&task.status==='running');
   $('knowledge-question-form').querySelector('button').disabled=!data.device||!settings.groups.length||pending('answer');
   $('knowledge-scan').disabled=!data.device||!settings.groups.length||pending('scan');

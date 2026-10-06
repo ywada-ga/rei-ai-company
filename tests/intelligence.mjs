@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openStorage, one, run } from '../storage.mjs';
 import { parseIntelligence, intelligencePrompt, knowledgeSettings, saveKnowledgeSettings } from '../intelligence.mjs';
-import { queueKnowledge, scanKnowledgeIfDue } from '../knowledge-service.mjs';
+import { queueKnowledge, scanKnowledgeIfDue, knowledgeDevice } from '../knowledge-service.mjs';
 import { claim, finishJob } from '../workflow.mjs';
 const groups=[{id:'company',name:'会社共有'}];
 const report={status:'answered',answer:'決定事項を確認しました。'.repeat(130),searchedGroups:['会社共有'],uncertainties:['一部の古い記録は未確認'],sources:[{groupId:'company',group:'会社共有',recordId:'episode-1',title:'決定事項',recordedAt:'2026-10-06T09:00:00+09:00',url:null}],suggestions:[{title:'資料を準備',reason:'決定に必要なため',sourceIds:['episode-1'],prompt:'資料の構成案を作成してください'}]};
@@ -28,6 +28,7 @@ try {
   run(db,"INSERT INTO device_mcp_status(device_id,name,status,updated_at) VALUES('pc','synapse','configured',?)",time);
   assert.throws(()=>queueKnowledge(db,version,'answer','会社の予定は？','owner'),/共有グループ/);
   saveKnowledgeSettings(db,{enabled:true,intervalHours:6,groups},'owner',time);
+  run(db,"UPDATE device_mcp_status SET status='error'");assert.equal(knowledgeDevice(db,version).id,'pc','a separate authenticated execution backend may still read Synapse');
   const task=queueKnowledge(db,version,'answer','会社の決定事項は？','owner');
   assert.equal(one(db,"SELECT COUNT(*) AS count FROM tasks WHERE parent_id=? AND kind='plan'",task.id).count,0);
   const device=one(db,"SELECT * FROM devices WHERE id='pc'");const job=claim(db,device,version);

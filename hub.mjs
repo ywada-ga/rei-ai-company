@@ -154,7 +154,7 @@ async function api(req,res,route) {
       if(settings.enabled&&latestScan)settings.nextRunAt=Math.max(settings.nextRunAt,latestScan.created_at+settings.intervalHours*3600000);
       const tasks=all(db,"SELECT * FROM tasks WHERE kind='root' AND knowledge_mode!='work' ORDER BY created_at DESC,id DESC LIMIT 30").map(task=>taskJson(task));
       const catalog=all(db,"SELECT knowledge_report FROM tasks WHERE kind='root' AND knowledge_mode='catalog' AND status='completed' AND knowledge_report!='' ORDER BY created_at DESC LIMIT 10").map(task=>JSON.parse(task.knowledge_report)).find(report=>report.groups.length);
-      return send(res,200,{settings,device:device?{id:device.id,label:device.label}:null,groups:catalog?.groups||[],tasks});
+      return send(res,200,{settings,device:device?{id:device.id,label:device.label,registrationStatus:device.registrationStatus||'pending'}:null,groups:catalog?.groups||[],tasks});
     }
     if(route==='knowledge/settings'&&req.method==='POST') {
       if(user.role!=='owner')return error(res,403,'所有者だけが検索範囲と定期確認を設定できます');

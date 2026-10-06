@@ -35,6 +35,7 @@ export function jobTimeoutSeconds(value=process.env.REI_JOB_TIMEOUT_SECONDS) {
 
 export function spawnOpenClaw(agent,key,instruction,timeoutSeconds=jobTimeoutSeconds(),options={}) {
   const args=['agent','--agent',agent,'--session-key',key,'--message',instruction,'--json','--timeout',String(timeoutSeconds)];
+  if(options.local===true)args.push('--local');
   if(options.thinking==='low')args.push('--thinking','low');
   if(process.env.REI_OPENCLAW_ENTRY)return spawn(process.execPath,[bundledEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   if(process.platform==='win32')return spawn(process.execPath,[windowsEntry(),...args],{stdio:['ignore','pipe','pipe'],windowsHide:true});
@@ -51,8 +52,8 @@ export function parseOpenClawResult(output) {
   let payload;
   try {payload=JSON.parse(output);} catch {throw new Error('OpenClawからJSON形式の結果を受け取れませんでした');}
   if(payload?.status&&payload.status!=='ok')throw new Error(`OpenClawの処理状態: ${String(payload.status).slice(0,100)}`);
-  if(payload?.result?.meta?.aborted)throw new Error('OpenClawの処理が中断されました');
-  const texts=payload?.result?.payloads?.map(item=>item?.text).filter(item=>typeof item==='string'&&item.trim());
+  if(payload?.result?.meta?.aborted||payload?.meta?.aborted)throw new Error('OpenClawの処理が中断されました');
+  const texts=(payload?.result?.payloads||payload?.payloads)?.map(item=>item?.text).filter(item=>typeof item==='string'&&item.trim());
   const answer=texts?.at(-1)||payload?.response||payload?.result?.text;
   if(typeof answer!=='string'||!answer.trim())throw new Error('OpenClawから回答を受け取れませんでした');
   if(/(?:^|\n)\s*⚠️\s*🛠️\s*(?:Bash|Tool) failed:/i.test(answer))throw new Error(`OpenClawの操作結果を確認してください: ${answer.slice(0,500)}`);

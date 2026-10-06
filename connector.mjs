@@ -115,7 +115,7 @@ function runOpenClaw(agent,job,devices) {
     : `あなたはREIから仕事を任されたAI担当者です。依頼を実行し、実施結果と未実施の部分を区別して日本語で簡潔に報告してください。分からないことだけ質問してください。${sharedKnowledge}${skillContext}${projectContext}依頼: ${job.text}`;
   return new Promise((resolve,reject)=>{
     const key=`agent:${agent}:rei-${job.kind}-${job.id}`;
-    const child=spawnOpenClaw(agent,key,instruction,jobTimeout,job.knowledge_voice?{thinking:'low'}:{});
+    const child=spawnOpenClaw(agent,key,instruction,jobTimeout,{local:!!job.knowledge_mode&&job.knowledge_mode!=='work',...(job.knowledge_voice||job.knowledge_mode==='catalog'?{thinking:'low'}:{})});
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     let out='',err='',timedOut=false,killTimer;

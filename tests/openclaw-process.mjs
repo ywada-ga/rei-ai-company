@@ -25,11 +25,13 @@ const bundledChild=spawnOpenClaw('rei','bundled-session','同梱版から実行'
 let bundledOutput='';bundledChild.stdout.on('data',chunk=>bundledOutput+=chunk);
 assert.equal(await new Promise(resolve=>bundledChild.on('close',resolve)),0);
 assert.ok(JSON.parse(bundledOutput).args.includes('--json'));
-const voiceChild=spawnOpenClaw('rei','voice-session','音声の質問',1800,{thinking:'low'});
+const voiceChild=spawnOpenClaw('rei','voice-session','音声の質問',1800,{thinking:'low',local:true});
 let voiceOutput='';voiceChild.stdout.on('data',chunk=>voiceOutput+=chunk);
 assert.equal(await new Promise(resolve=>voiceChild.once('close',resolve)),0);
 const voiceArgs=JSON.parse(voiceOutput).args;
-assert.equal(voiceArgs[voiceArgs.indexOf('--thinking')+1],'low');
+assert.equal(voiceArgs[voiceArgs.indexOf('--thinking')+1],'low');assert.ok(voiceArgs.includes('--local'));
+assert.equal(parseOpenClawResult(JSON.stringify({payloads:[{text:'直接の回答'}],meta:{aborted:false}})),'直接の回答');
+assert.throws(()=>parseOpenClawResult(JSON.stringify({payloads:[{text:'不完全な回答'}],meta:{aborted:true}})),/中断/);
 delete process.env.REI_OPENCLAW_ENTRY;
 console.log('PASS Bundled OpenClaw invocation');
 

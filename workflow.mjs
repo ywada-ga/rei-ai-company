@@ -13,12 +13,17 @@ export const departments=[
   {id:'people',name:'人との連携',detail:'Chatworkでの依頼と返答'}
 ];
 export function event(db,taskId,actor,type,detail='') {run(db,'INSERT INTO events(id,task_id,actor,type,detail,created_at) VALUES(?,?,?,?,?,?)',id(),taskId,actor,type,detail,now());}
-export function createTask(db,text,department,userId,requiresApproval=false,projectId=null,skillId=null,context=[]) {
+export function isConversationQuestion(value) {
+  const text=String(value).trim();
+  if(/送信|投稿|公開|削除|購入|予約|登録|保存|記録して|実行|作成|更新|変更|インストール|依頼して/.test(text))return false;
+  return /(?:教えて|説明して|読み上げて|読んで|詳しく|短くして|要約して|どういう意味|どうなってる|どうなっています)(?:ください|くれる|ほしい)?[。？?！!]*$/.test(text)||/^(?:こんにちは|こんばんは|おはよう(?:ございます)?|ありがとう(?:ございます)?)[。！!]*$/.test(text);
+}
+export function createTask(db,text,department,userId,requiresApproval=false,projectId=null,skillId=null,context=[],conversation=false) {
   return transaction(db,()=>{
     const root=id(),plan=id(),time=now();
-    run(db,'INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?)',root,'root',text,department,requiresApproval?'approval_pending':'planning',userId,time,projectId,skillId);
-    run(db,'INSERT INTO tasks(id,parent_id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?,?)',plan,root,'plan',text,department,requiresApproval?'blocked':'ready',userId,time,projectId,skillId);
-    run(db,'UPDATE tasks SET knowledge_context=? WHERE id=? OR id=?',JSON.stringify(context),root,plan);
+    run(db,'INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?)',root,'root',text,department,requiresApproval?'approval_pending':conversation?'running':'planning',userId,time,projectId,skillId);
+    run(db,'INSERT INTO tasks(id,parent_id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?,?)',plan,root,conversation?'execute':'plan',text,department,requiresApproval?'blocked':'ready',userId,time,projectId,skillId);
+    run(db,'UPDATE tasks SET knowledge_context=?,knowledge_voice=? WHERE id=? OR id=?',JSON.stringify(context),conversation?1:0,root,plan);
     event(db,root,'user','created',text.slice(0,200));
     return one(db,'SELECT * FROM tasks WHERE id=?',root);
   });

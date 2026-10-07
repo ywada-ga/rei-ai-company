@@ -1,6 +1,5 @@
 import {playLocalVoice} from './local-voice.js';
-import {LiveVoiceConversation} from './live-voice.js';
-import { VoiceConversation, spokenText, speechChunks, japaneseVoice } from './voice.js';
+import { VoiceConversation, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
@@ -494,7 +493,7 @@ function renderVoiceChannel() {
   if(voiceDisplay.active||voiceDisplay.phase==='error')$('core-state').textContent=phases[voiceDisplay.phase]||'待機中';
   else $('core-state').textContent=state.data?.gateway.reachable?'CONNECTED / READY':'WAITING FOR AGENT';
   const feed=$('mission-feed'),previous=feed.querySelector('[data-voice-channel]');previous?.remove();
-  const history=voiceDisplay.engine==='live'?liveVoiceConversation.history:voiceConversation.history;
+  const history=voiceConversation.history;
   if(!history.length&&!voiceDisplay.transcript)return;
   let turns=history.slice();
   const last=turns.at(-1);
@@ -533,66 +532,35 @@ function updateVoiceDisplay(data) {
   $('voice-conversation-status').textContent=data.message||labels[data.phase];
   voiceDisplay=data;renderVoiceChannel();
   $('voice-conversation-start').disabled=data.active;
-  $('voice-conversation-mode').disabled=data.active;
-  $('voice-conversation-voice').disabled=data.active||$('voice-conversation-mode').value==='live';
   $('voice-conversation-stop').disabled=!data.active;
   $('voice-conversation-interrupt').disabled=data.phase!=='speaking';}
 const voiceConversation=new VoiceConversation({ask:askCompany,onChange:updateVoiceDisplay});
-const liveVoiceConversation=new LiveVoiceConversation({
-  createSession:(sdp,signal)=>request('/api/voice/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sdp,consent:true}),signal}),
-  endSession:id=>request('/api/voice/end',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})}),
-  ask:(question,context,signal)=>askCompany(question,context,signal,true),onChange:updateVoiceDisplay,
-});
-const currentVoice=()=>$('voice-conversation-mode').value==='live'?liveVoiceConversation:voiceConversation;
-async function loadLiveVoiceStatus() {
- const [status,local]=await Promise.all([request('/api/voice/status'),request('/api/voice/local/status')]);state.liveVoice=status;
- $('voice-local-option').disabled=!local.configured;
- if(local.configured&&!voiceConversation.active&&!liveVoiceConversation.active)$('voice-conversation-mode').value='local';
- $('voice-live-option').disabled=!status.configured||status.needsAttention;
- syncVoiceControls();
- $('voice-live-status').textContent=local.configured?'このPCで自然な声を作成します。音声合成のAPI料金はかかりません。':status.needsAttention?'音声APIの接続情報を確認してください。':status.configured?'APIキー設定済みです。接続は会話開始時に確認します。OpenAI API従量課金・最大5分です。':'自然な会話にはOpenAI APIキーが必要です。';
+voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
+const currentVoice=()=>voiceConversation;
+let localVoiceAvailable=false;
+async function loadLocalVoiceStatus() {
+ const local=await request('/api/voice/local/status');localVoiceAvailable=local.configured;
+ $('voice-local-status').textContent=local.configured?'Qwen · このPCで声を作成します。音声合成のAPI料金はかかりません。':'Qwenの準備ができていません。REIの音声モデルを確認してください。';
+ $('voice-preview').disabled=!local.configured;
 }
-$('voice-live-form').onsubmit=async event=>{
- event.preventDefault();try{
-  await request('/api/voice/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({apiKey:$('voice-api-key').value.trim(),consent:$('voice-api-consent').checked})});
-  $('voice-api-key').value='';$('voice-api-consent').checked=false;await loadLiveVoiceStatus();$('voice-conversation-mode').value='live';$('voice-conversation-voice').closest('label').classList.add('hidden');$('voice-live-settings').open=false;$('voice-live-status').textContent='接続情報を保存しました。「会話を開始」で自然な会話を試せます。';
- }catch(error){$('voice-live-status').textContent=error.message;}
-};
-function syncVoiceControls(){
- const mode=$('voice-conversation-mode').value;
- $('voice-conversation-voice').closest('label').classList.toggle('hidden',mode!=='browser');
- $('voice-live-settings').classList.toggle('hidden',mode!=='live'||state.data?.user.role!=='owner');
- $('voice-privacy').textContent=mode==='local'?'声の作成はこのPCで行います。音声認識はブラウザのサービスを使い、音声が送られる場合があります。':mode==='live'?'音声と確認した会社情報をOpenAIに送信します。API利用料が発生します。':'音声認識と読み上げはブラウザのサービスを使います。音声が送られる場合があります。';
-}
-$('voice-conversation-mode').onchange=()=>{syncVoiceControls();if(voiceConversation.active||liveVoiceConversation.active){voiceConversation.stop();liveVoiceConversation.stop();}};
-
 $('voice-conversation-open').onclick=()=>{
   if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);
   setView('core');$('voice-conversation-screen').classList.remove('hidden');$('voice-conversation-start').focus();$('voice-conversation-start').disabled=true;
   if(!currentVoice().supported)$('voice-conversation-status').textContent='このブラウザは音声会話に対応していません。ChromeでREIを開いてください。';
-  void Promise.all([loadKnowledge(),loadLiveVoiceStatus()]).then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message).finally(()=>{$('voice-conversation-start').disabled=voiceConversation.active||liveVoiceConversation.active;});
+  void Promise.all([loadKnowledge(),loadLocalVoiceStatus()]).then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message).finally(()=>{$('voice-conversation-start').disabled=voiceConversation.active||!localVoiceAvailable;});
 };
-function updateVoiceChoices() {
-  const select=$('voice-conversation-voice'),selected=select.value;
-  const voices=window.speechSynthesis?.getVoices().filter(voice=>/^ja(?:-|_)/i.test(voice.lang))||[];
-  select.innerHTML='<option value="">自動（日本語）</option>'+voices.map(voice=>`<option value="${escapeHtml(voice.voiceURI)}">${escapeHtml(voice.name)}</option>`).join('');
-  select.value=voices.some(voice=>voice.voiceURI===selected)?selected:'';
-  voiceConversation.voiceURI=select.value;
-}
-$('voice-conversation-voice').onchange=()=>{voiceConversation.voiceURI=$('voice-conversation-voice').value;};
-window.speechSynthesis?.addEventListener('voiceschanged',updateVoiceChoices);updateVoiceChoices();
-$('voice-conversation-start').onclick=()=>{try{const voice=currentVoice();voiceConversation.localSpeak=$('voice-conversation-mode').value==='local'?(text,signal)=>playLocalVoice(text,signal,request):null;void Promise.resolve(voice.start()).catch(error=>$('voice-conversation-status').textContent=error.message);}catch(error){$('voice-conversation-status').textContent=error.message;}};
+$('voice-conversation-start').onclick=()=>{try{replyVoiceController?.abort();voiceConversation.start();}catch(error){$('voice-conversation-status').textContent=error.message;}};
 $('voice-conversation-stop').onclick=()=>currentVoice().stop();
 $('voice-conversation-interrupt').onclick=()=>currentVoice().interrupt();
-function closeVoiceConversation(){voiceConversation.stop();liveVoiceConversation.stop();$('voice-conversation-screen').classList.add('hidden');$('voice-conversation-open').focus();}
+function closeVoiceConversation(){voiceConversation.stop();$('voice-conversation-screen').classList.add('hidden');$('voice-conversation-open').focus();}
 $('voice-conversation-close').onclick=closeVoiceConversation;
 $('voice-conversation-knowledge').onclick=()=>{closeVoiceConversation();setView('knowledge');};
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('voice-conversation-screen').classList.contains('hidden'))closeVoiceConversation();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&currentVoice().active)currentVoice().stop('画面を離れたため音声会話を停止しました。戻ってから再開できます。');});
-window.addEventListener('pagehide',()=>{voiceConversation.stop();liveVoiceConversation.stop();});
+window.addEventListener('pagehide',()=>{voiceConversation.stop();});
 let replyVoiceController;
 async function speak(text) {
-  if(voiceConversation.active||liveVoiceConversation.active)return;
+  if(voiceConversation.active)return;
   replyVoiceController?.abort();replyVoiceController=new AbortController();
   const signal=replyVoiceController.signal;
   try {
@@ -601,21 +569,14 @@ async function speak(text) {
       for(const chunk of speechChunks(text,380)){if(signal.aborted)return;feedback('Qwenで返答を読み上げています');await playLocalVoice(chunk,signal,request);}
       if(!signal.aborted)feedback('返答を読み上げました。続けて話しかけてください');return;
     }
-    if(!('speechSynthesis' in window))throw new Error('音声応答を利用できません');
-    window.speechSynthesis.cancel();
-    for(const chunk of speechChunks(text)) {
-      const utterance=new SpeechSynthesisUtterance(chunk);utterance.lang='ja-JP';utterance.rate=1.02;
-      const voice=japaneseVoice(window.speechSynthesis.getVoices(),voiceConversation.voiceURI);if(voice)utterance.voice=voice;
-      window.speechSynthesis.speak(utterance);
-    }
+    throw new Error('Qwenの準備ができていません。REIの音声モデルを確認してください。');
   }catch(error){if(!signal.aborted)feedback(`読み上げ: ${error.message}`,true);}
 }
 $('voice-output').onclick = () => {
-  if (!('speechSynthesis' in window)) return feedback('このブラウザでは音声応答を利用できません', true);
   state.voiceOn = !state.voiceOn;
   $('voice-output').textContent = `音声応答 ${state.voiceOn ? 'ON' : 'OFF'}`;
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
-  if (!state.voiceOn) {replyVoiceController?.abort();window.speechSynthesis.cancel();}
+  if (!state.voiceOn) {replyVoiceController?.abort();}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
 };
 $('voice-button').onclick = () => $('voice-conversation-open').click();
@@ -665,7 +626,7 @@ function showAuth() {
   for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
   for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');
   $('command-input').value='';
-  closeVoiceConversation();voiceScope='';liveVoiceConversation.history=[];liveVoiceConversation.fragments=[];liveVoiceConversation.transcript='';liveVoiceConversation.answer='';voiceConversation.history=[];voiceConversation.answer='';voiceConversation.transcript='';voiceDisplay={active:false,phase:'idle',transcript:'',answer:'',message:''};voiceConversation.emit('idle');
+  closeVoiceConversation();voiceScope='';voiceConversation.history=[];voiceConversation.answer='';voiceConversation.transcript='';voiceDisplay={active:false,phase:'idle',transcript:'',answer:'',message:''};voiceConversation.emit('idle');
   state.knowledge=null;state.knowledgeRequest++;state.selectedKnowledge=null;state.knowledgeSettingsDirty=false;state.knowledgeFormSignature='';$('knowledge-history').textContent='';$('knowledge-answer').textContent='';$('knowledge-groups').textContent='';
   document.querySelectorAll('input[type="password"],textarea').forEach(input=>input.value='');
   setView('core');

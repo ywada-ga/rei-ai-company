@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import {isConversationQuestion} from '../workflow.mjs';
+for(const question of ['会社について教えてください','桃太郎読み上げて','それをもっと短くして','こんにちは'])assert.equal(isConversationQuestion(question),true);
+for(const command of ['説明してメールで送信して','資料を作成して','記録して','予約して'])assert.equal(isConversationQuestion(command),false);
 const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
 const currentVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const data=mkdtempSync(path.join(os.tmpdir(),'rei-smoke-'));
@@ -590,6 +593,8 @@ try {
   const contextDb=new DatabaseSync(path.join(data,'rei.sqlite'));
   const contextRows=contextDb.prepare('SELECT knowledge_context FROM tasks WHERE id=? OR parent_id=?').all(followup.task.id,followup.task.id);
   assert.equal(contextRows.length,2);
+  const fastJob=contextDb.prepare('SELECT kind,knowledge_voice FROM tasks WHERE parent_id=?').get(followup.task.id);
+  assert.equal(fastJob.kind,'execute');assert.equal(fastJob.knowledge_voice,1);
   for(const row of contextRows){const turns=JSON.parse(row.knowledge_context);assert.ok(turns.length>0);assert.ok(turns.length<=3);assert.ok(turns.every(turn=>turn.question&&turn.answer&&turn.answer.length<=2000));}
   contextDb.close();
   console.log('PASS command follow-up context stored for root and planner');

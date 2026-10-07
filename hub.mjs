@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
 import { openStorage, one, all, run, transaction } from './storage.mjs';
 import { random, hash, encodePassword, checkPassword, cookies, sessionUser, connectorDevice, setCookie, sameOrigin } from './security.mjs';
-import { departments, event, createTask, cancellable, cancelTask, retryPlan, claim, sweep, finishJob, finishRoot, report } from './workflow.mjs';
+import { departments, event, createTask, isConversationQuestion, cancellable, cancelTask, retryPlan, claim, sweep, finishJob, finishRoot, report } from './workflow.mjs';
 import { knowledgeSettings, saveKnowledgeSettings, scanQuestion, knowledgeContext } from './intelligence.mjs';
 import { knowledgeDevice, queueKnowledge, scanKnowledgeIfDue } from './knowledge-service.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
@@ -240,7 +240,7 @@ async function api(req,res,route) {
     if(projectId&&!one(db,"SELECT id FROM projects WHERE id=? AND status='active'",projectId))return error(res,400,'稼働中のプロジェクトを選んでください');
     if(skillId){const skill=one(db,'SELECT department FROM playbooks WHERE id=?',skillId);if(!skill||skill.department!=='all'&&skill.department!==department)return error(res,400,'このセクションで使えるスキルを選んでください');}
     const context=all(db,"SELECT text,result FROM tasks WHERE kind='root' AND knowledge_mode='work' AND created_by=? AND department=? AND project_id IS ? AND status='completed' ORDER BY created_at DESC,id DESC LIMIT 3",user.id,department,projectId).reverse().map(turn=>({question:turn.text.slice(0,4000),answer:turn.result.slice(0,2000)}));
-    const task=createTask(db,message,department,user.id,user.role==='requester',projectId,skillId,context);
+    const task=createTask(db,message,department,user.id,user.role==='requester',projectId,skillId,context,!skillId&&user.role!=='requester'&&isConversationQuestion(message));
     return send(res,201,{kind:'task',task:taskJson(task)});
   }
   if(route==='projects/create'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'プロジェクトを作成する権限がありません');const data=await body(req),name=text(data.name,80),objective=text(data.objective,2000),id=uid(),now=Date.now();transaction(db,()=>{run(db,'INSERT INTO projects(id,name,objective,created_at,updated_at) VALUES(?,?,?,?,?)',id,name,objective,now,now);event(db,null,user.username,'project_created',name);});return send(res,201,{project:projectJson(one(db,'SELECT * FROM projects WHERE id=?',id))});}

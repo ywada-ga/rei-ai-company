@@ -25,12 +25,12 @@ export class VoiceConversation {
     Object.assign(this,{Recognition,synthesis,Utterance,ask,onChange,restartDelay,answerTimeoutMs});
     this.active=false;this.phase='idle';this.epoch=0;this.history=[];this.transcript='';this.answer='';this.emptyTurns=0;
   }
-  get supported(){return !!(this.Recognition&&this.synthesis&&this.Utterance);}
+  get supported(){return !!(this.Recognition&&(this.localSpeak||(this.synthesis&&this.Utterance)));}
   emit(phase,message=''){this.phase=phase;this.onChange({active:this.active,phase,message,transcript:this.transcript,answer:this.answer});}
   start() {
     if(!this.supported)throw new Error('このブラウザは音声会話に対応していません。ChromeでREIを開いてください。');
     this.stop();this.active=true;this.transcript='';this.answer='';this.emptyTurns=0;
-    this.synthesis.speak(new this.Utterance(''));
+    if(!this.localSpeak)this.synthesis.speak(new this.Utterance(''));
     this.listen();
   }
   stop(message='') {
@@ -97,5 +97,5 @@ export class VoiceConversation {
     };
     next();
   }
-  interrupt(){if(this.active&&this.phase==='speaking'){this.epoch++;this.controller?.abort();this.synthesis.cancel();this.listen();}}
+  interrupt(){if(this.active&&this.phase==='speaking'){this.epoch++;this.controller?.abort();this.synthesis?.cancel();this.listen();}}
 }

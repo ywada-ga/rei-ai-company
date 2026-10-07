@@ -80,7 +80,7 @@ export class VoiceConversation {
     if(this.localSpeak){
       this.controller=new AbortController();this.emit('speaking','声を準備しています');
       const signal=this.controller.signal;
-      void (async()=>{for(const chunk of speechChunks(answer,380)){if(signal.aborted)return;await this.localSpeak(chunk,signal);}})().then(()=>{
+      void (this.localReply?this.localReply(spokenText(answer),signal):(async()=>{for(const chunk of speechChunks(answer,380)){if(signal.aborted)return;await this.localSpeak(chunk,signal);}})()).then(()=>{
         if(this.active&&epoch===this.epoch)this.listen();
       }).catch(error=>{if(this.active&&epoch===this.epoch){this.emit('speaking',error.message||'音声を再生できませんでした');this.restartTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.listen();},1500);}});
       return;

@@ -1,4 +1,4 @@
-import {playLocalVoice} from './local-voice.js';
+import {playLocalVoice,playLocalReply} from './local-voice.js';
 import { VoiceConversation, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
@@ -536,12 +536,14 @@ function updateVoiceDisplay(data) {
   $('voice-conversation-interrupt').disabled=data.phase!=='speaking';}
 const voiceConversation=new VoiceConversation({ask:askCompany,onChange:updateVoiceDisplay});
 voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
+voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);
 const currentVoice=()=>voiceConversation;
 let localVoiceAvailable=false;
 async function loadLocalVoiceStatus() {
  const local=await request('/api/voice/local/status');localVoiceAvailable=local.configured;
  $('voice-local-status').textContent=local.configured?'Qwen · このPCで声を作成します。音声合成のAPI料金はかかりません。':'Qwenの準備ができていません。REIの音声モデルを確認してください。';
  $('voice-preview').disabled=!local.configured;
+ if(local.configured&&!local.ready){$('voice-local-status').textContent='Qwenを準備しています。準備後は同じ音声モデルを使い続けます。';await request('/api/voice/local/prepare',{method:'POST'});$('voice-local-status').textContent='Qwen · 準備完了。このPCで声を作成します。';}
 }
 $('voice-conversation-open').onclick=()=>{
   if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);
@@ -566,7 +568,7 @@ async function speak(text) {
   try {
     const local=await request('/api/voice/local/status',{signal});
     if(local.configured){
-      for(const chunk of speechChunks(text,380)){if(signal.aborted)return;feedback('Qwenで返答を読み上げています');await playLocalVoice(chunk,signal,request);}
+      feedback('Qwenで返答を読み上げています');await playLocalReply(text,signal,request);
       if(!signal.aborted)feedback('返答を読み上げました。続けて話しかけてください');return;
     }
     throw new Error('Qwenの準備ができていません。REIの音声モデルを確認してください。');

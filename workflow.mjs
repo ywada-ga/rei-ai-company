@@ -73,7 +73,7 @@ export function claim(db,device,hubVersion='') {
     const capabilities=JSON.parse(device.capabilities||'[]');
     const canPlan=capabilities.includes('planning')&&(!!device.planner||!plannerOnline);
     const canExecute=capabilities.includes('execution');
-    const job=one(db,`SELECT * FROM tasks WHERE status='ready' AND ((kind='plan' AND ?=1) OR (kind='execute' AND ?=1 AND (device_id=? OR device_id IS NULL))) ORDER BY CASE kind WHEN 'plan' THEN 0 ELSE 1 END,created_at LIMIT 1`,canPlan?1:0,canExecute?1:0,device.id);
+    const job=one(db,`SELECT * FROM tasks WHERE status='ready' AND ((kind='plan' AND ?=1) OR (kind='execute' AND ?=1 AND (device_id=? OR device_id IS NULL))) ORDER BY CASE WHEN knowledge_mode='answer' OR (knowledge_mode='work' AND knowledge_voice=1) THEN 0 WHEN kind='plan' THEN 1 WHEN knowledge_mode='scan' THEN 3 ELSE 2 END,created_at LIMIT 1`,canPlan?1:0,canExecute?1:0,device.id);
     if(!job) return null;
     const lease=id(),time=now();
     run(db,"UPDATE tasks SET status='running',device_id=?,lease_id=?,lease_until=?,attempts=attempts+1,started_at=CASE WHEN started_at=0 THEN ? ELSE started_at END WHERE id=?",device.id,lease,time+240000,time,job.id);

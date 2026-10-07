@@ -155,6 +155,7 @@ async function api(req,res,route) {
   if(route.startsWith('voice/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'音声会話は所有者・管理者が利用できます');
     if(route==='voice/local/status'&&req.method==='GET')return send(res,200,localVoice.status());
+    if(route==='voice/local/prepare'&&req.method==='POST'){await localVoice.start();return send(res,200,localVoice.status());}
     if(route==='voice/local/speak'&&req.method==='POST'){
       const input=await body(req),controller=new AbortController();
       const abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);

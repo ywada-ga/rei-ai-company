@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {playLocalVoice} from '../public/local-voice.js';
+import {playLocalVoice,playLocalReply} from '../public/local-voice.js';
 import {VoiceConversation} from '../public/voice.js';
 let lastAudio,created=0,revoked=0;
 class AudioMock {
@@ -33,3 +33,13 @@ await new Promise(resolve=>setTimeout(resolve,0));
 assert.ok(chunks.length>1);assert.equal(chunks.join(''),'長い回答です。'.repeat(100));
 assert.equal(listenCount,2,'recognition resumes once after the entire answer');
 console.log('PASS long Qwen answers and return to listening');
+
+let prepared=[];controller=new AbortController();
+const pipeline=playLocalReply('一文ずつ準備します。'.repeat(16),controller.signal,async(url,options)=>{prepared.push(JSON.parse(options.body).text);return {wav:Buffer.from('RIFF').toString('base64')};},{AudioClass:AudioMock,urls});
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(prepared.length,2,'next speech segment is prepared while first segment plays');
+assert.ok(prepared.every(text=>Array.from(text).length<=120));
+const firstAudio=lastAudio;firstAudio.onended();
+await new Promise(resolve=>setTimeout(resolve,0));assert.notEqual(lastAudio,firstAudio);
+controller.abort();await assert.rejects(pipeline,/中断/);assert.equal(created,revoked);
+console.log('PASS Qwen next-segment prefetch, ordered playback and cancellation');

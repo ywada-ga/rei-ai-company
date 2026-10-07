@@ -12,6 +12,7 @@ import { knowledgeSettings, saveKnowledgeSettings, scanQuestion, knowledgeContex
 import { knowledgeDevice, queueKnowledge, scanKnowledgeIfDue } from './knowledge-service.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import {liveVoiceStatus,configureLiveVoice,LiveVoiceSessions} from './live-voice.mjs';
+import {LocalVoice} from './local-voice.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
 import { searchMarketplaceSkills } from './skill-marketplace.mjs';
 import { createBackup, createBackupIfDue } from './backup.mjs';
@@ -22,6 +23,9 @@ const root=path.dirname(fileURLToPath(import.meta.url));
 const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const db=openStorage(root);
 const liveVoiceSessions=new LiveVoiceSessions();
+const localVoice=new LocalVoice(root);
+process.once('exit',()=>localVoice.close());
+process.once('SIGTERM',()=>{localVoice.close();process.exit(0);});
 const port=Number(process.env.REI_PORT||4178);
 const host=process.env.REI_HOST||'127.0.0.1';
 if(host!=='127.0.0.1'&&host!=='::1'&&process.env.REI_ALLOW_INSECURE_LAN!=='1') throw new Error('外部待受には暗号化したトンネルを使用してください。直接LANに公開する場合はREI_ALLOW_INSECURE_LAN=1が必要です');
@@ -150,6 +154,14 @@ async function api(req,res,route) {
   }
   if(route.startsWith('voice/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'音声会話は所有者・管理者が利用できます');
+    if(route==='voice/local/status'&&req.method==='GET')return send(res,200,localVoice.status());
+    if(route==='voice/local/speak'&&req.method==='POST'){
+      const input=await body(req),controller=new AbortController();
+      const abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
+      try{const result=await localVoice.synthesize(input.text,{signal:controller.signal});if(!res.destroyed)return send(res,200,result);}
+      finally{res.off('close',abort);}
+      return;
+    }
     if(route==='voice/status'&&req.method==='GET')return send(res,200,liveVoiceStatus(db,root));
     if(route==='voice/settings'&&req.method==='POST'){
       if(user.role!=='owner')return error(res,403,'所有者だけが音声APIを設定できます');
@@ -417,7 +429,7 @@ async function api(req,res,route) {
   if(route==='chatwork/poll'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'権限がありません');return send(res,200,await pollChatwork(db,root));}
   return error(res,404,'APIが見つかりません');
 }
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/live-voice.js':'live-voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/live-voice.js':'live-voice.js','/local-voice.js':'local-voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
   try {
@@ -425,7 +437,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api')return await api(req,res,url.searchParams.get('route')||'');
     const file=files[url.pathname];if(!file||req.method!=='GET')return error(res,404,'見つかりません');
     const bytes=readFileSync(path.join(root,'public',file));
-    res.writeHead(200,{'content-type':`${mime[path.extname(file)]}; charset=utf-8`,'cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(bytes);
+    res.writeHead(200,{'content-type':`${mime[path.extname(file)]}; charset=utf-8`,'cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(bytes);
   } catch(e) {console.error('REI:',e.message);return error(res,e.status||500,e.status?e.message:'処理に失敗しました');}
 });
 server.listen(port,host,()=>{console.log(`REI Hub: http://${host}:${port}`);if(existsSync(lanFlag))void enableLan().catch(e=>console.error('REI LAN:',e.message));});

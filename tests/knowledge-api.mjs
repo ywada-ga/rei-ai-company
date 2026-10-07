@@ -25,6 +25,8 @@ try {
   await api('setup/complete',{token:output.match(/\?setup=([^\s]+)/)[1],username:'owner',password:'knowledge-test-password'},undefined,201);
   await api('auth/login',{username:'owner',password:'knowledge-test-password'});
   assert.equal((await api('voice/status')).configured,false);
+  assert.equal((await api('voice/local/status')).configured,false);
+  await api('voice/local/speak',{text:''},undefined,400);
   await api('voice/settings',{apiKey:'sk-test-fixture-1234567890',consent:false},undefined,400);
   await api('voice/session',{sdp:'v=0',consent:false},undefined,400);
   await api('knowledge/ask',{question:'決定事項は？'},undefined,409);
@@ -62,6 +64,8 @@ try {
   await api('auth/login',{username:'requester',password:'knowledge-test-password'});
   await api('knowledge/status',undefined,undefined,403);
   await api('voice/status',undefined,undefined,403);
+  await api('voice/local/status',undefined,undefined,403);
+  await api('voice/local/speak',{text:'試験'},undefined,403);
   await api('voice/settings',{apiKey:'sk-test-fixture-1234567890',consent:true},undefined,403);
   await api('voice/session',{sdp:'v=0',consent:true},undefined,403);
   await api(`tasks/detail/${task.id}`,undefined,undefined,403);

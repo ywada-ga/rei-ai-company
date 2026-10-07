@@ -78,6 +78,13 @@ export class VoiceConversation {
   }
   say(answer) {
     const epoch=++this.epoch;
+    if(this.localSpeak){
+      this.controller=new AbortController();this.emit('speaking','声を準備しています');
+      void this.localSpeak(spokenText(answer),this.controller.signal).then(()=>{
+        if(this.active&&epoch===this.epoch)this.listen();
+      }).catch(()=>{if(this.active&&epoch===this.epoch)this.stop('音声を再生できませんでした。回答は会話欄で確認できます。');});
+      return;
+    }
     const chunks=speechChunks(answer);let index=0;
     this.emit('speaking');
     const next=()=>{
@@ -90,5 +97,5 @@ export class VoiceConversation {
     };
     next();
   }
-  interrupt(){if(this.active&&this.phase==='speaking'){this.epoch++;this.synthesis.cancel();this.listen();}}
+  interrupt(){if(this.active&&this.phase==='speaking'){this.epoch++;this.controller?.abort();this.synthesis.cancel();this.listen();}}
 }

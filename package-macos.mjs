@@ -65,6 +65,7 @@ try {
   mkdirSync(source);
   for(const name of readdirSync(root))if(name.endsWith('.mjs')&&!['package-macos.mjs','package-links.mjs','release-macos.mjs'].includes(name))copyFileSync(path.join(root,name),path.join(source,name));
   for(const name of ['package.json','LICENSE','README.md'])copyFileSync(path.join(root,name),path.join(source,name));
+  copyFileSync(path.join(root,'local-tts-worker.py'),path.join(source,'local-tts-worker.py'));
   cpSync(path.join(root,'public'),path.join(source,'public'),{recursive:true});
 
   console.log(`OpenClaw ${openClaw.version} をアプリ内に同梱しています…`);

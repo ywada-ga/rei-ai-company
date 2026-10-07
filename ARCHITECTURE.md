@@ -123,3 +123,9 @@ Macの常駐処理はmacos-runtime.mjsで同梱Node.jsを保存領域のruntime�
 方式を選んだ場合だけpublic/live-voice.jsがWebRTCでマイクと遠隔の音声を扱う。Hubのlive-voice.mjsが認証済み所有者・管理者のSDPをOpenAIの/v1/live/sessionsへ渡す。モデルはgpt-live-1、store:false、delegation.type:client。APIキーはAES-256-GCMと保存領域のvoice.keyで暗号化し、所有者だけが変更できる。キーはブラウザ・ログに返さない。providerのセッションIDはHubに保持し、利用者本人の終了要求と5分タイマーでhangupを要求する。接続失敗・キー不正では標準の読み上げに勝手に切り替えず、明示的な状態を表示する。
 
 session.input_transcript.delta/output_transcript.deltaを原文のまま字幕へ足し、時刻情報と限定した会話文脈を保持する。session.delegation.createdを受けたときだけ既存の会社情報APIへ質問し、確定した回答と未確認をsession.commentary.appendで返す。送信済みの会社情報の質問・出典はHubに保存される。雑談の字幕はこの画面のメモリーに表示し、REIは音声そのものを保存しない。アクセス制約と読み取り方針は検索担当の既存処理に適用する。音声モデル自身の事実の断定防止は指示であり、全文の音声生成前の検閲は行っていない。APIキーなしでの模擬試験のみ実施済みで、実際の接続・日本語音声品質・割り込み・遅い転記の話題追従は利用者の認証後に実機確認が必要。
+
+## ローカル音声（0.5.38）
+
+司令室 → 既存の会社情報検索 → voice/local/speak → LocalVoice → 常駐Python/MLX Qwen → WAV → 再生。認証・同一送信元検査、所有者/管理者限定、500文字上限、1生成ずつ、120秒の期限、切断時の停止を適用。音声認識と検索担当AIは既存の構成を使用する。
+
+開発配置はREI_LOCAL_VOICE_PYTHONとREI_LOCAL_VOICE_MODEL。リクエストから実行ファイルやモデルを変更できない。Python/MLXとモデルの同梱、ライセンス通知、対応機種とメモリの確認は未完了。試用モデルはQwen3-TTS-12Hz-1.7B-CustomVoice-8bit（Apache-2.0）、mlx-audio（MIT）。

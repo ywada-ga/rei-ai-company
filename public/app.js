@@ -549,7 +549,7 @@ async function loadLiveVoiceStatus() {
  $('voice-local-option').disabled=!local.configured;
  if(local.configured&&!voiceConversation.active&&!liveVoiceConversation.active)$('voice-conversation-mode').value='local';
  $('voice-live-option').disabled=!status.configured||status.needsAttention;
- $('voice-live-settings').classList.toggle('hidden',state.data?.user.role!=='owner');
+ syncVoiceControls();
  $('voice-live-status').textContent=local.configured?'このPCで自然な声を作成します。音声合成のAPI料金はかかりません。':status.needsAttention?'音声APIの接続情報を確認してください。':status.configured?'APIキー設定済みです。接続は会話開始時に確認します。OpenAI API従量課金・最大5分です。':'自然な会話にはOpenAI APIキーが必要です。';
 }
 $('voice-live-form').onsubmit=async event=>{
@@ -558,7 +558,13 @@ $('voice-live-form').onsubmit=async event=>{
   $('voice-api-key').value='';$('voice-api-consent').checked=false;await loadLiveVoiceStatus();$('voice-conversation-mode').value='live';$('voice-conversation-voice').closest('label').classList.add('hidden');$('voice-live-settings').open=false;$('voice-live-status').textContent='接続情報を保存しました。「会話を開始」で自然な会話を試せます。';
  }catch(error){$('voice-live-status').textContent=error.message;}
 };
-$('voice-conversation-mode').onchange=()=>{$('voice-conversation-voice').closest('label').classList.toggle('hidden',$('voice-conversation-mode').value!=='browser');if(voiceConversation.active||liveVoiceConversation.active){voiceConversation.stop();liveVoiceConversation.stop();}};
+function syncVoiceControls(){
+ const mode=$('voice-conversation-mode').value;
+ $('voice-conversation-voice').closest('label').classList.toggle('hidden',mode!=='browser');
+ $('voice-live-settings').classList.toggle('hidden',mode!=='live'||state.data?.user.role!=='owner');
+ $('voice-privacy').textContent=mode==='local'?'声の作成はこのPCで行います。音声認識はブラウザのサービスを使い、音声が送られる場合があります。':mode==='live'?'音声と確認した会社情報をOpenAIに送信します。API利用料が発生します。':'音声認識と読み上げはブラウザのサービスを使います。音声が送られる場合があります。';
+}
+$('voice-conversation-mode').onchange=()=>{syncVoiceControls();if(voiceConversation.active||liveVoiceConversation.active){voiceConversation.stop();liveVoiceConversation.stop();}};
 
 $('voice-conversation-open').onclick=()=>{
   if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);

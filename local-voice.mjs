@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export class LocalVoice {
-  constructor(root,{python=process.env.REI_LOCAL_VOICE_PYTHON,model=process.env.REI_LOCAL_VOICE_MODEL,timeoutMs=120000}={}) {
+  constructor(root,{python=process.env.REI_LOCAL_VOICE_PYTHON||path.join(root,'../local-voice/python/bin/python3'),model=process.env.REI_LOCAL_VOICE_MODEL||path.join(root,'../local-voice/qwen-model'),timeoutMs=120000}={}) {
     Object.assign(this,{root,python,model,timeoutMs});
   }
   status(){return {configured:!!(this.python&&this.model&&existsSync(this.python)&&existsSync(path.join(this.model,'model.safetensors'))),ready:!!this.ready,busy:!!this.busy};}

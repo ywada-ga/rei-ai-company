@@ -128,4 +128,4 @@ session.input_transcript.delta/output_transcript.deltaを原文のまま字幕�
 
 司令室 → 既存の会社情報検索 → voice/local/speak → LocalVoice → 常駐Python/MLX Qwen → WAV → 再生。認証・同一送信元検査、所有者/管理者限定、500文字上限、1生成ずつ、120秒の期限、切断時の停止を適用。音声認識と検索担当AIは既存の構成を使用する。
 
-開発配置はREI_LOCAL_VOICE_PYTHONとREI_LOCAL_VOICE_MODEL。リクエストから実行ファイルやモデルを変更できない。Python/MLXとモデルの同梱、ライセンス通知、対応機種とメモリの確認は未完了。試用モデルはQwen3-TTS-12Hz-1.7B-CustomVoice-8bit（Apache-2.0）、mlx-audio（MIT）。
+開発配置はREI_LOCAL_VOICE_PYTHONとREI_LOCAL_VOICE_MODEL。リクエストから実行ファイルやモデルを変更できない。package-local-voice.mjsでPythonの標準ライブラリと音声依存だけを移し、同梱モデルのオフライン生成を確認した。設定がなければResources/local-voiceを使用する。依存ライセンス通知、別機種での確認、ピークメモリ計測は未完了。試用モデルはQwen3-TTS-12Hz-1.7B-CustomVoice-8bit（Apache-2.0）、mlx-audio（MIT）。

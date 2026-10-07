@@ -21,8 +21,12 @@ const api=async(route,data,token,expected=200)=>{
 try {
   for(let i=0;i<100&&!output.includes('REI Hub:');i++)await new Promise(resolve=>setTimeout(resolve,100));
   assert.match(output,/REI Hub:/);
+  const voiceModule=await fetch(`${base}/live-voice.js`);assert.equal(voiceModule.status,200);assert.match(await voiceModule.text(),/LiveVoiceConversation/);
   await api('setup/complete',{token:output.match(/\?setup=([^\s]+)/)[1],username:'owner',password:'knowledge-test-password'},undefined,201);
   await api('auth/login',{username:'owner',password:'knowledge-test-password'});
+  assert.equal((await api('voice/status')).configured,false);
+  await api('voice/settings',{apiKey:'sk-test-fixture-1234567890',consent:false},undefined,400);
+  await api('voice/session',{sdp:'v=0',consent:false},undefined,400);
   await api('knowledge/ask',{question:'決定事項は？'},undefined,409);
   const device=await api('devices/enroll',{label:'Synapse test',isPlanner:true},undefined,201);
   const mcp=await api('mcp/add',{label:'SynapseConnect',deviceId:device.device.id,url:'https://mcp.synapse-connect.ai/mcp',auth:'oauth'},undefined,201);
@@ -36,6 +40,8 @@ try {
   const settings={enabled:true,intervalHours:6,groups:groups.map(({id,name})=>({id,name}))};
   await api('knowledge/settings',{...settings,groups:[{id:'private',name:'個人記録'}]},undefined,400);
   await api('knowledge/settings',settings);
+  await api('voice/session',{sdp:'invalid',consent:true},undefined,400);
+  await api('voice/session',{sdp:'v=0',consent:true},undefined,409);
   await api('knowledge/ask',{question:'確認',context:[{question:'前の質問',answer:'x'.repeat(2001)}]},undefined,400);
   const context=[{question:'前の質問',answer:'前の回答は参考情報'}];
   const task=(await api('knowledge/ask',{question:'決定事項は？',context,voice:true},undefined,201)).task;
@@ -55,6 +61,9 @@ try {
   await api('setup/complete',{token:invite,username:'requester',password:'knowledge-test-password'},undefined,201);
   await api('auth/login',{username:'requester',password:'knowledge-test-password'});
   await api('knowledge/status',undefined,undefined,403);
+  await api('voice/status',undefined,undefined,403);
+  await api('voice/settings',{apiKey:'sk-test-fixture-1234567890',consent:true},undefined,403);
+  await api('voice/session',{sdp:'v=0',consent:true},undefined,403);
   await api(`tasks/detail/${task.id}`,undefined,undefined,403);
   await api(`tasks/events/${task.id}`,{beforeTime:Date.now()+1000,beforeId:task.id},undefined,403);
   assert.equal((await api('bootstrap')).tasks.some(item=>item.id===task.id),false);

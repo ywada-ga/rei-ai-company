@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import {VoiceConversation} from '../public/voice.js';
+import {VoiceConversation,spokenText,speechChunks,japaneseVoice} from '../public/voice.js';
+assert.deepEqual(speechChunks('予定は金曜日です。資料を先に準備しましょう。'),['予定は金曜日です。資料を先に準備しましょう。']);
+assert.equal(spokenText('予定は金曜日です。（記録ID: 7bb431f2-fe67-4490-9e66-bdf18c7c1f6b）'),'予定は金曜日です。');
+assert.equal(spokenText('費用は12,000円、期限は10/16です。'),'費用は12,000円、期限は10/16です。');
+const longSpeech='前半です。'+'準備、'.repeat(170)+'終わりです。';assert.equal(speechChunks(longSpeech).join(''),longSpeech);assert.ok(speechChunks(longSpeech).every(chunk=>Array.from(chunk).length<=380));
+assert.equal(japaneseVoice([{lang:'en-US',voiceURI:'en',default:true},{lang:'ja-JP',voiceURI:'ja'}]).voiceURI,'ja');
+assert.equal(japaneseVoice([{lang:'ja-JP',voiceURI:'one'},{lang:'ja-JP',voiceURI:'two',default:true}],'one').voiceURI,'one');
 const recordings=[],spoken=[];
 class Recognition{constructor(){recordings.push(this);}start(){this.started=true;}abort(){this.aborted=true;}}
 class Utterance{constructor(text){this.text=text;}}

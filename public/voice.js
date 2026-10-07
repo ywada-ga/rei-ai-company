@@ -1,3 +1,25 @@
+export function spokenText(value) {
+  return String(value).replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g,'$1')
+    .replace(/https?:\/\/\S+/g,'')
+    .replace(/(?:記録ID|出典ID|recordId)\s*[:：]?\s*[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}/gi,'')
+    .replace(/[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}/gi,'')
+    .replace(/[（(]\s*[）)]/g,'').replace(/[*`#]/g,'')
+    .replace(/^\s*[-・]\s+/gm,'').replace(/\s+/g,' ').trim();
+}
+export function speechChunks(value,max=380) {
+  const text=spokenText(value),parts=text.match(/[^。！？]+[。！？]*|[。！？]+/g)||[];
+  const chunks=[];let current='';
+  for(let part of parts) {
+    if(current&&Array.from(current+part).length>max){chunks.push(current);current='';}
+    while(Array.from(part).length>max){const characters=Array.from(part),head=characters.slice(0,max).join(''),comma=head.lastIndexOf('、');const cut=comma>max/2?Array.from(head.slice(0,comma+1)).length:max;chunks.push(characters.slice(0,cut).join(''));part=characters.slice(cut).join('');}
+    current+=part;
+  }
+  if(current)chunks.push(current);return chunks;
+}
+export function japaneseVoice(voices,preferred='') {
+  const available=voices.filter(voice=>/^ja(?:-|_)/i.test(voice.lang));
+  return available.find(voice=>voice.voiceURI===preferred)||available.find(voice=>voice.default)||available[0];
+}
 export class VoiceConversation {
   constructor({Recognition=globalThis.SpeechRecognition||globalThis.webkitSpeechRecognition,synthesis=globalThis.speechSynthesis,Utterance=globalThis.SpeechSynthesisUtterance,ask,onChange=()=>{},restartDelay=700,answerTimeoutMs=180000}) {
     Object.assign(this,{Recognition,synthesis,Utterance,ask,onChange,restartDelay,answerTimeoutMs});
@@ -56,13 +78,13 @@ export class VoiceConversation {
   }
   say(answer) {
     const epoch=++this.epoch;
-    const chunks=String(answer).match(/[^。！？\n]{1,220}[。！？\n]?/g)||[String(answer)];let index=0;
+    const chunks=speechChunks(answer);let index=0;
     this.emit('speaking');
     const next=()=>{
       if(!this.active||epoch!==this.epoch)return;
       if(index>=chunks.length){this.listen();return;}
-      const utterance=new this.Utterance(chunks[index++]);utterance.lang='ja-JP';utterance.rate=1;
-      const voice=this.synthesis.getVoices().find(item=>item.lang==='ja-JP');if(voice)utterance.voice=voice;
+      const utterance=new this.Utterance(chunks[index++]);utterance.lang='ja-JP';utterance.rate=1.02;
+      const voice=japaneseVoice(this.synthesis.getVoices(),this.voiceURI);if(voice)utterance.voice=voice;
       utterance.onend=next;utterance.onerror=()=>{if(this.active&&epoch===this.epoch)this.stop('読み上げを続けられませんでした。回答は会社の記憶の画面で確認できます。');};
       this.synthesis.speak(utterance);
     };

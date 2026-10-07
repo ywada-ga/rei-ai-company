@@ -11,6 +11,7 @@ import { departments, event, createTask, cancellable, cancelTask, retryPlan, cla
 import { knowledgeSettings, saveKnowledgeSettings, scanQuestion, knowledgeContext } from './intelligence.mjs';
 import { knowledgeDevice, queueKnowledge, scanKnowledgeIfDue } from './knowledge-service.mjs';
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
+import {liveVoiceStatus,configureLiveVoice,LiveVoiceSessions} from './live-voice.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
 import { searchMarketplaceSkills } from './skill-marketplace.mjs';
 import { createBackup, createBackupIfDue } from './backup.mjs';
@@ -20,6 +21,7 @@ import { startLanGateway } from './lan.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const db=openStorage(root);
+const liveVoiceSessions=new LiveVoiceSessions();
 const port=Number(process.env.REI_PORT||4178);
 const host=process.env.REI_HOST||'127.0.0.1';
 if(host!=='127.0.0.1'&&host!=='::1'&&process.env.REI_ALLOW_INSECURE_LAN!=='1') throw new Error('外部待受には暗号化したトンネルを使用してください。直接LANに公開する場合はREI_ALLOW_INSECURE_LAN=1が必要です');
@@ -145,6 +147,22 @@ async function api(req,res,route) {
     const tasks=recent.slice(0,100).map(task=>taskJson(task,true));
     const humanPending=all(db,"SELECT DISTINCT parent_id FROM tasks WHERE kind='human' AND status IN ('waiting_human','waiting_reply','sending') AND parent_id IS NOT NULL ORDER BY created_at DESC LIMIT 100").map(item=>item.parent_id);
     return send(res,200,{user,departments,workers,tasks,hasOlderTasks:recent.length>100,projects:projects(),humanPending,gateway:{reachable:readyConnector(),version:reiVersion,agent:'rei'}});
+  }
+  if(route.startsWith('voice/')) {
+    if(!['owner','admin'].includes(user.role))return error(res,403,'音声会話は所有者・管理者が利用できます');
+    if(route==='voice/status'&&req.method==='GET')return send(res,200,liveVoiceStatus(db,root));
+    if(route==='voice/settings'&&req.method==='POST'){
+      if(user.role!=='owner')return error(res,403,'所有者だけが音声APIを設定できます');
+      const status=configureLiveVoice(db,root,await body(req));event(db,null,user.username,'voice_settings','自然な音声会話の接続情報を保存');return send(res,200,status);
+    }
+    if(route==='voice/session'&&req.method==='POST'){
+      const input=await body(req);if(input.consent!==true)return error(res,400,'音声API料金と情報の送信を確認してください');
+      if(!knowledgeSettings(db).groups.length)return error(res,409,'会社の検索範囲を先に設定してください');
+      const session=await liveVoiceSessions.create(db,root,user.id,input.sdp);
+      if(res.destroyed){await liveVoiceSessions.close(user.id,session.id);return;}
+      return send(res,201,session);
+    }
+    if(route==='voice/end'&&req.method==='POST'){const input=await body(req);return send(res,200,await liveVoiceSessions.close(user.id,text(input.id,200)));}
   }
   if(route.startsWith('knowledge/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'会社の記憶は所有者・管理者が利用できます');
@@ -399,7 +417,7 @@ async function api(req,res,route) {
   if(route==='chatwork/poll'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'権限がありません');return send(res,200,await pollChatwork(db,root));}
   return error(res,404,'APIが見つかりません');
 }
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/live-voice.js':'live-voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
   try {

@@ -117,3 +117,9 @@ public/voice.jsは聞き取り・調査中・読み上げ・待機・エラー�
 会社情報の工程はOpenClaw agent --localを使う。GatewayへのRPC待ちを避け、同梱版でも現在の担当AIのモデル・認証設定を使って実行する。会社情報はlowの思考設定で実行し、台帳90秒、音声150秒、文章・スキャン240秒で終了させる。版と選択した制限時間、処理時間をログに残す。結果はGateway形式（result.payloads）とローカル形式（payloads）の両方を読み、どちらもabortedを拒否する。通常の仕事の実行経路は従来のものを維持する。
 
 Macの常駐処理はmacos-runtime.mjsで同梱Node.jsを保存領域のruntimeへコピーして使う。SHA-256で同梱元と照合し、不一致・リンク・不正な保存先を上書きしない。アプリ内の実行ファイルを常駐させた場合にOpenClawが停止する環境で、アプリ外の同一バイナリによる実行を確認した。起動時の修復判定も保存した実行環境を参照する。
+
+## 自然な音声会話（GPT-Live）
+
+方式を選んだ場合だけpublic/live-voice.jsがWebRTCでマイクと遠隔の音声を扱う。Hubのlive-voice.mjsが認証済み所有者・管理者のSDPをOpenAIの/v1/live/sessionsへ渡す。モデルはgpt-live-1、store:false、delegation.type:client。APIキーはAES-256-GCMと保存領域のvoice.keyで暗号化し、所有者だけが変更できる。キーはブラウザ・ログに返さない。providerのセッションIDはHubに保持し、利用者本人の終了要求と5分タイマーでhangupを要求する。接続失敗・キー不正では標準の読み上げに勝手に切り替えず、明示的な状態を表示する。
+
+session.input_transcript.delta/output_transcript.deltaを原文のまま字幕へ足し、時刻情報と限定した会話文脈を保持する。session.delegation.createdを受けたときだけ既存の会社情報APIへ質問し、確定した回答と未確認をsession.commentary.appendで返す。送信済みの会社情報の質問・出典はHubに保存される。雑談の字幕はこの画面のメモリーに表示し、REIは音声そのものを保存しない。アクセス制約と読み取り方針は検索担当の既存処理に適用する。音声モデル自身の事実の断定防止は指示であり、全文の音声生成前の検閲は行っていない。APIキーなしでの模擬試験のみ実施済みで、実際の接続・日本語音声品質・割り込み・遅い転記の話題追従は利用者の認証後に実機確認が必要。

@@ -47,7 +47,7 @@ def main():
                 mx.random.seed(42)
                 for result in model.generate(
                     text.strip(), voice='Ono_Anna', lang_code='Japanese',
-                    instruct='親しい同僚に話すような、落ち着いた自然な日本語。単語ごとに区切らず、滑らかに話してください。',
+                    instruct='Speak Japanese in a mature, confident professional female voice with a comfortably low pitch. Use clear, crisp articulation and a brisk, steady conversational pace. Keep intonation restrained and finish sentences decisively. Sound composed and capable, like an experienced executive assistant giving a concise briefing. Link words smoothly in natural standard Japanese.',
                     stream=True, streaming_interval=0.5, max_tokens=500, verbose=False,
                 ):
                     if first is None:

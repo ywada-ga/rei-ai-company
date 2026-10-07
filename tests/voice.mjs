@@ -21,4 +21,9 @@ voice.start();recordings.at(-1).onerror({error:'not-allowed'});assert.equal(voic
 const complete=new VoiceConversation({Recognition,Utterance,synthesis,ask:async()=> '回答です。',onChange:()=>{}});complete.start();const rec=recordings.at(-1);rec.onresult({results:[result]});rec.onend();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(complete.phase,'speaking');spoken.at(-1).onend();assert.equal(complete.phase,'listening');complete.stop();
 voice.start();const ending=recordings.at(-1),endResult=[{transcript:'会話を終了して'}];endResult.isFinal=true;const callsBeforeEnd=calls;ending.onresult({results:[endResult]});ending.onend();assert.equal(voice.active,false);assert.equal(calls,callsBeforeEnd);
 assert.throws(()=>new VoiceConversation({Recognition:null,synthesis:null,Utterance:null,ask:()=>{}}).start(),/Chrome/);
+let timedOutSignal,late;
+const bounded=new VoiceConversation({Recognition,Utterance,synthesis,answerTimeoutMs:15,ask:async(q,c,signal)=>{timedOutSignal=signal;return new Promise(resolve=>late=resolve);}});
+bounded.start();const boundedRec=recordings.at(-1);boundedRec.onresult({results:[result]});boundedRec.onend();
+await new Promise(resolve=>setTimeout(resolve,25));assert.equal(bounded.active,false);assert.equal(bounded.phase,'error');assert.equal(timedOutSignal.aborted,true);
+const spokenAtTimeout=spoken.length;late('期限後の回答');await new Promise(resolve=>setTimeout(resolve,0));assert.equal(spoken.length,spokenAtTimeout);
 console.log('PASS voice turn-taking, interruption, context, permission failure, and late-response suppression');

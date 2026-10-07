@@ -116,9 +116,10 @@ function runOpenClaw(agent,job,devices) {
   return new Promise((resolve,reject)=>{
     const knowledge=!!job.knowledge_mode&&job.knowledge_mode!=='work';
     const key=knowledge?`agent:${agent}:rei-memory-${Date.now()}`:`agent:${agent}:rei-${job.kind}-${job.id}`;
-    console.log(`OpenClaw実行: ${JSON.stringify({kind:job.kind,knowledgeMode:job.knowledge_mode||null,local:!!job.knowledge_mode&&job.knowledge_mode!=='work',runtime:process.execPath})}`);
-    const timeout=knowledge?(job.knowledge_mode==='catalog'||job.knowledge_voice?90:240):jobTimeout;
-    const child=spawnOpenClaw(agent,key,instruction,timeout,{local:knowledge,...(job.knowledge_voice||job.knowledge_mode==='catalog'?{thinking:'low'}:{})});
+    const timeout=knowledge?(job.knowledge_mode==='catalog'?90:job.knowledge_voice?150:240):jobTimeout;
+    const started=Date.now();
+    console.log(`OpenClaw実行: ${JSON.stringify({version:reiVersion,kind:job.kind,knowledgeMode:job.knowledge_mode||null,voice:!!job.knowledge_voice,local:knowledge,timeoutSeconds:timeout,runtime:process.execPath})}`);
+    const child=spawnOpenClaw(agent,key,instruction,timeout,{local:knowledge,...(knowledge?{thinking:'low'}:{})});
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     let out='',err='',timedOut=false,killTimer;
@@ -126,7 +127,7 @@ function runOpenClaw(agent,job,devices) {
     child.stdout.on('data',chunk=>{out+=chunk;if(out.length>2_000_000)stopOpenClaw(child);});
     child.stderr.on('data',chunk=>{err+=chunk;if(err.length>100_000)stopOpenClaw(child);});
     child.on('error',e=>{clearTimeout(timer);clearTimeout(killTimer);reject(e);});
-    child.on('close',code=>{clearTimeout(timer);clearTimeout(killTimer);if(timedOut)return reject(new Error(`OpenClawが${timeout}秒以内に完了しませんでした`));if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
+    child.on('close',code=>{clearTimeout(timer);clearTimeout(killTimer);console.log(`OpenClaw終了: ${JSON.stringify({version:reiVersion,code,timedOut,durationMs:Date.now()-started,outputBytes:Buffer.byteLength(out)})}`);if(timedOut)return reject(new Error(`OpenClawが${timeout}秒以内に完了しませんでした`));if(code!==0)return reject(new Error(`OpenClaw終了コード ${code}: ${err.slice(-500)}`));try{resolve(parseOpenClawResult(out));}catch(e){reject(e);}});
   });
 }
 async function main() {
@@ -165,7 +166,7 @@ async function main() {
     console.log(`${item.taskId}: ${ack.needsReview?'遅れて届いた結果を保存。実施状況の確認が必要':ack.alreadyRecorded?'保存済みの結果を再送':'報告完了'}`);
     const remaining=pending.slice(1);savePending(remaining);pending=remaining;
   }
-  console.log(`REI Connector: ${config.hub} / agent=${config.agent}`);
+  console.log(`REI Connector: ${config.hub} / agent=${config.agent} / version=${reiVersion}`);
   while(true) {
     try {
       if(Date.now()-lastHeartbeat>15000) {

@@ -1,6 +1,6 @@
 export class VoiceConversation {
-  constructor({Recognition=globalThis.SpeechRecognition||globalThis.webkitSpeechRecognition,synthesis=globalThis.speechSynthesis,Utterance=globalThis.SpeechSynthesisUtterance,ask,onChange=()=>{},restartDelay=700}) {
-    Object.assign(this,{Recognition,synthesis,Utterance,ask,onChange,restartDelay});
+  constructor({Recognition=globalThis.SpeechRecognition||globalThis.webkitSpeechRecognition,synthesis=globalThis.speechSynthesis,Utterance=globalThis.SpeechSynthesisUtterance,ask,onChange=()=>{},restartDelay=700,answerTimeoutMs=180000}) {
+    Object.assign(this,{Recognition,synthesis,Utterance,ask,onChange,restartDelay,answerTimeoutMs});
     this.active=false;this.phase='idle';this.epoch=0;this.history=[];this.transcript='';this.answer='';this.emptyTurns=0;
   }
   get supported(){return !!(this.Recognition&&this.synthesis&&this.Utterance);}
@@ -12,7 +12,7 @@ export class VoiceConversation {
     this.listen();
   }
   stop(message='') {
-    this.active=false;this.epoch++;clearTimeout(this.restartTimer);this.controller?.abort();
+    this.active=false;this.epoch++;clearTimeout(this.restartTimer);clearTimeout(this.answerTimer);clearTimeout(this.progressTimer);this.controller?.abort();
     if(this.recognition){this.recognition.onend=null;this.recognition.onerror=null;try{this.recognition.abort();}catch{}this.recognition=null;}
     this.synthesis?.cancel();this.emit(message?'error':'idle',message);
   }
@@ -44,12 +44,15 @@ export class VoiceConversation {
   }
   async respond(question,epoch) {
     this.transcript=question;this.emit('thinking');this.controller=new AbortController();
+    const progressTimer=this.progressTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.emit('thinking','情報源を確認しています。回答まで1〜2分かかる場合があります。');},20000);
+    const answerTimer=this.answerTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.stop('回答の確認に時間がかかっています。会社の記憶の画面で結果を確認し、会話を再開してください。');},this.answerTimeoutMs);
     try {
       const answer=await this.ask(question,this.history.slice(-3),this.controller.signal);
       if(!this.active||epoch!==this.epoch)return;
       this.answer=String(answer);this.history.push({question,answer:this.answer.slice(0,2000)});
       this.history=this.history.slice(-3);this.say(this.answer);
     } catch(error){if(this.active&&epoch===this.epoch)this.stop(error.message||'回答を確認できませんでした。');}
+    finally {clearTimeout(answerTimer);clearTimeout(progressTimer);}
   }
   say(answer) {
     const epoch=++this.epoch;

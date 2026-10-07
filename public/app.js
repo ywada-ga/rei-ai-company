@@ -519,7 +519,7 @@ function renderVoiceChannel() {
   const last=turns.at(-1);
   if(voiceDisplay.transcript&&(!last||last.question!==voiceDisplay.transcript||voiceDisplay.phase==='thinking'||voiceDisplay.phase==='listening'))turns.push({question:voiceDisplay.transcript,answer:voiceDisplay.phase==='thinking'?'会社の記憶を確認しています…':voiceDisplay.phase==='listening'?'聞いています…':voiceDisplay.answer});
   const block=document.createElement('div');block.dataset.voiceChannel='true';
-  block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会社の記憶</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
+  block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会話</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
 }
 async function askCompany(question,context,signal,fullReport=false) {
   if(!fullReport){
@@ -576,7 +576,7 @@ $('voice-conversation-open').onclick=()=>{
   if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);
   setView('core');$('voice-conversation-screen').classList.remove('hidden');$('voice-conversation-start').focus();$('voice-conversation-start').disabled=true;
   if(!currentVoice().supported)$('voice-conversation-status').textContent='このブラウザは音声会話に対応していません。ChromeでREIを開いてください。';
-  void Promise.all([loadKnowledge(),loadLocalVoiceStatus()]).then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message).finally(()=>{$('voice-conversation-start').disabled=voiceConversation.active||!localVoiceAvailable;});
+  void Promise.all([loadKnowledge(),loadLocalVoiceStatus()]).then(()=>{if(!voiceConversation.active)$('voice-conversation-status').textContent=state.knowledge?.settings.groups.length?'準備できました。「会話を開始」で話しかけてください。':'準備できました。会社の質問には「検索範囲・情報源」で共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message).finally(()=>{$('voice-conversation-start').disabled=voiceConversation.active||!localVoiceAvailable;});
 };
 $('voice-conversation-start').onclick=()=>{try{replyVoiceController?.abort();voiceConversation.start();}catch(error){$('voice-conversation-status').textContent=error.message;}};
 $('voice-conversation-stop').onclick=()=>currentVoice().stop();

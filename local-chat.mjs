@@ -12,7 +12,7 @@ export class LocalChat {
     if(this.starting)return this.starting;
     if(!this.status().configured)throw Object.assign(new Error('会話AIの準備ができていません'),{status:503});
     this.starting=new Promise((resolve,reject)=>{
-      const child=this.child=spawn(this.python,[path.join(this.root,'local-chat-worker.py'),this.model],{stdio:['pipe','pipe','ignore'],env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
+      const child=this.child=spawn(this.python,[path.join(this.root,'local-chat-worker.py'),this.model],{stdio:['pipe','pipe','ignore'],env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1',PYTHONDONTWRITEBYTECODE:'1'}});
       let buffer='';const timer=setTimeout(()=>{this.close();reject(new Error('会話AIの準備に時間がかかっています'));},this.timeoutMs);
       const failed=()=>{clearTimeout(timer);if(this.child===child){this.close();reject(new Error('会話AIを起動できませんでした'));}};
       child.on('error',failed);child.on('exit',failed);

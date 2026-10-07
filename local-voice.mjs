@@ -14,7 +14,7 @@ export class LocalVoice {
     if(this.starting)return this.starting;
     if(!this.status().configured)throw Object.assign(new Error('ローカル音声の準備ができていません'),{status:503});
     this.starting=new Promise((resolve,reject)=>{
-      const child=this.child=spawn(this.python,[path.join(this.root,'local-tts-worker.py'),this.model],{stdio:['pipe','pipe','ignore'],env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
+      const child=this.child=spawn(this.python,[path.join(this.root,'local-tts-worker.py'),this.model],{stdio:['pipe','pipe','ignore'],env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1',PYTHONDONTWRITEBYTECODE:'1'}});
       let buffer='';const timer=setTimeout(()=>{this.close();reject(new Error('ローカル音声の起動に時間がかかっています'));},this.timeoutMs);
       const failed=()=>{clearTimeout(timer);if(this.child===child){this.close();reject(new Error('ローカル音声を起動できませんでした'));}};
       child.on('error',failed);child.on('exit',failed);

@@ -47,7 +47,7 @@ def main():
                 mx.random.seed(42)
                 for result in model.generate(
                     text.strip(), voice='Ono_Anna', lang_code='Japanese',
-                    instruct='Speak fluent standard Japanese in a mature, confident professional female voice. Use clear, crisp articulation and a brisk conversational pace, with smooth connected phrasing and short natural pauses. Sound composed, capable and attentive, like an experienced executive assistant. Keep intonation restrained and finish sentences decisively. Use your natural vocal register and avoid a cute or breathy delivery.',
+                    instruct='Speak fluent standard Japanese in a mature, confident professional female voice. Sound like an attentive, capable colleague in a real conversation. Use clear articulation, a brisk natural pace, smooth connected phrasing and short conversational pauses. Match the meaning of the text: warm and responsive in casual conversation, composed and precise for work or serious topics. When the text contains ふふ, express it as a brief, subtle natural chuckle and smoothly continue the sentence. Give short acknowledgements natural conversational intonation. Use your natural vocal register; avoid a cute, breathy or exaggerated performance.',
                     stream=True, streaming_interval=0.5, max_tokens=500, verbose=False,
                 ):
                     if first is None:

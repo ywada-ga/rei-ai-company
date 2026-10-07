@@ -586,6 +586,13 @@ try {
   assert.ok(older.tasks.length>0);
   assert.equal(new Set([...latest.tasks,...older.tasks].map(task=>task.id)).size,latest.tasks.length+older.tasks.length);
   assert.equal((await api(`tasks/detail/${latest.tasks[0].id}`)).task.result.length,6000);
+  const followup=await api('command',{text:'それをもっと短くして',department:'operations',projectId:project.id});
+  const contextDb=new DatabaseSync(path.join(data,'rei.sqlite'));
+  const contextRows=contextDb.prepare('SELECT knowledge_context FROM tasks WHERE id=? OR parent_id=?').all(followup.task.id,followup.task.id);
+  assert.equal(contextRows.length,2);
+  for(const row of contextRows){const turns=JSON.parse(row.knowledge_context);assert.ok(turns.length>0);assert.ok(turns.length<=3);assert.ok(turns.every(turn=>turn.question&&turn.answer&&turn.answer.length<=2000));}
+  contextDb.close();
+  console.log('PASS command follow-up context stored for root and planner');
   console.log('PASS setup/login/enroll/plan/dispatch/result/report');
 } catch(error) {
   console.error(`Integration test failed at ${lastRequest}; Hub exit=${child.exitCode??'running'} signal=${child.signalCode??'none'}; Hub output: ${output.slice(-4000)}`);

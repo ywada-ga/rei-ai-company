@@ -256,7 +256,7 @@ function renderProjects() {
   const projects=state.data.projects||[];
   if(projects.length&&!projects.some(project=>project.id===state.selectedProject))state.selectedProject=projects[0].id;
   const select=$('command-project'),selected=select.value;
-  select.innerHTML='<option value="">単発の依頼</option>'+projects.filter(project=>project.status==='active').map(project=>`<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join('');
+  select.innerHTML='<option value="">REIとの会話</option>'+projects.filter(project=>project.status==='active').map(project=>`<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join('');
   select.value=projects.some(project=>project.id===selected&&project.status==='active')?selected:'';
   $('project-form').classList.toggle('hidden',!['owner','admin'].includes(state.data.user.role));
   $('project-total').textContent=`${String(projects.length).padStart(2,'0')} PROJECTS`;
@@ -564,7 +564,7 @@ $('voice-conversation-open').onclick=()=>{
   if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);
   setView('core');$('voice-conversation-screen').classList.remove('hidden');$('voice-conversation-start').focus();$('voice-conversation-start').disabled=true;
   if(!currentVoice().supported)$('voice-conversation-status').textContent='このブラウザは音声会話に対応していません。ChromeでREIを開いてください。';
-  void Promise.all([loadKnowledge(),loadLiveVoiceStatus()]).then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message);
+  void Promise.all([loadKnowledge(),loadLiveVoiceStatus()]).then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message).finally(()=>{$('voice-conversation-start').disabled=voiceConversation.active||liveVoiceConversation.active;});
 };
 function updateVoiceChoices() {
   const select=$('voice-conversation-voice'),selected=select.value;
@@ -584,35 +584,36 @@ $('voice-conversation-knowledge').onclick=()=>{closeVoiceConversation();setView(
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('voice-conversation-screen').classList.contains('hidden'))closeVoiceConversation();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&currentVoice().active)currentVoice().stop('画面を離れたため音声会話を停止しました。戻ってから再開できます。');});
 window.addEventListener('pagehide',()=>{voiceConversation.stop();liveVoiceConversation.stop();});
-function speak(text) {
+let replyVoiceController;
+async function speak(text) {
   if(voiceConversation.active||liveVoiceConversation.active)return;
-
-  if (!('speechSynthesis' in window)) return feedback('このブラウザでは音声応答を利用できません', true);
-  window.speechSynthesis.cancel();
-  for(const chunk of speechChunks(String(text).slice(0,800))) {
-    const utterance=new SpeechSynthesisUtterance(chunk);utterance.lang='ja-JP';utterance.rate=1.02;
-    const voice=japaneseVoice(window.speechSynthesis.getVoices(),voiceConversation.voiceURI);if(voice)utterance.voice=voice;
-    window.speechSynthesis.speak(utterance);
-  }
+  replyVoiceController?.abort();replyVoiceController=new AbortController();
+  const signal=replyVoiceController.signal;
+  try {
+    const local=await request('/api/voice/local/status',{signal});
+    if(local.configured){
+      for(const chunk of speechChunks(text,380)){if(signal.aborted)return;feedback('Qwenで返答を読み上げています');await playLocalVoice(chunk,signal,request);}
+      if(!signal.aborted)feedback('返答を読み上げました。続けて話しかけてください');return;
+    }
+    if(!('speechSynthesis' in window))throw new Error('音声応答を利用できません');
+    window.speechSynthesis.cancel();
+    for(const chunk of speechChunks(text)) {
+      const utterance=new SpeechSynthesisUtterance(chunk);utterance.lang='ja-JP';utterance.rate=1.02;
+      const voice=japaneseVoice(window.speechSynthesis.getVoices(),voiceConversation.voiceURI);if(voice)utterance.voice=voice;
+      window.speechSynthesis.speak(utterance);
+    }
+  }catch(error){if(!signal.aborted)feedback(`読み上げ: ${error.message}`,true);}
 }
 $('voice-output').onclick = () => {
   if (!('speechSynthesis' in window)) return feedback('このブラウザでは音声応答を利用できません', true);
   state.voiceOn = !state.voiceOn;
   $('voice-output').textContent = `音声応答 ${state.voiceOn ? 'ON' : 'OFF'}`;
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
-  if (!state.voiceOn) window.speechSynthesis.cancel();
+  if (!state.voiceOn) {replyVoiceController?.abort();window.speechSynthesis.cancel();}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
 };
-$('voice-button').onclick = () => {
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) return feedback('このブラウザでは音声入力を利用できません', true);
-  const recognizer = new Recognition();
-  recognizer.lang = 'ja-JP';
-  recognizer.interimResults = false;
-  recognizer.onresult = event => { $('command-input').value = event.results[0][0].transcript; feedback('音声を入力しました。内容を確認して送信してください。'); };
-  recognizer.onerror = event => feedback(`音声入力を完了できません: ${event.error}`, true);
-  try { recognizer.start(); feedback('音声を聞いています...'); } catch { feedback('音声入力を開始できません', true); }
-};
+$('voice-button').onclick = () => $('voice-conversation-open').click();
+$('voice-preview').onclick=()=>{void speak('こんにちは、レイです。この画面のまま、続けて話せます。');};
 function showAuth() {
   const setupToken = new URLSearchParams(location.search).get('setup');
   state.authEpoch++;

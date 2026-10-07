@@ -239,7 +239,8 @@ async function api(req,res,route) {
     if(/今日.{0,12}(稼働|活動).{0,8}報告/.test(message)) {const data=report(db);data.gateway={reachable:readyConnector()};return send(res,200,{kind:'report',report:data});}
     if(projectId&&!one(db,"SELECT id FROM projects WHERE id=? AND status='active'",projectId))return error(res,400,'稼働中のプロジェクトを選んでください');
     if(skillId){const skill=one(db,'SELECT department FROM playbooks WHERE id=?',skillId);if(!skill||skill.department!=='all'&&skill.department!==department)return error(res,400,'このセクションで使えるスキルを選んでください');}
-    const task=createTask(db,message,department,user.id,user.role==='requester',projectId,skillId);
+    const context=all(db,"SELECT text,result FROM tasks WHERE kind='root' AND knowledge_mode='work' AND created_by=? AND department=? AND project_id IS ? AND status='completed' ORDER BY created_at DESC,id DESC LIMIT 3",user.id,department,projectId).reverse().map(turn=>({question:turn.text.slice(0,4000),answer:turn.result.slice(0,2000)}));
+    const task=createTask(db,message,department,user.id,user.role==='requester',projectId,skillId,context);
     return send(res,201,{kind:'task',task:taskJson(task)});
   }
   if(route==='projects/create'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'プロジェクトを作成する権限がありません');const data=await body(req),name=text(data.name,80),objective=text(data.objective,2000),id=uid(),now=Date.now();transaction(db,()=>{run(db,'INSERT INTO projects(id,name,objective,created_at,updated_at) VALUES(?,?,?,?,?)',id,name,objective,now,now);event(db,null,user.username,'project_created',name);});return send(res,201,{project:projectJson(one(db,'SELECT * FROM projects WHERE id=?',id))});}

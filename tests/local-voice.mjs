@@ -25,3 +25,11 @@ conversation.say('返答');conversation.interrupt();assert.equal(listenCount,1);
 late();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(listenCount,1,'late playback must not restart interrupted recognition');
 conversation.say('次の返答');conversation.stop();late();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(listenCount,1);
 console.log('PASS local playback abort, cleanup, completion and late-result suppression');
+
+let chunks=[];
+conversation.localSpeak=async text=>{assert.ok(Array.from(text).length<=380);chunks.push(text);};
+conversation.active=true;conversation.say('長い回答です。'.repeat(100));
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.ok(chunks.length>1);assert.equal(chunks.join(''),'長い回答です。'.repeat(100));
+assert.equal(listenCount,2,'recognition resumes once after the entire answer');
+console.log('PASS long Qwen answers and return to listening');

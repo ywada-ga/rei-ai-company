@@ -29,7 +29,7 @@ export class VoiceConversation {
   emit(phase,message=''){this.phase=phase;this.onChange({active:this.active,phase,message,transcript:this.transcript,answer:this.answer});}
   start() {
     if(!this.supported)throw new Error('このブラウザは音声会話に対応していません。ChromeでREIを開いてください。');
-    this.stop();this.active=true;this.history=[];this.transcript='';this.answer='';this.emptyTurns=0;
+    this.stop();this.active=true;this.transcript='';this.answer='';this.emptyTurns=0;
     this.synthesis.speak(new this.Utterance(''));
     this.listen();
   }
@@ -59,7 +59,6 @@ export class VoiceConversation {
       this.recognition=null;
       if(/^(?:会話を終了(?:して)?|音声会話を終了(?:して)?|会話終了|終わり)[。！]?$/u.test(question))this.stop();
       else if(question){this.emptyTurns=0;void this.respond(question,epoch);}
-      else if(++this.emptyTurns>=5)this.stop('音声がしばらく入らなかったため待機に戻りました。「会話を開始」で再開できます。');
       else this.restartTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.listen();},this.restartDelay);
     };
     try{recognition.start();}catch{this.stop('音声認識を開始できませんでした。マイクを使っている別の会話を終了して再開してください。');}
@@ -80,9 +79,10 @@ export class VoiceConversation {
     const epoch=++this.epoch;
     if(this.localSpeak){
       this.controller=new AbortController();this.emit('speaking','声を準備しています');
-      void this.localSpeak(spokenText(answer),this.controller.signal).then(()=>{
+      const signal=this.controller.signal;
+      void (async()=>{for(const chunk of speechChunks(answer,380)){if(signal.aborted)return;await this.localSpeak(chunk,signal);}})().then(()=>{
         if(this.active&&epoch===this.epoch)this.listen();
-      }).catch(()=>{if(this.active&&epoch===this.epoch)this.stop('音声を再生できませんでした。回答は会話欄で確認できます。');});
+      }).catch(error=>{if(this.active&&epoch===this.epoch){this.emit('speaking',error.message||'音声を再生できませんでした');this.restartTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.listen();},1500);}});
       return;
     }
     const chunks=speechChunks(answer);let index=0;

@@ -13,11 +13,12 @@ export const departments=[
   {id:'people',name:'人との連携',detail:'Chatworkでの依頼と返答'}
 ];
 export function event(db,taskId,actor,type,detail='') {run(db,'INSERT INTO events(id,task_id,actor,type,detail,created_at) VALUES(?,?,?,?,?,?)',id(),taskId,actor,type,detail,now());}
-export function createTask(db,text,department,userId,requiresApproval=false,projectId=null,skillId=null) {
+export function createTask(db,text,department,userId,requiresApproval=false,projectId=null,skillId=null,context=[]) {
   return transaction(db,()=>{
     const root=id(),plan=id(),time=now();
     run(db,'INSERT INTO tasks(id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?)',root,'root',text,department,requiresApproval?'approval_pending':'planning',userId,time,projectId,skillId);
     run(db,'INSERT INTO tasks(id,parent_id,kind,text,department,status,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?,?)',plan,root,'plan',text,department,requiresApproval?'blocked':'ready',userId,time,projectId,skillId);
+    run(db,'UPDATE tasks SET knowledge_context=? WHERE id=? OR id=?',JSON.stringify(context),root,plan);
     event(db,root,'user','created',text.slice(0,200));
     return one(db,'SELECT * FROM tasks WHERE id=?',root);
   });
@@ -175,6 +176,7 @@ export function finishJob(db,device,input) {
       for(const step of steps) {
         const child=id();
         run(db,'INSERT INTO tasks(id,parent_id,kind,text,department,status,device_id,created_by,created_at,project_id,skill_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)',child,root.id,step.kind,step.text,step.department,step.kind==='human'?'waiting_human':'ready',step.device_id,root.created_by,now(),root.project_id,step.department===root.department?root.skill_id:null);
+        run(db,'UPDATE tasks SET knowledge_context=? WHERE id=?',root.knowledge_context||'[]',child);
         event(db,child,'rei','queued',step.kind==='human'?'人への依頼待ち':'端末へ割当');
       }
       run(db,"UPDATE tasks SET status='running',started_at=? WHERE id=?",now(),root.id);

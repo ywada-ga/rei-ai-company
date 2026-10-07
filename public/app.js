@@ -2,6 +2,14 @@ import {playLocalVoice,playLocalReply} from './local-voice.js';
 import { VoiceConversation, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
+let conversationTurns=[];
+let conversationHistoryLoaded=false;
+function renderConversation(){
+  const feed=$('mission-feed');feed.querySelector('[data-conversation-channel]')?.remove();
+  if(!conversationTurns.length)return;
+  const block=document.createElement('div');block.dataset.conversationChannel='true';
+  block.innerHTML=conversationTurns.slice(-3).reverse().map(turn=>`<div class="exchange"><div class="exchange-user"><small>YOU / 会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会話</small><p>${escapeHtml(turn.answer)}</p></div></div>`).join('');feed.prepend(block);
+}
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
 const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectWorkQuery:'', projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbookDepartment:'all', skillPane:'library', playbooksRequest:0, selectedPlaybook:null, selectedCommandSkill:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'', knowledge:null, knowledgeRequest:0, selectedKnowledge:null, knowledgeSettingsDirty:false, knowledgeFormSignature:'' };
@@ -91,6 +99,10 @@ function setView(view) {
 }
 async function refresh() {
   const epoch=state.authEpoch;
+  if(!conversationHistoryLoaded&&['owner','admin'].includes(state.data?.user.role)){
+    conversationHistoryLoaded=true;
+    void request('/api/conversation/history').then(data=>{if(epoch===state.authEpoch&&!conversationTurns.length){conversationTurns=data.turns;renderConversation();}}).catch(()=>{});
+  }
   try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; if(state.view==='knowledge')void loadKnowledge(); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='projects')void loadProjectWork(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
   catch (error) { if(epoch!==state.authEpoch||error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
@@ -122,6 +134,7 @@ function render() {
     return `<div class="unit-row"><span class="unit-glyph ${connected ? 'online' : ''}">${worker.kind === '人' ? '♧' : worker.kind === '端末' ? '▣' : '✳'}</span><span><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.pendingResults?`結果送信待ち ${worker.pendingResults}件`:worker.version!==gateway.version?`REI ${worker.version||'版未報告'} · 更新が必要`:worker.agentName?`OpenClaw: ${worker.agentName}`:worker.machine)}</small></span><i class="unit-led ${connected ? 'online' : ''}"></i></div>`;
   }).join('');
   renderVoiceChannel();
+  renderConversation();
   renderFocus();
   renderMissions();
   renderProjects();
@@ -410,6 +423,13 @@ $('command-form').onsubmit = async event => {
   button.disabled = true;
   feedback('REIに伝えています...');
   try {
+    if(['owner','admin'].includes(state.data?.user.role)&&!state.selectedCommandSkill&&!$('command-project').value){
+      const response=await request('/api/conversation/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:text})});
+      conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
+      input.value='';await refresh();renderConversation();
+      if(response.task){state.selectedTask=response.task.id;state.taskDetail=null;setView('missions');feedback('依頼内容を確認して承認してください');}else feedback('REIから返答が届きました');
+      if(state.voiceOn)void speak(response.answer);return;
+    }
     const result = await request('/api/command', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-AI-Company':'1' }, body:JSON.stringify({ text, department:state.selectedDepartment || 'operations', projectId:$('command-project').value||null,skillId:state.selectedCommandSkill?.id||null }) });
     input.value = '';
     commandSkill(null);
@@ -502,6 +522,11 @@ function renderVoiceChannel() {
   block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会社の記憶</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
 }
 async function askCompany(question,context,signal,fullReport=false) {
+  if(!fullReport){
+    const result=await request('/api/conversation/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,context}),signal});
+    if(result.task){state.pendingReplyTaskId=result.task.id;void refresh();}
+    return spokenText(result.answer);
+  }
   if(/^(?:こんにちは|こんばんは|おはよう(?:ございます)?|よろしく(?:お願いします)?)[。！]?$/u.test(question))return fullReport?{status:'local',answer:'こんにちは。REIです。会社のことや、次に準備することを聞いてください。',uncertainties:[]}: 'こんにちは。REIです。会社のことや、次に準備することを聞いてください。';
   const current=await request('/api/knowledge/status',{signal});
   const scope=JSON.stringify(current.settings.groups);
@@ -528,7 +553,7 @@ async function askCompany(question,context,signal,fullReport=false) {
   throw new DOMException('会話を終了しました','AbortError');
 }
 function updateVoiceDisplay(data) {
-  const labels={idle:'会話を開始すると、話しかけて質問できます。',listening:'聞いています。話し終えると、そのまま質問を送ります。',thinking:'会社の記憶を確認しています…',speaking:'REIが話しています。続けて質問できます。',error:'会話を再開できます。'};
+  const labels={idle:'会話を開始すると、話しかけて質問できます。',listening:'聞いています。話し終えると、そのまま質問を送ります。',thinking:'REIが返答を考えています…',speaking:'REIが話しています。続けて質問できます。',error:'会話を再開できます。'};
   $('voice-conversation-status').textContent=data.message||labels[data.phase];
   voiceDisplay=data;renderVoiceChannel();
   $('voice-conversation-start').disabled=data.active;
@@ -540,6 +565,8 @@ voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);
 const currentVoice=()=>voiceConversation;
 let localVoiceAvailable=false;
 async function loadLocalVoiceStatus() {
+ $('voice-conversation-status').textContent='会話AIとQwenの声を準備しています…';
+ await request('/api/conversation/prepare',{method:'POST'});
  const local=await request('/api/voice/local/status');localVoiceAvailable=local.configured;
  $('voice-local-status').textContent=local.configured?'Qwen · このPCで声を作成します。音声合成のAPI料金はかかりません。':'Qwenの準備ができていません。REIの音声モデルを確認してください。';
  $('voice-preview').disabled=!local.configured;
@@ -619,6 +646,8 @@ function showAuth() {
   $('marketplace-results').replaceChildren();
   state.selectedDepartment=null;
   state.pendingReplyTaskId=null;
+  conversationTurns=[];
+  conversationHistoryLoaded=false;
   state.report=null;
   state.reportLoadedAt=0;
   state.reportLoading=false;

@@ -66,6 +66,12 @@ try {
   for(const name of readdirSync(root))if(name.endsWith('.mjs')&&!['package-macos.mjs','package-links.mjs','release-macos.mjs'].includes(name))copyFileSync(path.join(root,name),path.join(source,name));
   for(const name of ['package.json','LICENSE','README.md'])copyFileSync(path.join(root,name),path.join(source,name));
   copyFileSync(path.join(root,'local-tts-worker.py'),path.join(source,'local-tts-worker.py'));
+  copyFileSync(path.join(root,'local-chat-worker.py'),path.join(source,'local-chat-worker.py'));
+  const localRuntime=process.env.REI_LOCAL_RUNTIME_BUNDLE;
+  if(localRuntime){
+    if(!existsSync(path.join(localRuntime,'python/bin/python3'))||!existsSync(path.join(localRuntime,'qwen-model/model.safetensors'))||!existsSync(path.join(localRuntime,'conversation-model/model.safetensors')))throw new Error('同梱する音声・会話モデルが揃っていません');
+    cpSync(localRuntime,path.join(resources,'local-voice'),{recursive:true,dereference:true,filter:p=>!p.split(path.sep).some(part=>['.cache','__pycache__'].includes(part)||part.endsWith('.chunks'))});
+  }
   cpSync(path.join(root,'public'),path.join(source,'public'),{recursive:true});
 
   console.log(`OpenClaw ${openClaw.version} をアプリ内に同梱しています…`);
@@ -74,7 +80,7 @@ try {
   localizeLinks(openClaw.source,bundledOpenClaw);
   const launcher=`#!/bin/zsh\nset -eu\napp_root="\${0:A:h:h}"\nexport PATH="$app_root/MacOS:/usr/bin:/bin:/usr/sbin:/sbin"\nexport REI_DATA_DIR="\${REI_DATA_DIR:-$HOME/Library/Application Support/REI}"\nexport REI_OPENCLAW_ENTRY="$app_root/Resources/openclaw/openclaw.mjs"\nexec "$app_root/MacOS/node" "$app_root/Resources/rei/macos-onboarding.mjs"\n`;
   writeFileSync(path.join(bin,'REI'),launcher,{mode:0o755});
-  writeFileSync(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>CFBundleIdentifier</key><string>com.rei.local</string>\n<key>CFBundleName</key><string>REI</string>\n<key>CFBundleDisplayName</key><string>REI</string>\n<key>CFBundleExecutable</key><string>REI</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>${xml(version)}</string>\n<key>CFBundleVersion</key><string>${xml(version)}</string>\n<key>LSMinimumSystemVersion</key><string>13.5</string>\n</dict></plist>\n`);
+  writeFileSync(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>CFBundleIdentifier</key><string>com.rei.local</string>\n<key>CFBundleName</key><string>REI</string>\n<key>CFBundleDisplayName</key><string>REI</string>\n<key>CFBundleExecutable</key><string>REI</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n<key>CFBundleShortVersionString</key><string>${xml(version)}</string>\n<key>CFBundleVersion</key><string>${xml(version)}</string>\n<key>LSMinimumSystemVersion</key><string>${localRuntime?"26.0":"13.5"}</string>\n</dict></plist>\n`);
   rmSync(archivePath);
   rmSync(extracted,{recursive:true,force:true});
   renameSync(work,app);

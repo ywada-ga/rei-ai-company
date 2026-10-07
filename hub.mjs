@@ -13,6 +13,9 @@ import { knowledgeDevice, queueKnowledge, scanKnowledgeIfDue } from './knowledge
 import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } from './chatwork.mjs';
 import {liveVoiceStatus,configureLiveVoice,LiveVoiceSessions} from './live-voice.mjs';
 import {LocalVoice} from './local-voice.mjs';
+import {LocalChat} from './local-chat.mjs';
+import {ConversationMcp} from './conversation-mcp.mjs';
+import {converse} from './conversation.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
 import { searchMarketplaceSkills } from './skill-marketplace.mjs';
 import { createBackup, createBackupIfDue } from './backup.mjs';
@@ -24,6 +27,10 @@ const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'))
 const db=openStorage(root);
 const liveVoiceSessions=new LiveVoiceSessions();
 const localVoice=new LocalVoice(root);
+const localChat=new LocalChat(root),conversationMcp=new ConversationMcp(root);
+let conversationBusy=false;
+process.once('exit',()=>localChat.close());
+process.once('SIGTERM',()=>localChat.close());
 process.once('exit',()=>localVoice.close());
 process.once('SIGTERM',()=>{localVoice.close();process.exit(0);});
 const port=Number(process.env.REI_PORT||4178);
@@ -135,6 +142,40 @@ async function api(req,res,route) {
   }
 
   const user=sessionUser(db,req);if(!user)return error(res,401,'ログインしてください');
+  if(route.startsWith('conversation/')) {
+    if(!['owner','admin'].includes(user.role))return error(res,403,'会話AIは所有者・管理者が利用できます');
+    if(route==='conversation/status'&&req.method==='GET')return send(res,200,localChat.status());
+    if(route==='conversation/history'&&req.method==='GET'){
+      const saved=one(db,'SELECT value FROM settings WHERE key=?',`conversation:${user.id}`);
+      const history=saved?JSON.parse(saved.value):null;
+      return send(res,200,{turns:history?.scope===JSON.stringify(knowledgeSettings(db).groups)?history.turns:[]});
+    }
+    if(route==='conversation/prepare'&&req.method==='POST'){await localChat.start();return send(res,200,localChat.status());}
+    if(route==='conversation/ask'&&req.method==='POST'){
+      if(conversationBusy)return error(res,409,'会話AIが返答中です。少し待ってください');
+      const input=await body(req),question=text(input.question,4000),settings=knowledgeSettings(db),scope=JSON.stringify(settings.groups);
+      knowledgeContext(input.context); // Validate client payload; authoritative history stays on the server.
+      const saved=one(db,'SELECT value FROM settings WHERE key=?',`conversation:${user.id}`),history=saved?JSON.parse(saved.value):null;
+      const context=history?.scope===scope?history.turns:[];
+      const localDevice=localConnectorStatus().deviceId;
+      const integration=localDevice?one(db,"SELECT name,url FROM mcp_integrations WHERE device_id=? AND url='https://mcp.synapse-connect.ai/mcp'",localDevice):null;
+      const controller=new AbortController();res.once('close',()=>{if(!res.writableEnded)controller.abort();});
+      conversationBusy=true;
+      try{
+        const result=await converse({question,context,groups:settings.groups,signal:controller.signal,
+          generate:(messages,options)=>localChat.generate(messages,options),
+          call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
+          submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,instruction,'operations',user.id,true,null,null,context));}});
+        if(!controller.signal.aborted){
+          if(JSON.stringify(knowledgeSettings(db).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
+          const turns=[...context,{question,answer:result.answer.slice(0,2000)}].slice(-6);
+          run(db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`conversation:${user.id}`,JSON.stringify({scope,turns}));
+          return send(res,200,result);
+        }
+      }finally{conversationBusy=false;}
+      return;
+    }
+  }
   if(route==='auth/me'&&req.method==='GET')return send(res,200,{user});
   if(route==='auth/password'&&req.method==='POST') {const data=await body(req),record=one(db,'SELECT * FROM users WHERE id=?',user.id),next=String(data.newPassword||'');if(!await checkPassword(String(data.currentPassword||''),record.salt,record.digest))return error(res,403,'現在のパスワードが違います');if(next.length<14||next.length>200)return error(res,400,'新しいパスワードは14文字以上にしてください');const encoded=await encodePassword(next);transaction(db,()=>{run(db,'UPDATE users SET salt=?,digest=? WHERE id=?',encoded.salt,encoded.digest,user.id);run(db,'DELETE FROM sessions WHERE user_id=? AND hash<>?',user.id,hash(cookies(req).rei_session));event(db,null,user.username,'password_changed','パスワードを変更');});return send(res,200,{ok:true});}
   if(route==='backup/create'&&req.method==='POST') {if(user.role!=='owner')return error(res,403,'所有者だけがバックアップを作成できます');if(backupInProgress)return error(res,409,'バックアップを作成中です');backupInProgress=true;try{const folder=await createBackup();event(db,null,user.username,'backup_created',path.basename(folder));return send(res,201,{folder});}finally{backupInProgress=false;}}

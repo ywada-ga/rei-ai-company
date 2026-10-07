@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {converse,parseDecision} from '../conversation.mjs';
+assert.throws(()=>parseDecision('{"action":"delete","text":"x"}'));
+const groups=[{id:'allowed',name:'会社共有'}];
+const make=actions=>async()=>({text:JSON.stringify(actions.shift())});
+let calls=[],submitted=[];
+const basic={question:'会社の予定は？',groups,call:async(tool,args)=>{calls.push({tool,args});return {content:[{type:'text',text:JSON.stringify({uuid:'record-1',group_id:'allowed',text:'資料',sources:[{traceable:true}]})}]};},submit:async instruction=>{submitted.push(instruction);return {id:'task',status:'approval_pending'};}};
+const result=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'source',uuid:'record-1'},{action:'answer',text:'確認した予定です。'}])});
+assert.equal(result.answer,'確認した予定です。');assert.equal(calls.length,3);assert.deepEqual(calls[0].args.group_ids,['allowed']);
+await assert.rejects(converse({...basic,generate:make([{action:'episode',uuid:'outside'}])}),/取得済み/);
+const unverified=await converse({...basic,generate:make([{action:'search',query:'予定'},...Array.from({length:5},()=>({action:'answer',text:'断定します'}))])});assert.match(unverified.answer,/まだ確定/);
+const unavailable=await converse({...basic,call:async()=>({structuredContent:{uuid:'record-1',sources:[{traceable:false}]}}),generate:make([{action:'search',query:'予定'},{action:'source',uuid:'record-1'},{action:'answer',text:'断定します'}])});assert.match(unavailable.answer,/まだ確定/);
+calls=[];
+const hello=await converse({...basic,question:'こんにちは',groups:[],generate:make([{action:'answer',text:'こんにちは。'}])});assert.equal(hello.answer,'こんにちは。');assert.equal(calls.length,0);
+const draft=await converse({...basic,question:'資料を作って',generate:make([{action:'work',instruction:'資料作成'}])});assert.equal(draft.task.status,'approval_pending');assert.deepEqual(submitted,['資料を作って']);
+const controller=new AbortController();controller.abort();await assert.rejects(converse({...basic,signal:controller.signal,generate:make([])}),/中断/);
+assert.equal(submitted.length,1);
+console.log('conversation scope, evidence, approval and cancellation tests passed');

@@ -46,8 +46,8 @@ def main():
             with contextlib.redirect_stdout(sys.stderr):
                 mx.random.seed(42)
                 for result in model.generate(
-                    text.strip(), voice='Ono_Anna', lang_code='Japanese',
-                    instruct='Speak Japanese in a mature, confident professional female voice with a comfortably low pitch. Use clear, crisp articulation and a brisk, steady conversational pace. Keep intonation restrained and finish sentences decisively. Sound composed and capable, like an experienced executive assistant giving a concise briefing. Link words smoothly in natural standard Japanese.',
+                    text.strip(), voice='Ryan', lang_code='Japanese',
+                    instruct='Speak fluent standard Japanese in a mature male voice with a low, warm register. Sound like a composed, highly capable executive assistant: quietly confident, precise and attentive. Use crisp articulation, smooth connected phrasing and a steady conversational pace. Keep intonation subtle and finish sentences decisively. Remain natural and understated, without theatrical delivery.',
                     stream=True, streaming_interval=0.5, max_tokens=500, verbose=False,
                 ):
                     if first is None:

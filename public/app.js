@@ -5,6 +5,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
 const state = { data:null, authEpoch:0, view:'core', selectedDepartment:null, selectedTask:null, selectedProject:null, projectWork:null, projectWorkLoadedAt:0, projectWorkRequest:0, projectWorkQuery:'', projectNotes:null, projectNotesLoading:false, projectNotesQuery:'', projectNotesRequest:0, playbooks:null, playbooksLoading:false, playbookQuery:'', playbookDepartment:'all', skillPane:'library', playbooksRequest:0, selectedPlaybook:null, selectedCommandSkill:null, taskDetail:null, taskDetailLoading:null, eventVisibleCount:30, eventHistoryExpanded:false, eventsLoading:false, olderTasks:[], hasMoreTasks:false, historyLoading:false, report:null, reportLoadedAt:0, reportLoading:false, pendingReplyTaskId:null, voiceOn:false, mcpIntegrations:[], mcpSearch:'', knowledge:null, knowledgeRequest:0, selectedKnowledge:null, knowledgeSettingsDirty:false, knowledgeFormSignature:'' };
 const labels = { queued:'待機', ready:'待機', planning:'計画中', approval_pending:'承認待ち', running:'実行中', completed:'完了', failed:'失敗', interrupted:'中断', needs_review:'要確認', waiting_human:'人待ち', waiting_reply:'返答待ち', cancelled:'中止' };
+let voiceDisplay={active:false,phase:'idle',transcript:'',answer:'',message:''};
 const icons = ['◉','✧','⬡','↗','◇','♧'];
 const departmentName=id=>({all:'全セクション',operations:'経営・運営',research:'調査・企画',production:'制作・開発',sales:'営業・顧客',support:'サポート',people:'人との連携'})[id]||id;
 // The reactor is presentation only. Operational status comes from the existing API.
@@ -119,6 +120,7 @@ function render() {
     const connected = worker.connected;
     return `<div class="unit-row"><span class="unit-glyph ${connected ? 'online' : ''}">${worker.kind === '人' ? '♧' : worker.kind === '端末' ? '▣' : '✳'}</span><span><strong>${escapeHtml(worker.name)}</strong><small>${escapeHtml(worker.pendingResults?`結果送信待ち ${worker.pendingResults}件`:worker.version!==gateway.version?`REI ${worker.version||'版未報告'} · 更新が必要`:worker.agentName?`OpenClaw: ${worker.agentName}`:worker.machine)}</small></span><i class="unit-led ${connected ? 'online' : ''}"></i></div>`;
   }).join('');
+  renderVoiceChannel();
   renderFocus();
   renderMissions();
   renderProjects();
@@ -397,7 +399,7 @@ $('playbook-search-clear').onclick=()=>{$('playbook-search').value='';$('playboo
 $('playbook-form').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('[type="submit"]');button.disabled=true;$('playbook-feedback').textContent='';try{const result=await request('/api/playbooks/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:$('playbook-title').value.trim(),purpose:$('playbook-purpose').value.trim(),prompt:$('playbook-prompt').value.trim(),knowledge:$('playbook-knowledge').value.trim(),department:$('playbook-create-department').value})});event.target.reset();state.playbookQuery='';state.playbookDepartment='all';$('playbook-search').value='';$('playbook-department').value='all';await loadPlaybooks();state.selectedPlaybook=result.playbook.id;setSkillPane('library');renderPlaybooks();$('playbook-feedback').textContent='スキルを保存しました';}catch(error){$('playbook-feedback').textContent=error.message;}finally{button.disabled=false;}};
 $('marketplace-search-form').onsubmit=async event=>{event.preventDefault();const query=$('marketplace-search').value.trim(),button=event.target.querySelector('button');if(!query)return;button.disabled=true;$('marketplace-results').textContent='マーケットプレイスを検索中…';try{const result=await request('/api/skills/marketplace/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query})});$('marketplace-results').innerHTML=result.results.length?result.results.map(item=>`<article class="marketplace-result"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.owner)} · ${item.official?'公式':'外部作成者'} · ${escapeHtml(item.installability)}</small><p>${escapeHtml(item.summary)}</p><code>${escapeHtml(item.reference)}</code>${item.url?`<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">内容を確認 ↗</a>`:''}</article>`).join(''):'一致する候補はありません。';}catch(error){$('marketplace-results').textContent=error.message;}finally{button.disabled=false;}};
 $('command-skill').onclick=()=>{commandSkill(null);feedback('使用スキルの指定を解除しました');};
-$('core-button').onclick = () => $('command-input').focus();
+$('core-button').onclick = () => ['owner','admin'].includes(state.data?.user.role)?$('voice-conversation-open').click():$('command-input').focus();
 $('command-form').onsubmit = async event => {
   event.preventDefault();
   const input = $('command-input');
@@ -484,6 +486,20 @@ $('knowledge-settings-form').onsubmit=async event=>{
   } catch(error){$('knowledge-feedback').textContent=error.message;}
 };
 let voiceScope='';
+function renderVoiceChannel() {
+  const core=$('core-button');core.dataset.phase=voiceDisplay.phase;
+  const phases={listening:'聞いています',thinking:'会社の記憶を確認中',speaking:'REIが話しています',error:'会話を再開できます'};
+  if(voiceDisplay.active||voiceDisplay.phase==='error')$('core-state').textContent=phases[voiceDisplay.phase]||'待機中';
+  else $('core-state').textContent=state.data?.gateway.reachable?'CONNECTED / READY':'WAITING FOR AGENT';
+  const feed=$('mission-feed'),previous=feed.querySelector('[data-voice-channel]');previous?.remove();
+  const history=voiceConversation.history;
+  if(!history.length&&!voiceDisplay.transcript)return;
+  let turns=history.slice();
+  const last=turns.at(-1);
+  if(voiceDisplay.transcript&&(!last||last.question!==voiceDisplay.transcript||voiceDisplay.phase==='thinking'||voiceDisplay.phase==='listening'))turns.push({question:voiceDisplay.transcript,answer:voiceDisplay.phase==='thinking'?'会社の記憶を確認しています…':voiceDisplay.phase==='listening'?'聞いています…':voiceDisplay.answer});
+  const block=document.createElement('div');block.dataset.voiceChannel='true';
+  block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会社の記憶</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
+}
 const voiceConversation=new VoiceConversation({ask:async(question,context,signal)=>{
   if(/^(?:こんにちは|こんばんは|おはよう(?:ございます)?|よろしく(?:お願いします)?)[。！]?$/u.test(question))return 'こんにちは。REIです。会社のことや、次に準備することを聞いてください。';
   const current=await request('/api/knowledge/status',{signal});
@@ -491,7 +507,7 @@ const voiceConversation=new VoiceConversation({ask:async(question,context,signal
   if(voiceScope!==scope)context=[];
   voiceScope=scope;
   const result=await request('/api/knowledge/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,context,voice:true}),signal});
-  state.selectedKnowledge=result.task.id;setView('knowledge');
+  state.selectedKnowledge=result.task.id;
   while(!signal.aborted) {
     const data=await request('/api/knowledge/status',{signal});
     state.knowledge=data;renderKnowledge();
@@ -512,23 +528,21 @@ const voiceConversation=new VoiceConversation({ask:async(question,context,signal
 },onChange:data=>{
   const labels={idle:'会話を開始すると、話しかけて質問できます。',listening:'聞いています。話し終えると、そのまま質問を送ります。',thinking:'会社の記憶を確認しています…',speaking:'REIが話しています。続けて質問できます。',error:'会話を再開できます。'};
   $('voice-conversation-status').textContent=data.message||labels[data.phase];
-  $('voice-orb').dataset.phase=data.phase;
-  $('voice-conversation-transcript').textContent=data.transcript||'ここに聞き取った言葉を表示します。';
-  $('voice-conversation-answer').textContent=data.answer||'会社の記憶を確認して、音声で答えます。';
+  voiceDisplay=data;renderVoiceChannel();
   $('voice-conversation-start').disabled=data.active;
   $('voice-conversation-stop').disabled=!data.active;
   $('voice-conversation-interrupt').disabled=data.phase!=='speaking';
 }});
 $('voice-conversation-open').onclick=()=>{
   if(!['owner','admin'].includes(state.data?.user.role))return feedback('会社の記憶の音声会話は所有者・管理者が利用できます',true);
-  $('voice-conversation-screen').classList.remove('hidden');document.querySelector('.app-shell').inert=true;$('voice-conversation-close').focus();$('voice-conversation-start').disabled=true;
+  setView('core');$('voice-conversation-screen').classList.remove('hidden');$('voice-conversation-start').focus();$('voice-conversation-start').disabled=true;
   if(!voiceConversation.supported)$('voice-conversation-status').textContent='このブラウザは音声会話に対応していません。ChromeでREIを開いてください。';
   void loadKnowledge().then(()=>{if(!state.knowledge?.settings.groups.length)$('voice-conversation-status').textContent='先に「検索範囲・情報源を確認」から、検索する共有グループを選んでください。';});
 };
 $('voice-conversation-start').onclick=()=>{try{voiceConversation.start();}catch(error){$('voice-conversation-status').textContent=error.message;}};
 $('voice-conversation-stop').onclick=()=>voiceConversation.stop();
 $('voice-conversation-interrupt').onclick=()=>voiceConversation.interrupt();
-function closeVoiceConversation(){voiceConversation.stop();$('voice-conversation-screen').classList.add('hidden');document.querySelector('.app-shell').inert=false;$('voice-conversation-open').focus();}
+function closeVoiceConversation(){voiceConversation.stop();$('voice-conversation-screen').classList.add('hidden');$('voice-conversation-open').focus();}
 $('voice-conversation-close').onclick=closeVoiceConversation;
 $('voice-conversation-knowledge').onclick=()=>{closeVoiceConversation();setView('knowledge');};
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('voice-conversation-screen').classList.contains('hidden'))closeVoiceConversation();});
@@ -607,7 +621,7 @@ function showAuth() {
   for(const id of ['mission-feed','system-signals','unit-list','focus-content','mission-list','mission-detail','project-list','project-detail','briefing-content','approval-management','device-management','mcp-management','chatwork-status','signed-in-user','pairing-result','enroll-result','invite-result','backup-result','user-management','local-setup','settings-feedback'])$(id)?.replaceChildren();
   for(const id of ['pairing-result','enroll-result','invite-result'])$(id).classList.add('hidden');
   $('command-input').value='';
-  closeVoiceConversation();voiceScope='';voiceConversation.history=[];voiceConversation.answer='';voiceConversation.transcript='';voiceConversation.emit('idle');
+  closeVoiceConversation();voiceScope='';voiceConversation.history=[];voiceConversation.answer='';voiceConversation.transcript='';voiceDisplay={active:false,phase:'idle',transcript:'',answer:'',message:''};voiceConversation.emit('idle');
   state.knowledge=null;state.knowledgeRequest++;state.selectedKnowledge=null;state.knowledgeSettingsDirty=false;state.knowledgeFormSignature='';$('knowledge-history').textContent='';$('knowledge-answer').textContent='';$('knowledge-groups').textContent='';
   document.querySelectorAll('input[type="password"],textarea').forEach(input=>input.value='');
   setView('core');

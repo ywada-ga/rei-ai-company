@@ -431,9 +431,9 @@ $('command-form').onsubmit = async event => {
   try {
     if(['owner','admin'].includes(state.data?.user.role)&&!state.selectedCommandSkill&&!$('command-project').value){
       const controller=new AbortController();commandSpeechController?.abort();commandSpeechController=controller;
-      commandSpeech?.cancel();const latency=createTurnLatency(()=>performance.now());
-      const publishLatency=()=>{$('command-feedback').dataset.responseLatency=JSON.stringify(latency.snapshot());};publishLatency();
-      const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
+      commandSpeech?.cancel();const latency=createTurnLatency(()=>performance.now());let firstSynthesis=null;
+      const publishLatency=()=>{$('command-feedback').dataset.responseLatency=JSON.stringify({...latency.snapshot(),firstSynthesis});};publishLatency();
+      const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
       streamingTurn={question:text,answer:''};renderConversation();
       let response;
       try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);});latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
@@ -622,6 +622,7 @@ $('voice-output').onclick = () => {
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
   if (!state.voiceOn) {replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
+  if(state.voiceOn)void request('/api/voice/local/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`Qwenの準備: ${error.message}`,true);});
 };
 $('voice-button').onclick = () => $('voice-conversation-open').click();
 $('voice-preview').onclick=()=>{void speak('こんにちは、レイです。この画面のまま、続けて話せます。');};

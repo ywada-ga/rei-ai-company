@@ -173,3 +173,5 @@ REIの設定に「ChatGPTで会話」を追加。公式Sign in with ChatGPTの�
 ChatGPTの回答デルタから、answerの本文だけを取り出す。会社の質問は今回のSynapse Connect検索と本文確認が済むまでデルタを出さない。Hubのconversation/streamは認証・役割・検索範囲を検証し、delta/done/errorをNDJSONで送る。Responsesの完了イベントと最終JSONが有効な場合だけ履歴を保存する。
 
 ブラウザはデルタを表示し、句点または120文字でQwenの音声生成を順に開始する。音声生成列と再生列を分け、次の音声生成を現在の再生と重ねる。停止・切断・失敗時はAbortSignalで両方を止める。音声会話は全文と全音声の完了後に次の聞き取りへ戻る。これは文ごとの音声配信であり、QwenのPCM生成自体の逐次送信ではない。ローカル会話モデルは同じ経路で完成結果を送る。
+
+音声応答をONにすると、既存のvoice/local/prepareでQwenを事前起動する。起動中の処理はLocalVoice.startの共有Promiseで一本化する。先頭音声の準備待ち・モデル生成開始・一文の生成完了を数値だけで返し、ブラウザの再生開始とは区別する。音声本文やWAVは診断属性へ書かない。

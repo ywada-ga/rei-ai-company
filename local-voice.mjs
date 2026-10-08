@@ -37,7 +37,7 @@ export class LocalVoice {
     if(this.busy)throw Object.assign(new Error('ローカル音声は別の返答を作成中です'),{status:409});
     this.busy=true;
     try{
-      await this.start();if(signal?.aborted)throw new Error('音声を中断しました');
+      const prepareStarted=performance.now();await this.start();const preparationMs=Math.round(performance.now()-prepareStarted);if(signal?.aborted)throw new Error('音声を中断しました');
       return await new Promise((resolve,reject)=>{
         const id=crypto.randomUUID();let timer;
         const abort=()=>this.close();
@@ -45,7 +45,7 @@ export class LocalVoice {
         this.reject=error=>finish(error);
         this.pending={id,resolve:message=>{
           if(message.type!=='audio'||typeof message.wav!=='string')return finish(new Error('ローカル音声を作成できませんでした'));
-          finish(null,{wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds});
+          finish(null,{wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds,preparationMs});
         }};
         signal?.addEventListener('abort',abort,{once:true});
         timer=setTimeout(()=>this.close(),this.timeoutMs);

@@ -40,7 +40,7 @@ export function createLocalSpeechStream(signal,request,options={}){
   const abort=()=>controller.abort();signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
   const enqueue=phrase=>{
     if(!phrase.trim()||controller.signal.aborted)return;
-    const audio=synthesis.then(()=>request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal}));
+    const audio=synthesis.then(()=>request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal})).then(result=>{options.onPrepared?.({characters:Array.from(phrase).length,preparationMs:result.preparationMs,firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
     playback=playback.then(async()=>{const result=await audio;await playVoiceAudio(result,controller.signal,options);});
     audio.catch(error=>{failure=error;controller.abort();});playback.catch(error=>{failure=error;controller.abort();});

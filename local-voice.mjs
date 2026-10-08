@@ -49,7 +49,7 @@ export class LocalVoice {
             chunkCount++;onChunk({index:message.index,wav:message.wav,sampleRate:message.sampleRate,audioSeconds:message.audioSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds});return;
           }
           if(onChunk?(message.type!=='done'||!chunkCount||message.chunkCount!==chunkCount):(message.type!=='audio'||typeof message.wav!=='string'))return finish(new Error('ローカル音声を作成できませんでした'));
-          finish(null,{wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds,preparationMs});
+          finish(null,{...(onChunk?{chunkCount}:{}),wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds,preparationMs});
         }};
         signal?.addEventListener('abort',abort,{once:true});
         timer=setTimeout(()=>this.close(),this.timeoutMs);

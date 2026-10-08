@@ -7,7 +7,7 @@ writeFileSync(path.join(root,'local-tts-worker.py'),`const readline=require('nod
 const voice=new LocalVoice(root,{python:process.execPath,model:root,timeoutMs:2000});
 try{
  let chunks=[],complete=false;const promise=voice.synthesize('試験',{onChunk:chunk=>{assert.equal(complete,false);chunks.push(chunk);}}).then(result=>{complete=true;return result;});
- const result=await promise;assert.equal(chunks.length,1);assert.equal(chunks[0].index,0);assert.equal(result.firstGeneratedSeconds,0.01);assert.equal(result.wav,undefined);assert.equal(voice.status().busy,false);
+ const result=await promise;assert.equal(chunks.length,1);assert.equal(chunks[0].index,0);assert.equal(result.firstGeneratedSeconds,0.01);assert.equal(result.wav,undefined);assert.equal(result.chunkCount,1);assert.equal(voice.status().busy,false);
  await assert.rejects(voice.synthesize('bad',{onChunk:()=>{throw Error('must not emit invalid sequence');}}));
  const abort=new AbortController();let received;const first=new Promise(r=>received=r);const pending=voice.synthesize('中断',{signal:abort.signal,onChunk:()=>received()});await first;abort.abort();await assert.rejects(pending,/停止/);assert.equal(voice.status().busy,false);assert.equal(voice.status().ready,false);
  console.log('local Qwen chunk delivery before completion, sequence validation and abort passed');

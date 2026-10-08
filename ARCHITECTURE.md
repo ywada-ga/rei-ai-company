@@ -176,4 +176,4 @@ ChatGPTの回答デルタから、answerの本文だけを取り出す。会社�
 
 音声応答をONにすると、既存のvoice/local/prepareでQwenを事前起動する。起動中の処理はLocalVoice.startの共有Promiseで一本化する。先頭音声の準備待ち・モデル生成開始・一文の生成完了を数値だけで返し、ブラウザの再生開始とは区別する。音声本文やWAVは診断属性へ書かない。
 
-Qwen workerのstreamフラグは生成片ごとにchunk（連番・WAV・レート・秒数）、最後にdoneを返す。voice/local/streamは既存音声APIと同じ認証境界でNDJSON配信する。LocalVoiceの同時実行制限と停止処理を共有する。2026-10-08のこの段階ではブラウザは従来の一文WAV経路で、音声片再生の組み込みは未完了。
+Qwen workerのstreamフラグは生成片ごとにchunk（連番・WAV・レート・秒数）、最後にdoneを返す。voice/local/streamは既存音声APIと同じ認証境界でNDJSON配信する。LocalVoiceの同時実行制限と停止処理を共有する。ブラウザは生成片のWAVを順に復号し、共有AudioContextの同じ時間軸へ予約する。全文生成を待たず再生し、文間でも生成処理を直列化する。音声ON・会話開始の操作でAudioContextを起動し、停止時は取得と予約音声を中断する。音声開始の計測値はrunning状態のAudioContext上の先頭予約時刻に基づくブラウザ推定で、物理的な出音の実測ではない。

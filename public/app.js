@@ -1,5 +1,5 @@
 import {readConversationStream} from './conversation-stream.js';
-import {playLocalVoice,playLocalReply,createLocalSpeechStream} from './local-voice.js';
+import {playLocalVoice,playLocalReply,createLocalSpeechStream,unlockLocalVoice} from './local-voice.js';
 import { VoiceConversation, createTurnLatency, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
@@ -433,7 +433,7 @@ $('command-form').onsubmit = async event => {
       const controller=new AbortController();commandSpeechController?.abort();commandSpeechController=controller;
       commandSpeech?.cancel();const latency=createTurnLatency(()=>performance.now());let firstSynthesis=null;
       const publishLatency=()=>{$('command-feedback').dataset.responseLatency=JSON.stringify({...latency.snapshot(),firstSynthesis});};publishLatency();
-      const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
+      const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{streamRequest:streamVoiceRequest,onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
       streamingTurn={question:text,answer:''};renderConversation();
       let response;
       try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);});latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
@@ -576,7 +576,7 @@ function updateVoiceDisplay(data) {
 const voiceConversation=new VoiceConversation({ask:askCompany,onChange:updateVoiceDisplay});
 voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
 voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);
-voiceConversation.streamReply=(signal,onPlaying)=>createLocalSpeechStream(signal,request,{onPlaying});
+voiceConversation.streamReply=(signal,onPlaying)=>createLocalSpeechStream(signal,request,{streamRequest:streamVoiceRequest,onPlaying});
 const currentVoice=()=>voiceConversation;
 let localVoiceAvailable=false;
 async function loadLocalVoiceStatus() {
@@ -593,7 +593,7 @@ $('voice-conversation-open').onclick=()=>{
   if(!currentVoice().supported)$('voice-conversation-status').textContent='このブラウザは音声会話に対応していません。ChromeでREIを開いてください。';
   void Promise.all([loadKnowledge(),loadLocalVoiceStatus()]).then(()=>{if(!voiceConversation.active)$('voice-conversation-status').textContent=state.knowledge?.settings.groups.length?'準備できました。「会話を開始」で話しかけてください。':'準備できました。会社の質問には「検索範囲・情報源」で共有グループを選んでください。';}).catch(error=>$('voice-conversation-status').textContent=error.message).finally(()=>{$('voice-conversation-start').disabled=voiceConversation.active||!localVoiceAvailable;});
 };
-$('voice-conversation-start').onclick=()=>{try{replyVoiceController?.abort();voiceConversation.start();}catch(error){$('voice-conversation-status').textContent=error.message;}};
+$('voice-conversation-start').onclick=()=>{void unlockLocalVoice().catch(error=>feedback(error.message,true));try{replyVoiceController?.abort();voiceConversation.start();}catch(error){$('voice-conversation-status').textContent=error.message;}};
 $('voice-conversation-stop').onclick=()=>currentVoice().stop();
 $('voice-conversation-interrupt').onclick=()=>currentVoice().interrupt();
 function closeVoiceConversation(){voiceConversation.stop();$('voice-conversation-screen').classList.add('hidden');$('voice-conversation-open').focus();}
@@ -622,6 +622,7 @@ $('voice-output').onclick = () => {
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
   if (!state.voiceOn) {replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
+  if(state.voiceOn)void unlockLocalVoice().catch(error=>feedback(error.message,true));
   if(state.voiceOn)void request('/api/voice/local/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`Qwenの準備: ${error.message}`,true);});
 };
 $('voice-button').onclick = () => $('voice-conversation-open').click();
@@ -860,3 +861,8 @@ $('password-form').onsubmit=async event=>{event.preventDefault();$('settings-fee
 $('logout').onclick=async()=>{await request('/api/auth/logout',{method:'POST'});state.data=null;$('settings-screen').classList.add('hidden');showAuth();};
 tick();setInterval(tick,1000);refresh();setInterval(()=>{if(!document.hidden&&$('auth-screen').classList.contains('hidden'))refresh();},5000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&$('auth-screen').classList.contains('hidden'))void refresh();});
+
+async function streamVoiceRequest(text,signal){
+  const response=await fetch('/api?route=voice%2Flocal%2Fstream',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text}),signal});
+  if(response.status===401)showAuth();return response;
+}

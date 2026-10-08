@@ -54,6 +54,27 @@ export function createLocalSpeechStream(signal,request,options={}){
   };
 }
 
+// Speak the receipt first; it never triggers the meaningful answer onset callback.
+export function createConversationSpeech(signal,create,options={}){
+  let receipt=null,answer=null,received=false,answerStarted=false,blocked=false,canceled=false,failure=null;
+  const pending=[];let receiptDone=Promise.resolve();
+  const main=()=>answer||(answer=create({onPlaying:options.onPlaying,onPrepared:options.onPrepared}));
+  const cancel=()=>{canceled=true;pending.length=0;receipt?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
+  signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
+  return {
+    receipt(text){
+      if(canceled||received||answerStarted)return;
+      received=true;blocked=true;receipt=create({onPlaying:options.onReceiptPlaying});receipt.push(text);
+      receiptDone=receipt.finish(text).catch(()=>{receipt.cancel();}).then(()=>{
+        blocked=false;if(!canceled)for(const delta of pending.splice(0))main().push(delta);
+      }).catch(error=>{failure=error;});
+    },
+    push(delta){if(canceled)throw new Error('音声を中断しました');if(failure)throw failure;answerStarted=true;if(blocked)pending.push(delta);else main().push(delta);},
+    async finish(text){try{await receiptDone;if(canceled)throw new Error('音声を中断しました');if(failure)throw failure;await main().finish(text);}finally{signal.removeEventListener('abort',cancel);}},
+    cancel
+  };
+}
+
 let voiceContext;
 export async function unlockLocalVoice(){
   const Context=globalThis.AudioContext||globalThis.webkitAudioContext;

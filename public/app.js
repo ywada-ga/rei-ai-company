@@ -1,5 +1,5 @@
 import {readConversationStream} from './conversation-stream.js';
-import {playLocalVoice,playLocalReply,createLocalSpeechStream,unlockLocalVoice} from './local-voice.js';
+import {playLocalVoice,playLocalReply,createLocalSpeechStream,createConversationSpeech,unlockLocalVoice} from './local-voice.js';
 import { VoiceConversation, createTurnLatency, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
@@ -433,10 +433,10 @@ $('command-form').onsubmit = async event => {
       const controller=new AbortController();commandSpeechController?.abort();commandSpeechController=controller;
       commandSpeech?.cancel();const latency=createTurnLatency(()=>performance.now());let firstSynthesis=null,backendTiming=null;
       const publishLatency=()=>{$('command-feedback').dataset.responseLatency=JSON.stringify({...latency.snapshot(),firstSynthesis,backendTiming});};publishLatency();
-      const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{streamRequest:streamVoiceRequest,onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
+      const audio=commandSpeech=state.voiceOn?createConversationSpeech(controller.signal,options=>createLocalSpeechStream(controller.signal,request,{streamRequest:streamVoiceRequest,...options}),{onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
       streamingTurn={question:text,answer:''};renderConversation();
       let response;
-      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);},receipt=>feedback(receipt));backendTiming=response.timing||null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
+      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);},receipt=>{feedback(receipt);if(state.voiceOn&&commandSpeech===audio)audio?.receipt(receipt);});backendTiming=response.timing||null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
       catch(error){audio?.cancel();throw error;}finally{streamingTurn=null;renderConversation();}
       conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
       input.value='';await refresh();renderConversation();
@@ -577,7 +577,7 @@ function updateVoiceDisplay(data) {
 const voiceConversation=new VoiceConversation({ask:askCompany,onChange:updateVoiceDisplay});
 voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
 voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);
-voiceConversation.streamReply=(signal,onPlaying)=>createLocalSpeechStream(signal,request,{streamRequest:streamVoiceRequest,onPlaying});
+voiceConversation.streamReply=(signal,onPlaying,onReceiptPlaying)=>createConversationSpeech(signal,options=>createLocalSpeechStream(signal,request,{streamRequest:streamVoiceRequest,...options}),{onPlaying,onReceiptPlaying});
 const currentVoice=()=>voiceConversation;
 let localVoiceAvailable=false;
 async function loadLocalVoiceStatus() {

@@ -105,7 +105,15 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     // Resolve the first scoped candidates before another model round-trip.
     if(decision.action==='search'&&Array.isArray(data?.facts)){
       const candidates=data.facts.slice(0,2).filter(f=>typeof f.uuid==='string'&&allowedIds.has(f.uuid));
-      const sources=await Promise.all(candidates.map(async fact=>({uuid:fact.uuid,result:await readRecord('get_fact_source',fact.uuid)})));
+      const sources=await Promise.all(candidates.map(async fact=>{
+        const result=await readRecord('get_fact_source',fact.uuid);
+        // Independent source bodies can load concurrently; keep final evidence ordering stable.
+        if(!verifiedSource(result,'source')&&!result.isError){
+          const provenance=(resultData(result)?.sources||[]).filter(s=>s.traceable===false&&s.reason==='source_unavailable'&&s.origin==='obsidian'&&groups.some(g=>g.id===s.group_id)&&typeof s.episode_uuid==='string').slice(0,1);
+          await Promise.all(provenance.map(s=>readRecord('get_episode',s.episode_uuid)));
+        }
+        return {uuid:fact.uuid,result};
+      }));
       if(signal?.aborted)throw new Error('会話を中断しました');
       for(const source of sources){
         const verified=verifiedSource(source.result,'source');if(verified)sourceRead=true;

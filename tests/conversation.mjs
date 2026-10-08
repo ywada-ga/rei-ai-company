@@ -50,3 +50,13 @@ await assert.rejects(converse({...basic,question:'その担当は今誰？',cont
 let oldReads=0;
 const old=await converse({...basic,generate:make([{action:'search',query:'予定'},...Array.from({length:5},()=>({action:'answer',text:'古い予定'}))]),call:async tool=>{if(tool!=='search_memory_facts')oldReads++;return {structuredContent:{facts:[{uuid:'old',fact:'古い予定',episodes:['old-note'],obsidian_sources:[{is_latest_revision:false}]}]}};}});assert.equal(oldReads,0);assert.match(old.answer,/まだ確定/);
 console.log('fresh remote reads, follow-up refresh and obsolete record rejection passed');
+
+// Independent MCP bodies overlap, while answers still wait for complete evidence.
+let activeBodies=0,peakBodies=0;
+const parallel=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'本文を確認した予定'}]),call:async(tool,args)=>{
+ if(tool==='search_memory_facts')return {structuredContent:{facts:['a','b'].map(uuid=>({uuid,fact:'予定',group_id:'allowed'}))}};
+ if(tool==='get_fact_source')return {structuredContent:{sources:[{episode_uuid:args.uuid+'-body',group_id:'allowed',origin:'obsidian',reason:'source_unavailable',traceable:false}]}};
+ activeBodies++;peakBodies=Math.max(peakBodies,activeBodies);await new Promise(resolve=>setTimeout(resolve,10));activeBodies--;
+ return {structuredContent:{episode:{uuid:args.uuid,group_id:'allowed',origin:'obsidian',content:'予定の本文',source_ref:'obsidian://note',recorded_at:'2026-10-08T00:00:00Z'},coverage:{complete:true}}};
+}});assert.equal(peakBodies,2);assert.equal(parallel.sources.length,2);assert.equal(activeBodies,0);
+console.log('parallel MCP body reads retain verified answer gate');

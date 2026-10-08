@@ -47,9 +47,17 @@ function currentCandidate(fact){
   return !Array.isArray(sources)||!sources.length||sources.some(s=>s.deleted!==true&&s.is_latest_revision!==false);
 }
 function needsCompanyRead(question,context){
+  // A greeting or read-aloud request must not hide an explicit company question.
+  const companyQuestion=/(会社|社内|弊社|当社|社員|案件|売上|決定事項|シナプス|Synapse)/iu;
+  const searchHelp=/^会社情報.*(?:どうやって|検索でき|調べられ)/u.test(question);
+  if(companyQuestion.test(question)&&!searchHelp)return true;
+  if(/(売上|社員|案件|決定事項)/u.test(question))return true;
   if(/(?:(?:REI|レイ|あなた).*(?:できること|何ができ|機能|接続状態)|会社情報.*(?:どうやって|検索でき|調べられ))/iu.test(question))return false;
-  if(/(?:言い換え|書き換え|短く(?:して|作って)|読み上げ|ありがとう|こんにちは)/u.test(question))return false;
-  return /(会社|社内|弊社|当社|社員|案件|売上|決定事項|シナプス|Synapse)/iu.test(question)||(/(?:それ|その|今|最新|続き|誰|いつ|どうな|担当|期限)/u.test(question)&&context.some(t=>t.synapseRead||/(会社|社内|案件|売上)/u.test(t.question)));
+  if(/^\s*(?:ありがとう(?:ございます)?|こんにちは|こんばんは|おはよう(?:ございます)?)[。！!\s]*$/u.test(question))return false;
+  const previous=context.at(-1);
+  const companyFollowUp=previous&&(previous.synapseRead||companyQuestion.test(previous.question));
+  if(companyFollowUp&&/(?:それ|その|今|最新|続き|続け|誰|いつ|どうな|担当|期限|もっと|詳し|具体|ほか|他に|理由|なぜ|要約|簡単|読み上げ|短く|確認)/u.test(question))return true;
+  return companyQuestion.test(question);
 }
 async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false;const recordedNotes=[],recordCache=new Map();

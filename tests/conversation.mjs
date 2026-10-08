@@ -60,3 +60,17 @@ const parallel=await converse({...basic,generate:make([{action:'search',query:'�
  return {structuredContent:{episode:{uuid:args.uuid,group_id:'allowed',origin:'obsidian',content:'予定の本文',source_ref:'obsidian://note',recorded_at:'2026-10-08T00:00:00Z'},coverage:{complete:true}}};
 }});assert.equal(peakBodies,2);assert.equal(parallel.sources.length,2);assert.equal(activeBodies,0);
 console.log('parallel MCP body reads retain verified answer gate');
+
+// Mixed greetings/read-aloud and terse company follow-ups cannot bypass fresh reads.
+for(const question of ['こんにちは、会社の売上を教えて','会社の予定を読み上げて','ありがとう、会社の決定事項は？','もっと詳しく','具体的には？','簡単に説明して','短くして','読み上げて']){
+ let searches=0,round=0,deltas=[];
+ const response=await converse({...basic,question,context:[{question:'会社の予定は？',answer:'古い予定',synapseRead:true}],onDelta:delta=>deltas.push(delta),generate:async(messages,options)=>{
+  round++;const decision=round===1?{action:'answer',text:'古い未確認の回答'}:round===2?{action:'search',query:'予定'}:{action:'answer',text:'今回確認した回答'};
+  options.onDelta?.(JSON.stringify(decision));return {text:JSON.stringify(decision)};
+ },call:async tool=>tool==='search_memory_facts'?(searches++,{structuredContent:{facts:[{uuid:'current',fact:'予定',group_id:'allowed'}]}}):{structuredContent:{sources:[{traceable:true}]}}});
+ assert.equal(searches,1,question);assert.equal(response.synapseRead,true,question);assert.equal(response.answer,'今回確認した回答');assert.ok(!deltas.join('').includes('古い未確認'),question);
+}
+let unexpectedReads=0;
+const changedTopic=await converse({...basic,question:'もっと詳しく',context:[{question:'会社の予定',answer:'確認済み',synapseRead:true},{question:'桃太郎を読んで',answer:'物語',synapseRead:false}],generate:make([{action:'answer',text:'物語の続き'}]),call:async()=>{unexpectedReads++;throw Error('wrong topic');}});
+assert.equal(changedTopic.answer,'物語の続き');assert.equal(unexpectedReads,0);
+console.log('mixed company queries and concise follow-ups require fresh reads; unrelated intervening topics do not');

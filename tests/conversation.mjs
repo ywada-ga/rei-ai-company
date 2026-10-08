@@ -4,7 +4,7 @@ assert.throws(()=>parseDecision('{"action":"delete","text":"x"}'));
 const groups=[{id:'allowed',name:'会社共有'}];
 const make=actions=>async()=>({text:JSON.stringify(actions.shift())});
 let calls=[],submitted=[];
-const basic={question:'会社の予定は？',groups,call:async(tool,args)=>{calls.push({tool,args});return {content:[{type:'text',text:JSON.stringify({uuid:'record-1',group_id:'allowed',text:'資料',sources:[{traceable:true}]})}]};},submit:async instruction=>{submitted.push(instruction);return {id:'task',status:'approval_pending'};}};
+const basic={question:'会社の予定は？',groups,call:async(tool,args)=>{calls.push({tool,args});return {content:[{type:'text',text:JSON.stringify({uuid:'record-1',group_id:'allowed',text:'資料',sources:[{traceable:true,group_id:"allowed",body:"確認する本文"}]})}]};},submit:async instruction=>{submitted.push(instruction);return {id:'task',status:'approval_pending'};}};
 const result=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'source',uuid:'record-1'},{action:'answer',text:'確認した予定です。'}])});
 assert.equal(result.answer,'確認した予定です。');assert.equal(calls.length,2);assert.deepEqual(calls[0].args.group_ids,['allowed']);
 await assert.rejects(converse({...basic,generate:make([{action:'episode',uuid:'outside'}])}),/取得済み/);
@@ -18,7 +18,7 @@ assert.equal(submitted.length,1);
 console.log('conversation scope, evidence, approval and cancellation tests passed');
 
 let iterations=0;calls=[];
-const auto=await converse({...basic,generate:async()=>{iterations++;return {text:JSON.stringify(iterations===1?{action:'search',query:'予定'}:{action:'answer',text:'原記録を確認した予定です。'})};},call:async(tool,args)=>{calls.push(tool);return tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'record-2',fact:'予定',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true}]}};}});
+const auto=await converse({...basic,generate:async()=>{iterations++;return {text:JSON.stringify(iterations===1?{action:'search',query:'予定'}:{action:'answer',text:'原記録を確認した予定です。'})};},call:async(tool,args)=>{calls.push(tool);return tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'record-2',fact:'予定',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true,group_id:"allowed",body:"確認する本文"}]}};}});
 assert.equal(iterations,2);assert.deepEqual(calls,['search_memory_facts','get_fact_source']);assert.match(auto.answer,/原記録/);
 const rewrite=await converse({...basic,question:'今の文章を短く作って',generate:make([{action:'answer',text:'短くした本文です。'}])});assert.equal(rewrite.answer,'短くした本文です。');assert.equal(submitted.length,1);
 
@@ -44,7 +44,7 @@ console.log('saved note provenance and complete scoped body tests passed');
 
 // Every company follow-up must read the remote service again; no prior answer fallback.
 let freshVersion=0;
-const askFresh=()=>converse({...basic,question:'その担当は今誰？',context:[{question:'誰が担当？',answer:'以前の担当',synapseRead:true}],generate:make([{action:'answer',text:'以前の担当'},{action:'search',query:'担当'},{action:'answer',text:'今回取得した担当'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'fresh-'+(++freshVersion),fact:'新しい担当',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true}]}}});
+const askFresh=()=>converse({...basic,question:'その担当は今誰？',context:[{question:'誰が担当？',answer:'以前の担当',synapseRead:true}],generate:make([{action:'answer',text:'以前の担当'},{action:'search',query:'担当'},{action:'answer',text:'今回取得した担当'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'fresh-'+(++freshVersion),fact:'新しい担当',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true,group_id:"allowed",body:"確認する本文"}]}}});
 const fresh1=await askFresh(),fresh2=await askFresh();assert.equal(freshVersion,2);assert.equal(fresh1.synapseRead,true);assert.ok(fresh2.synapseCheckedAt);
 await assert.rejects(converse({...basic,question:'その担当は今誰？',context:[{question:'担当',answer:'古い回答',synapseRead:true}],generate:make([{action:'search',query:'担当'}]),call:async()=>{throw Error('connection unavailable')}}),/connection unavailable/);
 let oldReads=0;
@@ -67,10 +67,28 @@ for(const question of ['こんにちは、会社の売上を教えて','会社�
  const response=await converse({...basic,question,context:[{question:'会社の予定は？',answer:'古い予定',synapseRead:true}],onDelta:delta=>deltas.push(delta),generate:async(messages,options)=>{
   round++;const decision=round===1?{action:'answer',text:'古い未確認の回答'}:round===2?{action:'search',query:'予定'}:{action:'answer',text:'今回確認した回答'};
   options.onDelta?.(JSON.stringify(decision));return {text:JSON.stringify(decision)};
- },call:async tool=>tool==='search_memory_facts'?(searches++,{structuredContent:{facts:[{uuid:'current',fact:'予定',group_id:'allowed'}]}}):{structuredContent:{sources:[{traceable:true}]}}});
+ },call:async tool=>tool==='search_memory_facts'?(searches++,{structuredContent:{facts:[{uuid:'current',fact:'予定',group_id:'allowed'}]}}):{structuredContent:{sources:[{traceable:true,group_id:"allowed",body:"確認する本文"}]}}});
  assert.equal(searches,1,question);assert.equal(response.synapseRead,true,question);assert.equal(response.answer,'今回確認した回答');assert.ok(!deltas.join('').includes('古い未確認'),question);
 }
 let unexpectedReads=0;
 const changedTopic=await converse({...basic,question:'もっと詳しく',context:[{question:'会社の予定',answer:'確認済み',synapseRead:true},{question:'桃太郎を読んで',answer:'物語',synapseRead:false}],generate:make([{action:'answer',text:'物語の続き'}]),call:async()=>{unexpectedReads++;throw Error('wrong topic');}});
 assert.equal(changedTopic.answer,'物語の続き');assert.equal(unexpectedReads,0);
 console.log('mixed company queries and concise follow-ups require fresh reads; unrelated intervening topics do not');
+
+// A traceable link is provenance, not a successfully read body.
+const bodyFixture=override=>async tool=>{
+ if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'linked-fact',fact:'予定',group_id:'allowed'}]}};
+ if(tool==='get_fact_source')return {structuredContent:{sources:[{traceable:true,episode_uuid:'linked-body',group_id:'allowed',origin:'obsidian'}]}};
+ return {structuredContent:{episode:{uuid:'linked-body',group_id:'allowed',origin:'obsidian',content:'今回の保存本文',source_ref:'obsidian://body',recorded_at:'2026-10-08T00:00:00Z',...override},coverage:{complete:true}}};
+};
+const linkedBody=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'本文を読みました'}]),call:bodyFixture({})});
+assert.ok(linkedBody.evidence.some(e=>e.tool==='get_episode'));assert.match(linkedBody.answer,/外部原本・現在の状態は未照合/);
+for(const override of [{content:''},{group_id:'outside'},{uuid:'wrong'},{content_truncated:true}]){
+ const blocked=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'リンクだけで断定'}]),call:bodyFixture(override)});
+ assert.match(blocked.answer,/まだ確定/);
+}
+const metadataOnly=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'断定'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'metadata',fact:'予定',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true,group_id:'allowed'}]}}});
+assert.match(metadataOnly.answer,/まだ確定/);
+console.log('traceable metadata alone cannot unlock answers; complete scoped episode bodies are required');
+const misplacedBody=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'範囲外の本文で断定'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'metadata',fact:'予定',group_id:'allowed'}]}}:{structuredContent:{group_id:'outside',body:'範囲外の本文',sources:[{traceable:true,group_id:'allowed'}]}}});
+assert.match(misplacedBody.answer,/まだ確定/);

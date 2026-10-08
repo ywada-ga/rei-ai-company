@@ -15,7 +15,7 @@ const events=[];let sourceRead=false;
 const result=await converse({question:'会社の予定は？',groups:[{id:'g',name:'共有'}],onDelta:text=>{assert.equal(sourceRead,true);events.push(text);},generate:async(messages,{onDelta})=>{
  if(!sourceRead){onDelta?.('{"decision":{"action":"answer","text":"未検証"}}');return {text:'{"action":"search","query":"予定"}'};}
  const raw='{"decision":{"action":"answer","text":"確認した予定です。"}}';for(let i=1;i<=raw.length;i++)onDelta?.(raw.slice(0,i));return {text:raw};
-},call:async tool=>{if(tool==='get_fact_source'){sourceRead=true;return {structuredContent:{sources:[{traceable:true}]}};}return {structuredContent:{facts:[{uuid:'fact',group_id:'g',fact:'予定'}]}};},submit:()=>{throw Error('no work')}});
+},call:async tool=>{if(tool==='get_fact_source'){sourceRead=true;return {structuredContent:{sources:[{traceable:true,group_id:"g",body:"確認する本文"}]}};}return {structuredContent:{facts:[{uuid:'fact',group_id:'g',fact:'予定'}]}};},submit:()=>{throw Error('no work')}});
 assert.equal(events.join(''),result.answer);
 const lines=[{type:'delta',text:'途中。'},{type:'done',result:{answer:'途中。完了。'}}].map(e=>JSON.stringify(e)+'\n').join('');
 const pieces=[];const stream=new Response(new ReadableStream({start(c){const bytes=encoder.encode(lines);for(let i=0;i<bytes.length;i+=3)c.enqueue(bytes.slice(i,i+3));c.close();}}));assert.equal((await readConversationStream(stream,{onDelta:t=>pieces.push(t)})).answer,'途中。完了。');assert.deepEqual(pieces,['途中。']);

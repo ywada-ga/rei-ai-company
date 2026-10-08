@@ -21,7 +21,7 @@ export async function converse({question,context=[],groups=[],generate,call,subm
   // Clear work requests can go straight to a reviewable draft; no model or agent wait.
   if(/(?:作って|作成して|作成してください|作業依頼にして|修正して|実行して|送信して|依頼して)/u.test(question)&&!/(?:しない|しなく|不要|やめ|とは|方法|教えて)/u.test(question)){
     const task=await submit(question);
-    return {answer:'作業の依頼を承認待ちで用意しました。内容を確認して承認すると、OpenClawが進めます。',task,evidence,seconds:(Date.now()-started)/1000};
+    return {answer:'作業の依頼を承認待ちで用意しました。実行先を選んで承認すると、仕事を進められます。',task,evidence,seconds:(Date.now()-started)/1000};
   }
   const system=`You are REI, the user's composed, highly capable executive assistant. Reply in natural spoken Japanese (usually 1-3 short sentences), and follow the conversation. Be attentive and warm while remaining clear and capable. Match the user's mood: a short acknowledgement such as うん、そうですね or なるほど may fit a casual turn, while a work question needs a direct answer. Vary reactions and do not repeat an acknowledgement at the start of every reply. For a genuinely playful remark, an occasional brief ふふ、 followed by a relevant reply is welcome; never laugh at distress, mistakes, complaints or serious business. Do not insert stage directions, laughter tags, emoji, w or 笑 into speech. If the user only says うん or なるほど, continue the current topic briefly rather than restarting or asking what they need. Ask at most one relevant follow-up when useful. Use polite Japanese without stiffness; avoid flattery, excessive enthusiasm and formal filler such as お世話になります or ございます. Lead with the answer for work questions. Be honest about uncertainty and about what has actually been done. You can look up company knowledge and draft work requests for approval. Do not ask the user to do your work. Today: ${new Date().toISOString().slice(0,10)}.
 Return EXACTLY one JSON object. Actions:
@@ -53,7 +53,7 @@ Selected company groups: ${JSON.stringify(groups.map(g=>g.name))}.`;
       // Never automatically execute a model-generated instruction.
       if(signal?.aborted)throw new Error('会話を中断しました');
       const task=await submit(decision.instruction);
-      return {answer:'作業の依頼を承認待ちで用意しました。内容を確認して承認すると、OpenClawが進めます。',task,evidence,seconds:(Date.now()-started)/1000};
+      return {answer:'作業の依頼を承認待ちで用意しました。実行先を選んで承認すると、仕事を進められます。',task,evidence,seconds:(Date.now()-started)/1000};
     }
     if(!groups.length)return {answer:'会社情報を確認するには、検索範囲・情報源から共有グループを選んでください。',evidence:[],seconds:(Date.now()-started)/1000};
     if(decision.action!=='search'&&!allowedIds.has(decision.uuid))throw new Error('取得済み記録以外は参照できません');

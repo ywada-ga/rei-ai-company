@@ -41,14 +41,14 @@ export function createKnowledgeTask(db,text,mode,userId,deviceId,groups=[],time=
 export function cancellable(db,root) {
   if(!root||root.kind!=='root'||!['approval_pending','planning','running'].includes(root.status))return false;
   const children=all(db,'SELECT kind,status FROM tasks WHERE parent_id=?',root.id);
-  return children.length>0&&children.every(child=>child.status==='ready'||child.status==='blocked'||(child.kind==='plan'&&child.status==='completed'));
+  return children.length>0&&children.every(child=>child.status==='ready'||child.status==='blocked'||child.status==='cowork_waiting'||(child.kind==='plan'&&child.status==='completed'));
 }
 export function cancelTask(db,root,actor) {
   return transaction(db,()=>{
     const current=one(db,'SELECT * FROM tasks WHERE id=?',root.id);
     if(!cancellable(db,current))return false;
     const time=now();
-    run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND status IN ('ready','blocked')",time,root.id);
+    run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE parent_id=? AND status IN ('ready','blocked','cowork_waiting')",time,root.id);
     run(db,"UPDATE tasks SET status='cancelled',finished_at=? WHERE id=?",time,root.id);
     event(db,root.id,actor,'cancelled','実行前に中止');
     return true;

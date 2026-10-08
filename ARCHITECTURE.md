@@ -148,3 +148,9 @@ session.input_transcript.delta/output_transcript.deltaを原文のまま字幕�
 司令室 → 既存の会社情報検索 → voice/local/speak → LocalVoice → 常駐Python/MLX Qwen → WAV → 再生。認証・同一送信元検査、所有者/管理者限定、500文字上限、1生成ずつ、120秒の期限、切断時の停止を適用。音声認識と検索担当AIは既存の構成を使用する。
 
 開発配置はREI_LOCAL_VOICE_PYTHONとREI_LOCAL_VOICE_MODEL。リクエストから実行ファイルやモデルを変更できない。package-local-voice.mjsでPythonの標準ライブラリと音声依存だけを移し、同梱モデルのオフライン生成を確認した。設定がなければResources/local-voiceを使用する。依存ライセンス通知、別機種での確認、ピークメモリ計測は未完了。試用モデルはQwen3-TTS-12Hz-1.7B-CustomVoice-8bit（Apache-2.0）、mlx-audio（MIT）。
+
+## Cowork実行先（2026-10-08）
+
+Owner/Adminが承認待ちのrootをCoworkに渡すと、唯一のblocked planをexecuteへ変更し`cowork_waiting`にします。OpenClawのclaimは`ready`のみを取得するため二重配信されません。ローカルstdio MCPは承認済みキューに限定したlist/claim/reportの3操作を公開します。claimはSQLite transactionで`cowork_running`とランダムな受け取り証を記録します。reportは同じ受け取り証と状態を検証し`needs_review`へ戻します。完了はREIの既存reconcileで人が確認します。依頼の中止、重複報告、別実行先の隔離をテストします。
+
+プラグインは同梱NodeとREIのcowork-mcp.mjsを起動し、このMacのREI SQLiteに接続します。認証情報をプラグインへコピーせず、HTTP公開や課金APIを追加しません。ローカルMCPはホストPC上の信頼したプログラムであり、Claude側の明示的なプラグイン導入・許可が必要です。WebだけのCoworkやローカルMCP禁止の組織には適用しません。CoworkからREIを取得する方向の連携で、REIがCoworkを自動起動するAPIは実装していません。

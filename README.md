@@ -257,3 +257,17 @@ Web司令室、ログイン、役割、端末登録・解除、複数PC用Connec
 ### ローカルの日本語音声（開発中）
 
 0.5.38で司令室に「自然な声（このPC）」を追加しました。準備済みのMacではQwen3-TTSで返答音声を作ります。音声合成の有料APIは使いません。音声認識と会社情報検索は従来のサービスを使用。このMac用アプリではPythonとモデルを同梱し生成を確認しました。約3.9GB、Apple Silicon/macOS 26以降が対象です。別のMacでの動作と配布署名は未確認です。
+
+### Coworkへ仕事を渡す（Mac・ローカル接続）
+
+1. REIの「端末・設定」で「Cowork接続 → 接続パッケージを作成」を押し、ZIPをダウンロードします。
+2. 同じMacのClaude DesktopでCowork → Customize → PluginsからZIPをカスタムプラグインとして追加し、ローカルMCPを許可します。
+3. REIとの会話から依頼を作り、ミッション詳細で「Coworkへの共有と実行を承認」を押します。承認した依頼文と会話の参考情報がCoworkへ渡ります。
+4. Coworkで「REIの承認済み依頼を進めて」、または `/rei-cowork:rei-work` で開始します。
+5. Coworkの報告はREIの「要確認」に戻ります。成果物と未実施内容を確認してから完了にしてください。
+
+Claudeの月額契約内のCoworkを使い、REIからAnthropicの有料APIやClaudeログイントークンを呼び出しません。利用枠はClaude側の契約に従います。NodeはREIに同梱した実行環境を使用します。ZIPはこのMacのREIの場所を参照するため、別のMacではそのMacで作成し直します。停止する時はClaudeでこのプラグインを無効化し、REIで未着手の仕事を中止してください。既に実行中の仕事はCowork側で停止し、結果を確認してください。中断した仕事を自動で再実行する機能はありません。
+
+**検証範囲:** ローカルMCPの初期化、依頼受け取り、重複拒否、結果報告、REIでの確認、権限とZIP整合性をテスト済み。Cowork本体での導入と仕事の実行は実機確認が必要です。外部からCoworkを自動起動する機能ではありません。プラグインのローカルMCPが許可されたClaude Desktopを使用します。
+
+公式仕様: [ローカルMCPを含むプラグイン](https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors)、[カスタムプラグインの導入](https://support.claude.com/en/articles/13837440-use-plugins-in-claude)。

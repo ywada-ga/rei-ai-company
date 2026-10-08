@@ -16,6 +16,8 @@ import {LocalVoice} from './local-voice.mjs';
 import {LocalChat} from './local-chat.mjs';
 import {ConversationMcp} from './conversation-mcp.mjs';
 import {converse} from './conversation.mjs';
+import {approveCowork,coworkStatus} from './cowork.mjs';
+import {prepareCoworkPlugin} from './cowork-plugin.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
 import { searchMarketplaceSkills } from './skill-marketplace.mjs';
 import { createBackup, createBackupIfDue } from './backup.mjs';
@@ -142,6 +144,21 @@ async function api(req,res,route) {
   }
 
   const user=sessionUser(db,req);if(!user)return error(res,401,'ログインしてください');
+  if(route.startsWith('cowork/')){
+    if(!['owner','admin'].includes(user.role))return error(res,403,'Cowork接続は管理者が設定してください');
+    const dataDir=path.resolve(process.env.REI_DATA_DIR||path.join(root,'data'));
+    if(route==='cowork/status'&&req.method==='GET')return send(res,200,{...coworkStatus(db),prepared:existsSync(path.join(dataDir,'rei-cowork-plugin.zip'))});
+    if(route==='cowork/prepare'&&req.method==='POST'){prepareCoworkPlugin(root,dataDir);return send(res,200,{ok:true});}
+    if(route==='cowork/plugin'&&req.method==='GET'){
+      const file=path.join(dataDir,'rei-cowork-plugin.zip');if(!existsSync(file))return error(res,404,'先に接続パッケージを作成してください');
+      res.writeHead(200,{'content-type':'application/zip','content-disposition':'attachment; filename="rei-cowork-plugin.zip"','cache-control':'no-store'});return res.end(readFileSync(file));
+    }
+    if(route==='cowork/approve'&&req.method==='POST'){
+      const input=await body(req);if(!existsSync(path.join(dataDir,'rei-cowork-plugin.zip')))return error(res,409,'端末・設定からCoworkの接続パッケージを作成してください');
+      const task=approveCowork(db,String(input.taskId||''),user.username);return send(res,200,{ok:true,task});
+    }
+  }
+
   if(route.startsWith('conversation/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'会話AIは所有者・管理者が利用できます');
     if(route==='conversation/status'&&req.method==='GET')return send(res,200,localChat.status());

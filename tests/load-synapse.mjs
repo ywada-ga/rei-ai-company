@@ -31,11 +31,14 @@ assert.deepEqual(episodeLookups(datedRows,groups,{recent:true}).map(x=>x.uuid),[
 steps=[];round=0;let activeSearches=0,peakSearches=0;
 const recent=await converse({question:'会社の案件Aは今どうなった？',groups,generate:async messages=>{
  if(++round===1)return {text:'{"action":"search","query":"案件A"}'};
- assert.ok(messages.some(m=>m.content.includes('案件Aは金曜日の予定')));return {text:'{"action":"answer","text":"保存本文に書かれた予定です。"}'};
+ assert.ok(messages.some(m=>m.content.includes('案件Aは金曜日の予定')));
+ assert.ok(!messages.some(m=>m.content.includes('未読の検索候補だけの主張')||m.content.includes('未確認の出典だけの主張')||m.content.includes('未読の原文候補だけの主張')));
+ return {text:'{"action":"answer","text":"保存本文に書かれた予定です。"}'};
 },call:async(tool,args)=>{
  if(['search_memory_facts','search_episodes'].includes(tool)){activeSearches++;peakSearches=Math.max(peakSearches,activeSearches);await new Promise(r=>setTimeout(r,20));activeSearches--;}
- if(tool==='search_memory_facts'){steps.push(tool);return {structuredContent:{facts:[{uuid:'fact-old',group_id:'allowed',fact:'古い予定'}]}};}
- if(tool==='get_fact_source'){steps.push(tool);return {structuredContent:{sources:[]}};}
+ if(tool==='search_memory_facts'){steps.push(tool);return {structuredContent:{facts:[{uuid:'fact-old',group_id:'allowed',fact:'未読の検索候補だけの主張'}]}};}
+ if(tool==='get_fact_source'){steps.push(tool);return {structuredContent:{fact:{fact:'未確認の出典だけの主張'},sources:[]}};}
+ if(tool==='search_episodes'){const result=await call(tool,args);result.structuredContent.episodes[0].content='未読の原文候補だけの主張';return result;}
  return call(tool,args);
 }});
 assert.ok(steps.includes('search_episodes'));assert.equal(recent.synapseRead,true);assert.equal(peakSearches,2);assert.equal(activeSearches,0);

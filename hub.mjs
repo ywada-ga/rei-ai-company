@@ -213,7 +213,7 @@ async function api(req,res,route) {
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,instruction,'operations',user.id,true,null,null,context));}});
         if(!controller.signal.aborted){
           if(JSON.stringify(knowledgeSettings(db).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
-          const turns=[...context,{question,answer:result.answer.slice(0,2000)}].slice(-6);
+          const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true}].slice(-6);
           run(db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`conversation:${user.id}`,JSON.stringify({scope,turns}));
           return send(res,200,result);
         }

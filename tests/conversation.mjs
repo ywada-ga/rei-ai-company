@@ -41,3 +41,12 @@ for(const override of [{group_id:'outside'},{uuid:'wrong'},{content_truncated:tr
  const bad=await converse({...basic,call:noteFixture(override),generate:make([{action:'search',query:'会議'},{action:'answer',text:'断定'}])});assert.match(bad.answer,/まだ確定/);
 }
 console.log('saved note provenance and complete scoped body tests passed');
+
+// Every company follow-up must read the remote service again; no prior answer fallback.
+let freshVersion=0;
+const askFresh=()=>converse({...basic,question:'その担当は今誰？',context:[{question:'誰が担当？',answer:'以前の担当',synapseRead:true}],generate:make([{action:'answer',text:'以前の担当'},{action:'search',query:'担当'},{action:'answer',text:'今回取得した担当'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'fresh-'+(++freshVersion),fact:'新しい担当',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true}]}}});
+const fresh1=await askFresh(),fresh2=await askFresh();assert.equal(freshVersion,2);assert.equal(fresh1.synapseRead,true);assert.ok(fresh2.synapseCheckedAt);
+await assert.rejects(converse({...basic,question:'その担当は今誰？',context:[{question:'担当',answer:'古い回答',synapseRead:true}],generate:make([{action:'search',query:'担当'}]),call:async()=>{throw Error('connection unavailable')}}),/connection unavailable/);
+let oldReads=0;
+const old=await converse({...basic,generate:make([{action:'search',query:'予定'},...Array.from({length:5},()=>({action:'answer',text:'古い予定'}))]),call:async tool=>{if(tool!=='search_memory_facts')oldReads++;return {structuredContent:{facts:[{uuid:'old',fact:'古い予定',episodes:['old-note'],obsidian_sources:[{is_latest_revision:false}]}]}};}});assert.equal(oldReads,0);assert.match(old.answer,/まだ確定/);
+console.log('fresh remote reads, follow-up refresh and obsolete record rejection passed');

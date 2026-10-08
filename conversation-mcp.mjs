@@ -33,15 +33,21 @@ export class ConversationMcp {
     this.signature=integration.name;return this.runtime;
   }
   async call(integration,tool,args,signal){
-    if(!['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode'].includes(tool))throw new Error('会話からは読み取り専用の検索だけを利用できます');
+    if(!['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode','get_updates'].includes(tool))throw new Error('会話からは読み取り専用の検索だけを利用できます');
     if(!Array.isArray(args.group_ids)||!args.group_ids.length)throw new Error('検索範囲が必要です');
+    if(tool==='get_updates'&&(args.advance!==false||!args.group_ids.includes(args.group_id)))throw new Error('追加履歴は選択範囲内で栞を変更せず読み取る必要があります');
     const started=performance.now();
     const runtime=await this.connect(integration);if(signal?.aborted)throw new Error('検索を中断しました');
     const ready=performance.now();
     let result;
-    try{result=await runtime.callTool(integration.name,tool,args);}catch{await this.close();throw new Error('Synapse Connectの検索に接続できませんでした。接続状態を確認して再試行してください');}
+    const wireArgs=tool==='get_updates'?Object.fromEntries(Object.entries(args).filter(([key])=>key!=='group_ids')):args;
+    try{result=await runtime.callTool(integration.name,tool,wireArgs);}catch{await this.close();throw new Error('Synapse Connectの検索に接続できませんでした。接続状態を確認して再試行してください');}
     if(signal?.aborted)throw new Error('検索を中断しました');
     const finished=performance.now();
     return {...result,reiMcpTiming:{connectMs:Math.round(ready-started),requestMs:Math.round(finished-ready),totalMs:Math.round(finished-started)}};
+  }
+  async catalog(integration){
+    const runtime=await this.connect(integration);
+    return runtime.callTool(integration.name,'list_groups',{limit:1000});
   }
 }

@@ -33,7 +33,7 @@ export function evidenceBodyContext(content,question,{recent=false,budget=6000}=
  const matches=[];
  for(const term of terms){let offset=0;while((offset=content.indexOf(term,offset))!==-1){matches.push(offset);offset+=term.length;if(matches.length>=100)break;}if(matches.length>=100)break;}
  matches.sort((a,b)=>recent?b-a:a-b);
- if(recent)windows.push([Math.max(0,content.length-Math.min(1600,budget-windows[0][1])),content.length]);
+ if(recent)windows.push([Math.max(0,content.length-Math.min(1600,Math.floor(budget*0.4))),content.length]);
  let remaining=budget-windows.reduce((n,[a,b])=>n+b-a,0);
  for(const offset of matches){if(remaining<300)break;if(windows.some(([a,b])=>offset>=a&&offset<b))continue;const length=Math.min(1000,remaining),start=Math.max(0,offset-250);windows.push([start,Math.min(content.length,start+length)]);remaining-=length;}
  if(remaining>0&&!recent)windows.push([Math.max(0,content.length-remaining),content.length]);

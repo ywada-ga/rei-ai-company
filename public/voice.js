@@ -77,10 +77,11 @@ export class VoiceConversation {
     const progressTimer=this.progressTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.emit('thinking','情報源を確認しています。回答まで1〜2分かかる場合があります。');},20000);
     const answerTimer=this.answerTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.stop('回答の確認に時間がかかっています。会社の記憶の画面で結果を確認し、会話を再開してください。');},this.answerTimeoutMs);
     try {
-      const answer=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?delta=>{if(!this.active||epoch!==this.epoch)return;this.latency.text(delta);this.answer+=delta;this.emit(this.phase==='speaking'?'speaking':'thinking');speech.push(delta);}:undefined,receipt=>{if(this.active&&epoch===this.epoch){this.emit('thinking',receipt);speech?.receipt?.(receipt);}});
+      const reply=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?delta=>{if(!this.active||epoch!==this.epoch)return;this.latency.text(delta);this.answer+=delta;this.emit(this.phase==='speaking'?'speaking':'thinking');speech.push(delta);}:undefined,(receipt,notice)=>{if(this.active&&epoch===this.epoch){this.emit('thinking',receipt);if(notice?.type==='progress')clearTimeout(progressTimer);if(notice?.type==='progress')speech?.progress?.(receipt);else speech?.receipt?.(receipt);}});
       if(!this.active||epoch!==this.epoch)return;
+      const answer=typeof reply==='string'?reply:reply.answer,spokenAnswer=typeof reply==='string'?reply:(reply.spokenAnswer??reply.answer);
       this.answer=String(answer);this.latency.text(this.answer);this.latency.complete();this.history.push({question,answer:this.answer.slice(0,2000)});
-      this.history=this.history.slice(-3);clearTimeout(progressTimer);if(speech){clearTimeout(answerTimer);await speech.finish(this.answer);if(this.active&&epoch===this.epoch)this.listen();}else this.say(this.answer);
+      this.history=this.history.slice(-3);clearTimeout(progressTimer);if(speech){clearTimeout(answerTimer);await speech.finish(spokenAnswer);if(this.active&&epoch===this.epoch)this.listen();}else this.say(spokenAnswer);
     } catch(error){speech?.cancel();if(this.active&&epoch===this.epoch)this.stop(error.message||'回答を確認できませんでした。');}
     finally {clearTimeout(answerTimer);clearTimeout(progressTimer);}
   }

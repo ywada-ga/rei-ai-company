@@ -1,3 +1,4 @@
+import {CONVERSATION_PROGRESS} from './public/conversation-progress.js';
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
@@ -7,7 +8,7 @@ export const LOCAL_RECEIPT_TEXT='はい。';
 
 export class LocalVoice {
   constructor(root,{python=process.env.REI_LOCAL_VOICE_PYTHON||path.join(root,'../local-voice/python/bin/python3'),model=process.env.REI_LOCAL_VOICE_MODEL||path.join(root,'../local-voice/qwen-model'),timeoutMs=120000}={}) {
-    Object.assign(this,{root,python,model,timeoutMs});
+    Object.assign(this,{root,python,model,timeoutMs});this.noticeCache=new Map();
   }
   status(){return {configured:!!(this.python&&this.model&&existsSync(this.python)&&existsSync(path.join(this.model,'model.safetensors'))),ready:!!this.ready,busy:!!this.busy};}
   close(){const child=this.child;this.child=null;this.ready=false;child?.kill();this.reject?.(new Error('ローカル音声を停止しました'));this.reject=null;}
@@ -48,23 +49,27 @@ export class LocalVoice {
       for(const chunk of this.receiptCache.chunks){if(signal?.aborted)throw new Error('音声を中断しました');onChunk({...chunk});}
       return {...this.receiptCache.result,preparationMs:0,firstGeneratedSeconds:0,totalSeconds:0,cached:true};
     }
+    if(onChunk&&Object.values(CONVERSATION_PROGRESS).includes(text)&&this.receiptPreparing)await this.receiptPreparing;
+    const cachedNotice=onChunk?this.noticeCache.get(text):null;
+    if(cachedNotice){for(const chunk of cachedNotice.chunks){if(signal?.aborted)throw new Error('音声を中断しました');onChunk({...chunk});}return {...cachedNotice.result,preparationMs:0,firstGeneratedSeconds:0,totalSeconds:0,cached:true};}
     if(this.busy)throw Object.assign(new Error('ローカル音声は別の返答を作成中です'),{status:409});
     this.busy=true;
     try{
       const prepareStarted=performance.now();await this.start();const preparationMs=Math.round(performance.now()-prepareStarted);if(signal?.aborted)throw new Error('音声を中断しました');
       return await new Promise((resolve,reject)=>{
-        const id=crypto.randomUUID();let timer,chunkCount=0;const receiptChunks=[];
+        const id=crypto.randomUUID();let timer,chunkCount=0;const receiptChunks=[],noticeChunks=[];
         const abort=()=>this.close();
         const finish=(error,result)=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);this.pending=null;this.reject=null;error?reject(error):resolve(result);};
         this.reject=error=>finish(error);
         this.pending={id,resolve:message=>{
           if(onChunk&&message.type==='chunk'){
             if(message.index!==chunkCount||typeof message.wav!=='string'||message.wav.length>2000000||!Number.isFinite(message.audioSeconds)||message.audioSeconds<=0||message.audioSeconds>30||!Number.isInteger(message.sampleRate)||message.sampleRate<8000||message.sampleRate>192000)return this.close();
-            chunkCount++;const chunk={index:message.index,wav:message.wav,sampleRate:message.sampleRate,audioSeconds:message.audioSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds};if(text===LOCAL_RECEIPT_TEXT)receiptChunks.push({...chunk});onChunk(chunk);return;
+            chunkCount++;const chunk={index:message.index,wav:message.wav,sampleRate:message.sampleRate,audioSeconds:message.audioSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds};if(text===LOCAL_RECEIPT_TEXT)receiptChunks.push({...chunk});if(Object.values(CONVERSATION_PROGRESS).includes(text))noticeChunks.push({...chunk});onChunk(chunk);return;
           }
           if(onChunk?(message.type!=='done'||!chunkCount||message.chunkCount!==chunkCount):(message.type!=='audio'||typeof message.wav!=='string'))return finish(new Error('ローカル音声を作成できませんでした'));
           const result={...(onChunk?{chunkCount}:{}),wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds,preparationMs};
           if(text===LOCAL_RECEIPT_TEXT&&onChunk)this.receiptCache={chunks:receiptChunks,result};
+          if(onChunk&&Object.values(CONVERSATION_PROGRESS).includes(text))this.noticeCache.set(text,{chunks:noticeChunks,result});
           finish(null,result);
         }};
         signal?.addEventListener('abort',abort,{once:true});

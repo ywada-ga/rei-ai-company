@@ -1,4 +1,5 @@
 import {speechChunks} from './voice.js';
+import {validProgressText} from './conversation-progress.js';
 export async function playLocalVoice(text,signal,request,{AudioClass=globalThis.Audio,urls=globalThis.URL}={}) {
   const result=await request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text}),signal});
   return playVoiceAudio(result,signal,{AudioClass,urls});
@@ -58,8 +59,9 @@ export function createLocalSpeechStream(signal,request,options={}){
 export function createConversationSpeech(signal,create,options={}){
   let receipt=null,answer=null,received=false,answerStarted=false,canceled=false;
   let receiptDone=Promise.resolve(),receiptGenerated=Promise.resolve();
-  const main=()=>answer||(answer=create({onPlaying:options.onPlaying,onPrepared:options.onPrepared,synthesisReady:receiptGenerated,playbackReady:receiptDone}));
-  const cancel=()=>{canceled=true;receipt?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
+  let progressSpeech=null,progressBusy=false,progressGenerated=Promise.resolve();
+  const main=()=>answer||(answer=create({onPlaying:()=>{progressSpeech?.cancel();options.onPlaying?.();},onPrepared:options.onPrepared,synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone}));
+  const cancel=()=>{canceled=true;receipt?.cancel();progressSpeech?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
   signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
   return {
     receipt(text){
@@ -67,6 +69,13 @@ export function createConversationSpeech(signal,create,options={}){
       let prepared;receiptGenerated=new Promise(resolve=>prepared=resolve);
       text='はい。';received=true;receipt=create({onPlaying:options.onReceiptPlaying,onPrepared:prepared});receipt.push(text);
       receiptDone=receipt.finish(text).catch(()=>{receipt.cancel();}).finally(prepared);
+    },
+    progress(text){
+      if(canceled||answerStarted||progressBusy||!validProgressText(text))return;
+      let prepared;progressGenerated=new Promise(resolve=>prepared=resolve);progressBusy=true;
+      const notice=progressSpeech=create({onPlaying:options.onReceiptPlaying,onPrepared:prepared,synthesisReady:receiptGenerated,playbackReady:receiptDone});
+      notice.push(text);
+      notice.finish(text).catch(()=>notice.cancel()).finally(()=>{prepared();progressBusy=false;});
     },
     push(delta){if(canceled)throw new Error('音声を中断しました');answerStarted=true;main().push(delta);},
     async finish(text){try{await receiptDone;if(canceled)throw new Error('音声を中断しました');await main().finish(text);}finally{signal.removeEventListener('abort',cancel);}},

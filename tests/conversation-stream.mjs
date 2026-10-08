@@ -74,3 +74,25 @@ await assert.rejects(readConversationStream(new Response(JSON.stringify({type:'e
  assert.deepEqual(error.conversationDiagnostics,failureDiagnostics);return true;
 });
 console.log('PASS streaming failure diagnostics reach the UI without pretending that an answer completed');
+const progressOnly=[],answerOnly=[];
+await readConversationStream(new Response([
+ {type:'progress',stage:'source',text:'資料の本文を確認しています。'},
+ {type:'delta',text:'確認した回答です。'},
+ {type:'done',result:{answer:'確認した回答です。'}}
+].map(e=>JSON.stringify(e)+'\n').join('')),{onReceipt:(text,notice)=>progressOnly.push({text,notice}),onDelta:t=>answerOnly.push(t)});
+assert.equal(progressOnly[0].notice.type,'progress');assert.deepEqual(answerOnly,['確認した回答です。']);
+await assert.rejects(readConversationStream(new Response(JSON.stringify({type:'progress',stage:'source',text:'社内の事実を捏造した案内'})+'\n')),/進捗/);
+const priority=[],progressHandle={push(t){priority.push(t);},finish(){return new Promise(()=>{});},cancel(){priority.push('notice-stopped');}};
+let creations=0;
+const prioritySpeech=createConversationSpeech(new AbortController().signal,options=>{
+ if(++creations===1){options.onPrepared?.({});return progressHandle;}
+ return {push(t){priority.push(t);},async finish(){await options.synthesisReady;await options.playbackReady;options.onPlaying?.();},cancel(){}};
+});
+prioritySpeech.progress('資料の本文を確認しています。');prioritySpeech.push('回答です。');await prioritySpeech.finish('回答です。');
+assert.deepEqual(priority,['資料の本文を確認しています。','回答です。','notice-stopped']);prioritySpeech.progress('関連する記録を探しています。');assert.equal(creations,2);
+console.log('PASS validated progress stays separate; answer interrupts notice playback without waiting for it to finish');
+let spokenFinal='';const visibleAnswer='確認した回答です。\n\n出どころ：画面だけに表示する資料。';
+const citedVoice=new VoiceConversation({Recognition:class{},ask:async(q,c,s,onDelta)=>{onDelta('確認した回答です。');return {answer:visibleAnswer,spokenAnswer:'確認した回答です。'};}});
+citedVoice.streamReply=()=>({push(){},async finish(text){spokenFinal=text;},cancel(){}});citedVoice.active=true;citedVoice.epoch=1;citedVoice.listen=()=>{citedVoice.phase='listening';};
+await citedVoice.respond('試験',1);assert.equal(spokenFinal,'確認した回答です。');assert.equal(citedVoice.history[0].answer,visibleAnswer);citedVoice.stop();
+console.log('PASS source lists remain visible in history but are not added to answer speech');

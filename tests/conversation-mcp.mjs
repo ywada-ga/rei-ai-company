@@ -17,3 +17,10 @@ const failures=await Promise.allSettled([retry.connect(integration),retry.connec
 assert.ok(failures.every(value=>value.status==='rejected'));assert.equal(attempts,1);
 assert.ok(await retry.connect(integration));assert.equal(attempts,2);await retry.close();
 console.log('PASS parallel MCP initialization shares one runtime, close waits, failed initialization can retry');
+const history=new ConversationMcp('.');let sent;
+history.connect=async()=>({callTool:async(name,tool,args)=>{sent=args;return {structuredContent:{episodes:[],coverage:{complete:true}}};}});
+await assert.rejects(history.call(integration,'get_updates',{group_ids:['g'],group_id:'g'}),/栞/);
+await assert.rejects(history.call(integration,'get_updates',{group_ids:['g'],group_id:'outside',advance:false}),/選択範囲/);
+await history.call(integration,'get_updates',{group_ids:['g'],group_id:'g',advance:false,start:'beginning'});
+assert.equal(sent.advance,false);assert.equal(sent.group_ids,undefined);
+console.log('PASS update reads require explicit readonly mode and selected group; no bookmark writes');

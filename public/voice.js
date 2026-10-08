@@ -77,7 +77,7 @@ export class VoiceConversation {
     const progressTimer=this.progressTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.emit('thinking','情報源を確認しています。回答まで1〜2分かかる場合があります。');},20000);
     const answerTimer=this.answerTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.stop('回答の確認に時間がかかっています。会社の記憶の画面で結果を確認し、会話を再開してください。');},this.answerTimeoutMs);
     try {
-      const answer=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?delta=>{if(!this.active||epoch!==this.epoch)return;this.latency.text(delta);this.answer+=delta;this.emit(this.phase==='speaking'?'speaking':'thinking');speech.push(delta);}:undefined);
+      const answer=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?delta=>{if(!this.active||epoch!==this.epoch)return;this.latency.text(delta);this.answer+=delta;this.emit(this.phase==='speaking'?'speaking':'thinking');speech.push(delta);}:undefined,receipt=>{if(this.active&&epoch===this.epoch)this.emit('thinking',receipt);});
       if(!this.active||epoch!==this.epoch)return;
       this.answer=String(answer);this.latency.text(this.answer);this.latency.complete();this.history.push({question,answer:this.answer.slice(0,2000)});
       this.history=this.history.slice(-3);clearTimeout(progressTimer);if(speech){clearTimeout(answerTimer);await speech.finish(this.answer);if(this.active&&epoch===this.epoch)this.listen();}else this.say(this.answer);

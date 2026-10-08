@@ -8,6 +8,11 @@ export function parseDecision(text){
   const key={answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}[value.action];
   if(typeof value[key]!=='string'||!value[key].trim()||value[key].length>4000)throw new Error('会話AIの返答内容を確認できませんでした');return value;
 }
+// Deterministic receipt, not a factual answer or a claim that evidence is already read.
+export function conversationReceipt(question){
+  const match=String(question).trim().match(/^([^\n。！？!?]{1,60}(?:グループ|株式会社|会社))について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u);
+  return match?`${match[1]}についてですね。まず概要から確認します。`:null;
+}
 // Decode only complete JSON string tokens. Never emit decisions or tool arguments.
 export function streamedAnswerPrefix(raw){
   const match=String(raw).match(/^\s*\{\s*(?:"decision"\s*:\s*\{\s*)?"action"\s*:\s*"answer"\s*,\s*"text"\s*:\s*"/);

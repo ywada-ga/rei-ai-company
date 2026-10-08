@@ -16,7 +16,7 @@ import {LocalVoice} from './local-voice.mjs';
 import {LocalChat} from './local-chat.mjs';
 import {ChatGPTPlan} from './chatgpt-plan.mjs';
 import {ConversationMcp} from './conversation-mcp.mjs';
-import {converse} from './conversation.mjs';
+import {converse,conversationReceipt} from './conversation.mjs';
 import {approveCowork,coworkStatus} from './cowork.mjs';
 import {prepareCoworkPlugin} from './cowork-plugin.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
@@ -208,6 +208,7 @@ async function api(req,res,route) {
       const emit=value=>{if(!controller.signal.aborted&&!res.destroyed)res.write(JSON.stringify(value)+'\n');};
       if(streaming){res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-accel-buffering':'no'});res.flushHeaders();}
       conversationBusy=true;
+      if(streaming&&integration&&settings.groups.length){const receipt=conversationReceipt(question);if(receipt)emit({type:'receipt',text:receipt});}
       try{
         const result=await converse({question,context,groups:settings.groups,signal:controller.signal,onDelta:streaming?text=>emit({type:'delta',text}):null,
           runtimeContext:{name:'REI',version:reiVersion,conversation:chatProvider(user)==='chatgpt'?'ChatGPT（接続済み）':'ローカルQwen',voice:'ローカルQwen',synapseConfigured:!!integration,selectedGroupCount:settings.groups.length,execution:'OpenClaw、作業は承認待ちを作成してから実行',capabilities:['継続した文章・音声会話','選択したSynapse Connectの記録検索と原記録確認','承認待ち作業の作成','接続端末の稼働状況'],limitations:['一般質問と継続会話は実機確認済み','音声品質と応答速度は調整中','会社情報は原記録が取れる範囲のみ回答','商用配布の署名・公証、別Macでの検証は未完了','Coworkは接続パッケージ実装済み、実機連携は未確認']},

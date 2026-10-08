@@ -26,7 +26,7 @@ class AudioMock{constructor(url){this.url=url;}pause(){}removeAttribute(){}play(
 const speech=createLocalSpeechStream(new AbortController().signal,async(url,opts)=>{prepared.push(JSON.parse(opts.body).text);return {wav:btoa('RIFF')};},{AudioClass:AudioMock,urls});
 speech.push('最初の文。');await new Promise(r=>setTimeout(r,0));assert.equal(audioPlayed.length,1,'play starts before completion');speech.push('次の文。');await new Promise(r=>setTimeout(r,0));assert.equal(prepared.length,2,'next audio prepares during playback');assert.equal(audioPlayed.length,1);const finished=speech.finish('最初の文。次の文。');endFirst();await finished;assert.equal(audioPlayed.length,2);
 const changes=[];let resolveFinal,spokenParts=[];
-const voice=new VoiceConversation({Recognition:class{},ask:async(q,c,s,onDelta)=>{onDelta('こんにちは。');return new Promise(r=>resolveFinal=r);},onChange:s=>changes.push(s)});
+const voice=new VoiceConversation({Recognition:class{},ask:async(q,c,s,onDelta,onReceipt)=>{onReceipt('受け答えだけです。');assert.equal(changes.at(-1).message,'受け答えだけです。');assert.equal(changes.at(-1).latency.firstTextMs,null);onDelta('こんにちは。');return new Promise(r=>resolveFinal=r);},onChange:s=>changes.push(s)});
 voice.streamReply=(signal,onPlaying)=>({push(t){spokenParts.push(t);onPlaying();},async finish(){},cancel(){}});voice.active=true;voice.epoch=1;voice.listen=()=>{voice.phase='listening';};const responding=voice.respond('こんにちは',1);assert.deepEqual(spokenParts,['こんにちは。']);assert.equal(voice.history.length,0);resolveFinal('こんにちは。');await responding;assert.equal(voice.history.length,1);assert.equal(voice.phase,'listening');voice.stop();
 console.log('incremental decoding, source gate, transport completion, ordered audio and continuous voice passed');
 
@@ -37,3 +37,13 @@ const blocked=createLocalSpeechStream(new AbortController().signal,async()=>({wa
 console.log('speech-end timing, request-start fallback and rejected playback onset passed');
 
 let preparation;const diagnostic=createLocalSpeechStream(new AbortController().signal,async()=>({wav:btoa('RIFF'),preparationMs:7,firstGeneratedSeconds:0.4,totalSeconds:1}),{AudioClass:AudioMock,urls,onPrepared(value){preparation=value;}});diagnostic.push('一文。');await new Promise(r=>setTimeout(r,0));assert.deepEqual(preparation,{characters:3,preparationMs:7,firstGeneratedSeconds:0.4,totalSeconds:1});const diagnosticDone=diagnostic.finish('一文。');await diagnosticDone;assert.ok(!('wav' in preparation));console.log('synthesis timing exposes numbers without audio or text');
+
+const {conversationReceipt}=await import('../conversation.mjs');
+assert.equal(conversationReceipt('グレイトフルグループについて教えてください！'),'グレイトフルグループについてですね。まず概要から確認します。');
+assert.equal(conversationReceipt('グレイトフルグループの売上はいくら？'),null);
+assert.equal(conversationReceipt('こんにちは'),null);
+const receipts=[],answerDeltas=[];const receiptTiming=createTurnLatency(()=>1000);
+const receiptEvents=[{type:'receipt',text:'まず概要から確認します。'},{type:'delta',text:'確認済みの回答です。'},{type:'done',result:{answer:'確認済みの回答です。'}}];
+await readConversationStream(new Response(receiptEvents.map(x=>JSON.stringify(x)+'\n').join('')),{onReceipt:text=>{receipts.push(text);assert.equal(receiptTiming.snapshot().firstTextMs,null);},onDelta:text=>{answerDeltas.push(text);receiptTiming.text(text);}});
+assert.deepEqual(receipts,['まず概要から確認します。']);assert.deepEqual(answerDeltas,['確認済みの回答です。']);
+console.log('receipt channel stays separate from meaningful answer deltas and latency');

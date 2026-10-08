@@ -51,9 +51,9 @@ function commandSkill(skill) {state.selectedCommandSkill=skill||null;$('command-
 
 function setSkillPane(pane){if(pane==='create'&&state.data?.user.role==='viewer')pane='library';state.skillPane=pane;document.querySelector('.playbook-grid').classList.toggle('hidden',pane!=='library');$('playbook-search-form').classList.toggle('hidden',pane!=='library');$('playbook-total').classList.toggle('hidden',pane!=='library');$('playbook-form').classList.toggle('hidden',pane!=='create');document.querySelector('.marketplace-panel').classList.toggle('hidden',pane!=='marketplace');document.querySelector('[data-skill-pane="create"]').classList.toggle('hidden',state.data?.user.role==='viewer');document.querySelectorAll('[data-skill-pane]').forEach(button=>button.classList.toggle('active',button.dataset.skillPane===pane));}
 
-async function streamConversation(question,context,signal,onDelta){
+async function streamConversation(question,context,signal,onDelta,onReceipt){
   const response=await fetch('/api?route=conversation%2Fstream',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,context}),signal});
-  if(response.status===401)showAuth();return readConversationStream(response,{signal,onDelta});
+  if(response.status===401)showAuth();return readConversationStream(response,{signal,onDelta,onReceipt});
 }
 async function request(url, options) {
   const route=url.replace(/^\/api\//,'');
@@ -436,7 +436,7 @@ $('command-form').onsubmit = async event => {
       const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{streamRequest:streamVoiceRequest,onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
       streamingTurn={question:text,answer:''};renderConversation();
       let response;
-      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);});backendTiming=response.timing||null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
+      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);},receipt=>feedback(receipt));backendTiming=response.timing||null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
       catch(error){audio?.cancel();throw error;}finally{streamingTurn=null;renderConversation();}
       conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
       input.value='';await refresh();renderConversation();
@@ -534,9 +534,10 @@ function renderVoiceChannel() {
   const block=document.createElement('div');block.dataset.voiceChannel='true';
   block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会話</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
 }
-async function askCompany(question,context,signal,onDelta=null,fullReport=false) {
+async function askCompany(question,context,signal,onDelta=null,onReceipt=null,fullReport=false) {
+  if(typeof onReceipt==='boolean'){fullReport=onReceipt;onReceipt=null;}
   if(!fullReport){
-    const result=await streamConversation(question,context,signal,onDelta);
+    const result=await streamConversation(question,context,signal,onDelta,onReceipt);
     if(result.task){state.pendingReplyTaskId=result.task.id;void refresh();}
     return result.answer;
   }

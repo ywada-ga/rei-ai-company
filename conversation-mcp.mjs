@@ -7,11 +7,17 @@ import {runOpenClawCli} from './openclaw-process.mjs';
 // No AI inference, agent job or credential copy happens here.
 export class ConversationMcp {
   constructor(root){this.root=root;}
-  async close(){await this.runtime?.dispose();this.runtime=null;this.signature=null;}
+  async dispose(){await this.runtime?.dispose();this.runtime=null;this.signature=null;}
+  async close(){await this.connecting?.catch(()=>{});await this.dispose();}
   async connect(integration){
     if(integration?.url!=='https://mcp.synapse-connect.ai/mcp'||!/^rei_[a-f0-9]{12}$/.test(integration.name))throw new Error('このPCのSynapse Connect連携が必要です');
+    if(this.connecting)await this.connecting;
     if(this.runtime&&this.signature===integration.name)return this.runtime;
-    await this.close();
+    const pending=this.open(integration);this.connecting=pending;
+    try{return await pending;}finally{if(this.connecting===pending)this.connecting=null;}
+  }
+  async open(integration){
+    await this.dispose();
     const entry=process.env.REI_OPENCLAW_ENTRY;
     if(!entry)throw new Error('同梱OpenClawのMCP接続先が設定されていません');
     const dist=path.join(path.dirname(entry),'dist');

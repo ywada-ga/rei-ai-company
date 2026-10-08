@@ -64,7 +64,7 @@ export function createConversationSpeech(signal,create,options={}){
   return {
     receipt(text){
       if(canceled||received||answerStarted)return;
-      received=true;blocked=true;receipt=create({onPlaying:options.onReceiptPlaying});receipt.push(text);
+      text='まず概要から確認します。';received=true;blocked=true;receipt=create({onPlaying:options.onReceiptPlaying});receipt.push(text);
       receiptDone=receipt.finish(text).catch(()=>{receipt.cancel();}).then(()=>{
         blocked=false;if(!canceled)for(const delta of pending.splice(0))main().push(delta);
       }).catch(error=>{failure=error;});

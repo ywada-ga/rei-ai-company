@@ -3,6 +3,8 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+export const LOCAL_RECEIPT_TEXT='まず概要から確認します。';
+
 export class LocalVoice {
   constructor(root,{python=process.env.REI_LOCAL_VOICE_PYTHON||path.join(root,'../local-voice/python/bin/python3'),model=process.env.REI_LOCAL_VOICE_MODEL||path.join(root,'../local-voice/qwen-model'),timeoutMs=120000}={}) {
     Object.assign(this,{root,python,model,timeoutMs});
@@ -32,24 +34,38 @@ export class LocalVoice {
     }).finally(()=>{this.starting=null;});
     return this.starting;
   }
+  async prepareReceipt(){
+    if(this.receiptCache)return;
+    if(this.receiptPreparing)return this.receiptPreparing;
+    if(this.busy)return;
+    if(!this.receiptPreparing)this.receiptPreparing=this.synthesize(LOCAL_RECEIPT_TEXT,{onChunk:()=>{}}).finally(()=>{this.receiptPreparing=null;});
+    return this.receiptPreparing;
+  }
   async synthesize(text,{signal,onChunk}={}){
     if(typeof text!=='string'||!text.trim()||Array.from(text).length>500)throw Object.assign(new Error('音声の文章は500文字以内にしてください'),{status:400});
+    if(signal?.aborted)throw new Error('音声を中断しました');
+    if(text===LOCAL_RECEIPT_TEXT&&onChunk&&this.receiptCache){
+      for(const chunk of this.receiptCache.chunks){if(signal?.aborted)throw new Error('音声を中断しました');onChunk({...chunk});}
+      return {...this.receiptCache.result,preparationMs:0,firstGeneratedSeconds:0,totalSeconds:0,cached:true};
+    }
     if(this.busy)throw Object.assign(new Error('ローカル音声は別の返答を作成中です'),{status:409});
     this.busy=true;
     try{
       const prepareStarted=performance.now();await this.start();const preparationMs=Math.round(performance.now()-prepareStarted);if(signal?.aborted)throw new Error('音声を中断しました');
       return await new Promise((resolve,reject)=>{
-        const id=crypto.randomUUID();let timer,chunkCount=0;
+        const id=crypto.randomUUID();let timer,chunkCount=0;const receiptChunks=[];
         const abort=()=>this.close();
         const finish=(error,result)=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);this.pending=null;this.reject=null;error?reject(error):resolve(result);};
         this.reject=error=>finish(error);
         this.pending={id,resolve:message=>{
           if(onChunk&&message.type==='chunk'){
             if(message.index!==chunkCount||typeof message.wav!=='string'||message.wav.length>2000000||!Number.isFinite(message.audioSeconds)||message.audioSeconds<=0||message.audioSeconds>30||!Number.isInteger(message.sampleRate)||message.sampleRate<8000||message.sampleRate>192000)return this.close();
-            chunkCount++;onChunk({index:message.index,wav:message.wav,sampleRate:message.sampleRate,audioSeconds:message.audioSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds});return;
+            chunkCount++;const chunk={index:message.index,wav:message.wav,sampleRate:message.sampleRate,audioSeconds:message.audioSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds};if(text===LOCAL_RECEIPT_TEXT)receiptChunks.push({...chunk});onChunk(chunk);return;
           }
           if(onChunk?(message.type!=='done'||!chunkCount||message.chunkCount!==chunkCount):(message.type!=='audio'||typeof message.wav!=='string'))return finish(new Error('ローカル音声を作成できませんでした'));
-          finish(null,{...(onChunk?{chunkCount}:{}),wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds,preparationMs});
+          const result={...(onChunk?{chunkCount}:{}),wav:message.wav,audioSeconds:message.audioSeconds,totalSeconds:message.totalSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds,preparationMs};
+          if(text===LOCAL_RECEIPT_TEXT&&onChunk)this.receiptCache={chunks:receiptChunks,result};
+          finish(null,result);
         }};
         signal?.addEventListener('abort',abort,{once:true});
         timer=setTimeout(()=>this.close(),this.timeoutMs);

@@ -246,7 +246,7 @@ async function api(req,res,route) {
   if(route.startsWith('voice/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'音声会話は所有者・管理者が利用できます');
     if(route==='voice/local/status'&&req.method==='GET')return send(res,200,localVoice.status());
-    if(route==='voice/local/prepare'&&req.method==='POST'){await localVoice.start();return send(res,200,localVoice.status());}
+    if(route==='voice/local/prepare'&&req.method==='POST'){await localVoice.start();await localVoice.prepareReceipt();return send(res,200,localVoice.status());}
     if(route==='voice/local/stream'&&req.method==='POST'){
       const input=await body(req);if(typeof input.text!=='string'||!input.text.trim()||Array.from(input.text).length>500)return error(res,400,'音声の文章は500文字以内にしてください');
       if(localVoice.status().busy)return error(res,409,'Qwenは別の音声を作成中です');

@@ -28,7 +28,7 @@ assert.equal(needsRecentEvidence('シナプスにあると思うんだけど',[{
 assert.equal(needsRecentEvidence('案件Aの説明'),false);
 const datedRows={structuredContent:{episodes:[{uuid:'old',group_id:'allowed',created_at:'2026-09-01',content_representation:'full',content:'old'},{uuid:'new',group_id:'allowed',created_at:'2026-10-08',content_representation:'full',content:'new'}]}};
 assert.deepEqual(episodeLookups(datedRows,groups,{recent:true}).map(x=>x.uuid),['new','old']);
-steps=[];round=0;let activeSearches=0,peakSearches=0;
+steps=[];round=0;let activeSearches=0,peakSearches=0,bodyReads=0;
 const recent=await converse({question:'会社の案件Aは今どうなった？',groups,generate:async messages=>{
  if(++round===1)return {text:'{"action":"search","query":"案件A"}'};
  assert.ok(messages.some(m=>m.content.includes('案件Aは金曜日の予定')));
@@ -37,9 +37,13 @@ const recent=await converse({question:'会社の案件Aは今どうなった？'
 },call:async(tool,args)=>{
  if(['search_memory_facts','search_episodes'].includes(tool)){activeSearches++;peakSearches=Math.max(peakSearches,activeSearches);await new Promise(r=>setTimeout(r,20));activeSearches--;}
  if(tool==='search_memory_facts'){steps.push(tool);return {structuredContent:{facts:[{uuid:'fact-old',group_id:'allowed',fact:'未読の検索候補だけの主張'}]}};}
- if(tool==='get_fact_source'){steps.push(tool);return {structuredContent:{fact:{fact:'未確認の出典だけの主張'},sources:[]}};}
+ if(tool==='get_fact_source'){steps.push(tool);return {structuredContent:{fact:{fact:'未確認の出典だけの主張'},sources:[{group_id:'allowed',episode_uuid:'episode-a'}]}};}
+ if(tool==='get_episode'){bodyReads++;assert.equal(args.group_id,'allowed');}
  if(tool==='search_episodes'){const result=await call(tool,args);result.structuredContent.episodes[0].content='未読の原文候補だけの主張';return result;}
  return call(tool,args);
 }});
-assert.ok(steps.includes('search_episodes'));assert.equal(recent.synapseRead,true);assert.equal(peakSearches,2);assert.equal(activeSearches,0);
+assert.ok(steps.includes('search_episodes'));assert.equal(recent.synapseRead,true);assert.equal(peakSearches,2);assert.equal(activeSearches,0);assert.equal(bodyReads,1);
+round=0;
+await converse({question:'会社の案件Aは今どうなった？',groups,generate:async()=>({text:JSON.stringify(++round===1?{action:'search',query:'案件A'}:{action:'answer',text:'保存された予定です。'})}),call:async(tool,args)=>{if(tool==='get_episode')bodyReads++;return call(tool,args);}});
+assert.equal(bodyReads,2,'a separate question must fetch a fresh body');
 console.log('PASS load-synapse outline, graph search, episode fallback, full body lookup and unavailable-group no-retry');

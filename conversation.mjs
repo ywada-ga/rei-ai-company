@@ -73,7 +73,11 @@ function needsCompanyRead(question,context){
 }
 async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false;const recordedNotes=[],recordCache=new Map();
-  const readRecord=async(tool,uuid)=>{const key=tool+':'+uuid;if(!recordCache.has(key))recordCache.set(key,call(tool,{uuid,group_ids:groups.map(g=>g.id)},signal));return recordCache.get(key);};
+  const readRecord=async(tool,uuid,groupId)=>{
+    const args={uuid,...(groupId?{group_id:groupId}:{}),group_ids:groups.map(g=>g.id)};
+    const key=JSON.stringify([tool,uuid,groupId||null,[...args.group_ids].sort()]);
+    if(!recordCache.has(key))recordCache.set(key,call(tool,args,signal));return recordCache.get(key);
+  };
   if(signal?.aborted)throw new Error('会話を中断しました');
   // Clear work requests can go straight to a reviewable draft; no model or agent wait.
   if(/(?:作業依頼にして|実行して|送信して|依頼して)/u.test(question)&&!/(?:しない|しなく|不要|やめ|とは|方法|教えて)/u.test(question)){
@@ -177,7 +181,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
         evidence.push({tool:'search_episodes',result:candidates});
         const denied=unavailableGroups(candidates,groups);groups=groups.filter(g=>!denied.includes(g.id));
         if(!groups.length)return unavailableAnswer();
-        const bodies=await Promise.all(episodeLookups(candidates,groups,{recent:recentEvidence}).map(async args=>({args,result:await call('get_episode',args,signal)})));
+        const bodies=await Promise.all(episodeLookups(candidates,groups,{recent:recentEvidence}).map(async args=>({args,result:await readRecord('get_episode',args.uuid,args.group_id)})));
         if(signal?.aborted)throw new Error('会話を中断しました');
         messages.push({role:'user',content:`原文検索の候補とcoverage（候補の一致・不存在を確定しない）:${JSON.stringify(candidateMetadata(resultData(candidates))).slice(0,5000)}。候補の要約・previewは根拠として渡さない。`});
         for(const body of bodies){
@@ -195,7 +199,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
         // Independent source bodies can load concurrently; keep final evidence ordering stable.
         if(!verifiedSource(result,'source',fact.uuid,groups)&&!result.isError){
           const provenance=(resultData(result)?.sources||[]).filter(s=>groups.some(g=>g.id===s.group_id)&&typeof s.episode_uuid==='string').slice(0,1);
-          await Promise.all(provenance.map(s=>readRecord('get_episode',s.episode_uuid)));
+          await Promise.all(provenance.map(s=>readRecord('get_episode',s.episode_uuid,s.group_id)));
         }
         return {uuid:fact.uuid,result};
       }));
@@ -207,7 +211,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
         const sourceData=resultData(source.result);for(const p of sourceData?.sources||[])if(groups.some(g=>g.id===p.group_id)&&typeof p.episode_uuid==='string')allowedIds.add(p.episode_uuid);
         const noteSources=!verified&&!source.result.isError?(sourceData?.sources||[]).filter(s=>groups.some(g=>g.id===s.group_id)&&allowedIds.has(s.episode_uuid)).slice(0,1):[];
         for(const provenance of noteSources){
-          const noteResult=await readRecord('get_episode',provenance.episode_uuid);
+          const noteResult=await readRecord('get_episode',provenance.episode_uuid,provenance.group_id);
           if(signal?.aborted)throw new Error('会話を中断しました');
           const note=readableRecordedNote(noteResult,provenance.episode_uuid,groups);
           evidence.push({tool:'get_episode',uuid:provenance.episode_uuid,result:noteResult});

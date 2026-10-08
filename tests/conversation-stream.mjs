@@ -53,17 +53,17 @@ const gated=createConversationSpeech(new AbortController().signal,options=>{
  const number=order.filter(x=>x==='create').length;order.push('create');
  let played=Promise.resolve();return {push(text){order.push(text);options.onPrepared?.();played=Promise.resolve(options.playbackReady).then(()=>options.onPlaying?.());},finish(){return number===0?new Promise(r=>finishReceipt=r):played;},cancel(){order.push('cancel');}};
 },{onPlaying(){answerOnset++;},onReceiptPlaying(){receiptOnset++;}});
-gated.receipt('受け答え。');await Promise.resolve();gated.push('回答。');assert.equal(receiptOnset,1);assert.equal(answerOnset,0);assert.deepEqual(order,['create','まず概要から確認します。','create','回答。'],'answer prepares during receipt playback');
-finishReceipt();await gated.finish('回答。');assert.equal(answerOnset,1);assert.deepEqual(order,['create','まず概要から確認します。','create','回答。']);
+gated.receipt('受け答え。');await Promise.resolve();gated.push('回答。');assert.equal(receiptOnset,1);assert.equal(answerOnset,0);assert.deepEqual(order,['create','はい。','create','回答。'],'answer prepares during receipt playback');
+finishReceipt();await gated.finish('回答。');assert.equal(answerOnset,1);assert.deepEqual(order,['create','はい。','create','回答。']);
 gated.receipt('遅い受け答え。');assert.ok(!order.includes('遅い受け答え。'));
 const cancelSignal=new AbortController();let releaseCanceled;const canceledOrder=[];
 const canceledSpeech=createConversationSpeech(cancelSignal.signal,()=>({push(t){canceledOrder.push(t);},finish(){return new Promise(r=>releaseCanceled=r);},cancel(){canceledOrder.push('cancel');}}));
-canceledSpeech.receipt('案内。');canceledSpeech.push('中断後は流さない。');cancelSignal.abort();releaseCanceled();await assert.rejects(canceledSpeech.finish('中断後は流さない。'),/中断/);assert.deepEqual(canceledOrder,['まず概要から確認します。','中断後は流さない。','cancel','cancel']);
+canceledSpeech.receipt('案内。');canceledSpeech.push('中断後は流さない。');cancelSignal.abort();releaseCanceled();await assert.rejects(canceledSpeech.finish('中断後は流さない。'),/中断/);assert.deepEqual(canceledOrder,['はい。','中断後は流さない。','cancel','cancel']);
 console.log('Qwen receipt and answer playback remain ordered, separately timed and canceled together');
 
 let failedCount=0;const afterFailure=[];
 const failedReceipt=createConversationSpeech(new AbortController().signal,()=>{
  const receipt=failedCount++===0;return {push(t){afterFailure.push(t);},finish(){return receipt?Promise.reject(Error('receipt playback failed')):Promise.resolve();},cancel(){}};
 });
-failedReceipt.receipt('案内。');failedReceipt.push('本回答。');await failedReceipt.finish('本回答。');assert.deepEqual(afterFailure,['まず概要から確認します。','本回答。']);
+failedReceipt.receipt('案内。');failedReceipt.push('本回答。');await failedReceipt.finish('本回答。');assert.deepEqual(afterFailure,['はい。','本回答。']);
 console.log('failed receipt playback does not discard the verified answer');

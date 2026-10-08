@@ -65,7 +65,7 @@ export function createConversationSpeech(signal,create,options={}){
     receipt(text){
       if(canceled||received||answerStarted)return;
       let prepared;receiptGenerated=new Promise(resolve=>prepared=resolve);
-      text='まず概要から確認します。';received=true;receipt=create({onPlaying:options.onReceiptPlaying,onPrepared:prepared});receipt.push(text);
+      text='はい。';received=true;receipt=create({onPlaying:options.onReceiptPlaying,onPrepared:prepared});receipt.push(text);
       receiptDone=receipt.finish(text).catch(()=>{receipt.cancel();}).finally(prepared);
     },
     push(delta){if(canceled)throw new Error('音声を中断しました');answerStarted=true;main().push(delta);},

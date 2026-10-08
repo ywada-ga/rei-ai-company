@@ -3,7 +3,7 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const LOCAL_RECEIPT_TEXT='まず概要から確認します。';
+export const LOCAL_RECEIPT_TEXT='はい。';
 
 export class LocalVoice {
   constructor(root,{python=process.env.REI_LOCAL_VOICE_PYTHON||path.join(root,'../local-voice/python/bin/python3'),model=process.env.REI_LOCAL_VOICE_MODEL||path.join(root,'../local-voice/qwen-model'),timeoutMs=120000}={}) {

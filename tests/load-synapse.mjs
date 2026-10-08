@@ -46,4 +46,21 @@ assert.ok(steps.includes('search_episodes'));assert.equal(recent.synapseRead,tru
 round=0;
 await converse({question:'会社の案件Aは今どうなった？',groups,generate:async()=>({text:JSON.stringify(++round===1?{action:'search',query:'案件A'}:{action:'answer',text:'保存された予定です。'})}),call:async(tool,args)=>{if(tool==='get_episode')bodyReads++;return call(tool,args);}});
 assert.equal(bodyReads,2,'a separate question must fetch a fresh body');
+round=0;
+const mixed=await converse({question:'会社の案件Bは？',groups,generate:async messages=>{
+ if(++round===1)return {text:'{"action":"search","query":"案件B"}'};
+ const prompt=JSON.stringify(messages);assert.ok(prompt.includes('確認済みの本文です'));
+ for(const text of ['未検証の事実要約','未確認の隣接本文','範囲外の本文','省略された本文'])assert.ok(!prompt.includes(text),text);
+ return {text:'{"action":"answer","text":"確認した本文に基づく回答です。"}'};
+},call:async(tool,args)=>{
+ if(tool==='get_fact_source')return {structuredContent:{fact:{fact:'未検証の事実要約'},sources:[
+  {group_id:'allowed',traceable:true,body:'確認済みの本文です',source_ref:'fixture:confirmed'},
+  {group_id:'allowed',traceable:false,body:'未確認の隣接本文'},
+  {group_id:'other',traceable:true,body:'範囲外の本文'},
+  {group_id:'allowed',traceable:true,content_truncated:true,body:'省略された本文'}
+ ]}};
+ if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'fact-b',group_id:'allowed',fact:'未検証の事実要約'}]}};
+ return call(tool,args);
+}});
+assert.equal(mixed.synapseRead,true);
 console.log('PASS load-synapse outline, graph search, episode fallback, full body lookup and unavailable-group no-retry');

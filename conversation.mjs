@@ -4,8 +4,9 @@ export function parseDecision(text){
   const raw=String(text).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
   let value;try{value=JSON.parse(raw);}catch{throw Object.assign(new Error('会話AIの返答形式を確認できませんでした'),{status:502});}
   if(value?.decision)value=value.decision;
-  if(value?.action==='assess'){
+  if(['assess','respond'].includes(value?.action)){
     if(!['supported','partial','insufficient','ambiguous'].includes(value.status)||!Array.isArray(value.sourceIds)||!value.sourceIds.every(id=>typeof id==='string')||typeof value.reason!=='string'||value.reason.length>1000||typeof value.query!=='string'||value.query.length>120)throw new Error('根拠の評価形式を確認できませんでした');
+    if(value.action==='respond'&&(typeof value.text!=='string'||value.text.length>4000))throw new Error('会話AIの返答内容を確認できませんでした');
     return value;
   }
   if(!value||!['answer','search','source','episode','work'].includes(value.action))throw new Error('会話AIの返答形式を確認できませんでした');
@@ -37,6 +38,14 @@ export function streamedAnswerPrefix(raw){
     }else{if(c<' ')return '';value+=c;}
   }
   return value.replace(/[\uD800-\uDBFF]$/u,'');
+}
+// Assessment fields must precede text. Validate them before releasing any speech.
+export function reviewedAnswerPrefix(raw,verifiedIds,{canRetry=true}={}){
+ const match=String(raw).match(/^\s*\{\s*(?:"decision"\s*:\s*\{\s*)?("action"\s*:\s*"respond"[\s\S]*?),\s*"text"\s*:\s*"/);
+ if(!match)return '';
+ let header;try{header=parseDecision('{'+match[1]+',"text":""}');}catch{return '';}
+ if(!['supported','partial'].includes(header.status)||!header.sourceIds.length||header.sourceIds.some(id=>!verifiedIds.has(id))||(header.status==='partial'&&canRetry))return '';
+ return streamedAnswerPrefix('{"action":"answer","text":"'+raw.slice(match[0].length));
 }
 function resultData(result){
   if(result.structuredContent)return result.structuredContent;
@@ -100,7 +109,7 @@ function needsCompanyRead(question,context){
   if(companyFollowUp&&/(?:それ|その|今|最新|続き|続け|誰|いつ|どうな|担当|期限|もっと|詳し|具体|ほか|他に|理由|なぜ|要約|簡単|読み上げ|短く|確認)/u.test(question))return true;
   return companyQuestion.test(question);
 }
-async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true,reviewEvidence=null}){
+async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true,reviewEvidence=null,outlineCache=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false;const recordedNotes=[],recordCache=new Map();
   const verifiedIds=new Set();let reviewedAt=-1,review=null,pendingSearch=null;
   const readRecord=async(tool,uuid,groupId)=>{
@@ -134,9 +143,22 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
   let surveyed=false;const recentEvidence=needsRecentEvidence(question,context);
   const workLogEvidence=!!personWorkSubject(question)||/work[._ -]?log|作業ログ|業務ログ/iu.test(question);
   if(recentEvidence)messages.push({role:'system',content:'現在・指定日の質問。以前の返答に引きずられず、今回取得した本文の対象人物・案件・実際の作業日を確認する。保存日・同期日が新しいだけでは作業日が新しい証拠にならない。検索の順位は関連性や新しさを保証しない。確認した本文の中に答えが無ければ、同じ対象の短い固有名詞で残りの検索を行う。以前の回答の主張を今回の別の本文で裏付けたと扱わない。各主張の出どころを対応づける。'});
+  const finishAnswer=(answer,assessment)=>{
+    const selectedNotes=assessment?recordedNotes.filter(n=>assessment.sourceIds.includes(n.uuid)):recordedNotes;
+    const note=selectedNotes.length&&!evidence.some(e=>e.tool==='get_fact_source'&&verifiedSource(e.result,'source',e.uuid,groups))?'\n\n出どころ：'+selectedNotes.map(n=>`${n.title}（記録 ${n.recordedAt.slice(0,10)}）`).join('、')+'。今回取得した保存本文です。外部原本・現在の状態は未照合です。':'';
+    return {answer:answer+note,synapseRead:searched,synapseCheckedAt:searched?new Date().toISOString():null,sources:selectedNotes,evidenceStatus:assessment?.status||null,evidence,seconds:(Date.now()-started)/1000};
+  };
   const outline=async()=>{
     if(!readingSkill||surveyed)return;surveyed=true;
-    const result=await call('survey_space',{group_ids:groups.map(g=>g.id)},signal);
+    const topic=overviewSubject(question)||personWorkSubject(question),scope=JSON.stringify(groups);
+    const followup=!topic&&!/(さん|氏|会社|グループ)/u.test(question)&&/^(それ|その|もっと|詳し|続き|続け|ほか|他に|なぜ|理由)/u.test(question);
+    if(outlineCache?.pending)await outlineCache.pending;
+    if(signal?.aborted)throw new Error('会話を中断しました');
+    const cached=outlineCache&&outlineCache.scope===scope&&Date.now()-outlineCache.at<90000&&(outlineCache.preflight||(context.at(-1)?.synapseRead===true&&((topic&&outlineCache.topic===topic)||followup)))?outlineCache.result:null;
+    if(cached&&outlineCache.preflight)Object.assign(outlineCache,{preflight:false,topic});
+    const result=cached||await call('survey_space',{group_ids:groups.map(g=>g.id)},signal);
+    if(!cached&&outlineCache&&!result.isError&&!unavailableGroups(result,groups).length)Object.assign(outlineCache,{scope,topic,at:Date.now(),result,preflight:false});
+    if(cached)evidence.push({tool:'survey_reused',ageMs:Date.now()-outlineCache.at});
     if(signal?.aborted)throw new Error('会話を中断しました');
     if(result.isError)throw new Error('Synapse Connectの全体像を取得できませんでした。接続状態を確認してください。');
     const unavailable=unavailableGroups(result,groups);groups=groups.filter(g=>!unavailable.includes(g.id));
@@ -150,14 +172,22 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
   for(let round=0;round<8;round++){
     if(signal?.aborted)throw new Error('会話を中断しました');
     if(readingSkill&&searched&&sourceRead&&reviewedAt!==evidence.length){
-      const instructions=`質問への根拠充足を評価する。本文が取得できたというだけでsupportedにしない。人物名の言及や、その人への指示は、その人が実際に行った作業の証拠ではない。現在の作業・進捗では実際の作業日、担当者、内容を照合し、保存日が新しいだけの古い方針メモはinsufficient。過去の作業を聞かれた場合は過去として扱う。supported=質問の主要点を直接裏付ける、partial=主要点の一部を直接裏付けるが不足あり、insufficient=主要点に答えられない、ambiguous=対象を特定するため質問が必要。関連するだけの資料で埋めない。sourceIdsは今回確認済みのIDのうち質問への回答を直接支えるものだけ。読んだ資料の一覧にせず、名前が出るだけの無関係な資料は除外する。reasonは不足点または確認すべき一問を具体的に。partial/insufficientのqueryは同じ対象の短い固有名詞を使って検索を改善する。返答はassessだけ: {"action":"assess","status":"supported|partial|insufficient|ambiguous","sourceIds":[],"reason":"","query":""}。今回の質問:${question}。検証済みID:${JSON.stringify([...verifiedIds])}`;
-      review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,{role:'system',content:instructions}],{signal,effort:'low',phase:'evidence_review'})).text);
+      const instructions=`質問への根拠充足を評価する。本文が取得できたというだけでsupportedにしない。人物名の言及や、その人への指示は、その人が実際に行った作業の証拠ではない。現在の作業・進捗では実際の作業日、担当者、内容を照合し、保存日が新しいだけの古い方針メモはinsufficient。過去の作業を聞かれた場合は過去として扱う。supported=質問の主要点を直接裏付ける、partial=主要点の一部を直接裏付けるが不足あり、insufficient=主要点に答えられない、ambiguous=対象を特定するため質問が必要。関連するだけの資料で埋めない。sourceIdsは今回確認済みのIDのうち質問への回答を直接支えるものだけ。読んだ資料の一覧にせず、名前が出るだけの無関係な資料は除外する。reasonは不足点または確認すべき一問を具体的に。partial/insufficientのqueryは同じ対象の短い固有名詞を使って検索を改善する。根拠判定と回答を一度に行う。返答はrespondだけ。フィールド順はaction,status,sourceIds,reason,query,text（textは最後）。supportedならreasonとqueryは空でtextに直接回答。最初は要点を40〜60字ほどの短い一文で答え、その後に必要な詳細を続ける。必要な日付や限定条件は伝えるが、資料名の長い説明から始めない。出典一覧はREIが画面へ付けるのでtextで繰り返さない。partialで再検索が必要ならqueryを書きtextは空。insufficient/ambiguousもtextは空でreasonに不足点または確認事項を書く。 {"action":"respond","status":"supported|partial|insufficient|ambiguous","sourceIds":[],"reason":"","query":"","text":""}。残りの検索回数:${2-evidence.filter(e=>e.tool==='search_memory_facts').length}。残り0ならpartialのtextに確認できた部分と不足を答える。今回の質問:${question}。検証済みID:${JSON.stringify([...verifiedIds])}`;
+      let reviewedEmitted='';
+      review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,{role:'system',content:instructions}],{signal,effort:'low',phase:'evidence_answer',onDelta:onDelta?raw=>{
+        if(signal?.aborted)return;const prefix=reviewedAnswerPrefix(raw,verifiedIds,{canRetry:evidence.filter(e=>e.tool==='search_memory_facts').length<2});
+        if(prefix.length>reviewedEmitted.length&&prefix.startsWith(reviewedEmitted)){onDelta(prefix.slice(reviewedEmitted.length));reviewedEmitted=prefix;}
+      }:undefined})).text);
+      if(!reviewEvidence&&review.action!=='respond')throw new Error('根拠と回答の形式を確認できませんでした');
+      if(review.action==='respond'&&['supported','partial'].includes(review.status)&&!review.text.trim()&&(!review.query.trim()||evidence.filter(e=>e.tool==='search_memory_facts').length>=2))throw new Error('根拠に基づく回答が空でした');
+      if(reviewedEmitted&&(review.action!=='respond'||!review.text.startsWith(reviewedEmitted)||!['supported','partial'].includes(review.status)))throw new Error('途中の返答を確認できませんでした');
       if(signal?.aborted)throw new Error('会話を中断しました');
       if(!review||!['supported','partial','insufficient','ambiguous'].includes(review.status)||!Array.isArray(review.sourceIds)||review.sourceIds.some(id=>!verifiedIds.has(id))||(['supported','partial'].includes(review.status)&&!review.sourceIds.length))throw new Error('質問を裏付ける根拠の評価を確認できませんでした');
       reviewedAt=evidence.length;
       const retryQuery=review.query?.trim()||personWorkSubject(question);
       if(['partial','insufficient'].includes(review.status)&&retryQuery&&evidence.filter(e=>e.tool==='search_memory_facts').length<2){pendingSearch=retryQuery;}
       else if(review.status==='insufficient'||review.status==='ambiguous')return {answer:(review.status==='ambiguous'?'確認させてください。':'今回確認できた資料では、質問に答える根拠が足りません。')+review.reason,synapseRead:true,synapseCheckedAt:new Date().toISOString(),evidenceStatus:review.status,sources:[],evidence,seconds:(Date.now()-started)/1000};
+      else if(review.action==='respond')return finishAnswer(review.text,review);
       else messages.push({role:'system',content:`根拠評価:${JSON.stringify(review)}。質問へ直接答える。選ばれたsourceIdsの本文だけを事実の根拠にする。partialなら答えられる部分と不足点を分ける。対象名の言及だけで担当や実行を推測しない。必要な説明を1〜3文へ無理に圧縮しない。注意書きを繰り返さず、確認範囲を短く伝える。`});
     }
     let emitted='';
@@ -170,7 +200,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     }:undefined}),decision=parseDecision(generated.text);
     if(emitted&&(decision.action!=='answer'||!decision.text.startsWith(emitted)))throw new Error('途中の返答を確認できませんでした');
     messages.push({role:'assistant',content:generated.text});
-    if(decision.action==='assess')throw new Error('会話AIの判断形式を確認できませんでした');
+    if(['assess','respond'].includes(decision.action))throw new Error('会話AIの判断形式を確認できませんでした');
     if(decision.action==='answer'){
       if(!searched&&needsCompanyRead(question,context)){
         if(!groups.length)return {answer:'最新のSynapse Connectを読むため、検索範囲・情報源で共有グループを選んでください。',evidence:[],seconds:(Date.now()-started)/1000};
@@ -178,9 +208,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
       }
       if(searched&&!sourceRead&&round<5){messages.push({role:'user',content:'原記録はまだ確認していません。取得結果のuuidを使ってsourceで出典を確認してください。確認不能ならその旨だけをanswerで返してください。'});if(!evidence.some(e=>e.tool==='get_fact_source'||e.tool==='get_episode'))continue;}
       if(searched&&!sourceRead)return {answer:'会社の記録の原文まで確認できませんでした。今回の内容はまだ確定してお伝えできません。',evidence,seconds:(Date.now()-started)/1000};
-      const selectedNotes=review?recordedNotes.filter(n=>review.sourceIds.includes(n.uuid)):recordedNotes;
-      const note=selectedNotes.length&&!evidence.some(e=>e.tool==='get_fact_source'&&verifiedSource(e.result,'source',e.uuid,groups))?'\n\n出どころ：'+selectedNotes.map(n=>`${n.title}（記録 ${n.recordedAt.slice(0,10)}、ID ${n.uuid}）`).join('、')+'。今回Synapse Connectから取得した本文です。外部原本・現在の状態は未照合です。':'';
-      return {answer:decision.text+note,synapseRead:searched,synapseCheckedAt:searched?new Date().toISOString():null,sources:selectedNotes,evidenceStatus:review?.status||null,evidence,seconds:(Date.now()-started)/1000};
+      return finishAnswer(decision.text,review);
     }
     if(decision.action==='work'){
       // Never automatically execute a model-generated instruction.
@@ -220,7 +248,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     // Start only after both search coverage checks have narrowed the scope.
     const resolveSources=async()=>{
       if(decision.action!=='search'||!Array.isArray(data?.facts))return [];
-      const candidates=data.facts.slice(0,4).filter(f=>typeof f.uuid==='string'&&allowedIds.has(f.uuid)&&(!f.group_id||groups.some(g=>g.id===f.group_id)));
+      const candidates=data.facts.slice(0,2).filter(f=>typeof f.uuid==='string'&&allowedIds.has(f.uuid)&&(!f.group_id||groups.some(g=>g.id===f.group_id)));
       return Promise.all(candidates.map(async fact=>{
         const result=await readRecord('get_fact_source',fact.uuid);
         // Independent source bodies can load concurrently; keep final evidence ordering stable.
@@ -244,7 +272,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
         const denied=[...unavailableGroups(candidates,groups),...(workLogCandidates?unavailableGroups(workLogCandidates,groups):[])];groups=groups.filter(g=>!denied.includes(g.id));
         if(!groups.length)return unavailableAnswer();
         const [bodies,sources]=await Promise.all([
-          Promise.all([...new Map([...episodeLookups(candidates,groups,{recent:recentEvidence}),...(workLogCandidates?episodeLookups(workLogCandidates,groups,{recent:true}):[])].map(args=>[args.uuid,args])).values()].map(async args=>({args,result:await readRecord('get_episode',args.uuid,args.group_id)}))),
+          Promise.all([...new Map([...episodeLookups(candidates,groups,{recent:recentEvidence}).slice(0,2),...(workLogCandidates?episodeLookups(workLogCandidates,groups,{recent:true}).slice(0,2):[])].map(args=>[args.uuid,args])).values()].map(async args=>({args,result:await readRecord('get_episode',args.uuid,args.group_id)}))),
           resolveSources()
         ]);
         resolvedSources=sources;
@@ -295,7 +323,7 @@ export async function converse(options){
   };
   try{
   const result=await converseInternal({...options,generate:(...args)=>timed('model',()=>options.generate(...args)),call:(tool,...args)=>timed(['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode'].includes(tool)?tool:'mcp',()=>options.call(tool,...args))});
-  return {...result,readingSkill:stages.some(s=>s.kind==='survey_space')?{name:loadSynapseSkill.name,version:loadSynapseSkill.version}:null,timing:{totalMs:Math.round(performance.now()-started),stages}};
+  return {...result,outlineReused:result.evidence?.some(e=>e.tool==='survey_reused')===true,readingSkill:result.evidence?.some(e=>e.tool==='survey_space')?{name:loadSynapseSkill.name,version:loadSynapseSkill.version}:null,timing:{totalMs:Math.round(performance.now()-started),stages}};
   }catch(error){
     const failure=stages.find(stage=>stage.failed)?.kind||(/返答形式/.test(error.message)?'response_format':/確認できる範囲/.test(error.message)?'search_limit':/確認が終わりません/.test(error.message)?'round_limit':'controller');
     error.conversationDiagnostics={failure,totalMs:Math.round(performance.now()-started),stages};throw error;

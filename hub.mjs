@@ -1,3 +1,4 @@
+import {unavailableGroups} from './load-synapse.mjs';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -31,6 +32,23 @@ const db=openStorage(root);
 const liveVoiceSessions=new LiveVoiceSessions();
 const localVoice=new LocalVoice(root);
 const localChat=new LocalChat(root),conversationMcp=new ConversationMcp(root);
+const conversationOutlines=new Map();
+function outlineFor(user,integration,groups){
+  const key=JSON.stringify([user.id,integration?.name,groups]);
+  if(!conversationOutlines.has(key)){if(conversationOutlines.size>=32)conversationOutlines.delete(conversationOutlines.keys().next().value);conversationOutlines.set(key,{});}
+  return conversationOutlines.get(key);
+}
+function prepareConversationOutline(user){
+  const settings=knowledgeSettings(db),device=localConnectorStatus().deviceId;
+  const integration=device?one(db,"SELECT name,url FROM mcp_integrations WHERE device_id=? AND url='https://mcp.synapse-connect.ai/mcp'",device):null;
+  if(!integration||!settings.groups.length)return;
+  const cache=outlineFor(user,integration,settings.groups);
+  if(cache.pending||(cache.result&&Date.now()-cache.at<90000))return;
+  cache.scope=JSON.stringify(settings.groups);cache.preflight=true;
+  cache.pending=conversationMcp.call(integration,'survey_space',{group_ids:settings.groups.map(g=>g.id)}).then(result=>{
+    if(!result.isError&&!unavailableGroups(result,settings.groups).length)Object.assign(cache,{result,at:Date.now(),topic:null});
+  }).catch(()=>{}).finally(()=>{delete cache.pending;});
+}
 let conversationBusy=false;
 const chatgptAccounts=new Map();
 function chatgptFor(user){
@@ -190,11 +208,12 @@ async function api(req,res,route) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'会話AIは所有者・管理者が利用できます');
     if(route==='conversation/status'&&req.method==='GET')return send(res,200,chatProvider(user)==='chatgpt'?chatgptFor(user).status():localChat.status());
     if(route==='conversation/history'&&req.method==='GET'){
+      prepareConversationOutline(user);
       const saved=one(db,'SELECT value FROM settings WHERE key=?',`conversation:${user.id}`);
       const history=saved?JSON.parse(saved.value):null;
       return send(res,200,{turns:history?.scope===JSON.stringify(knowledgeSettings(db).groups)?history.turns:[]});
     }
-    if(route==='conversation/prepare'&&req.method==='POST'){if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
+    if(route==='conversation/prepare'&&req.method==='POST'){prepareConversationOutline(user);if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
     if(['conversation/ask','conversation/stream'].includes(route)&&req.method==='POST'){
       if(conversationBusy)return error(res,409,'会話AIが返答中です。少し待ってください');
       const input=await body(req),question=text(input.question,4000),settings=knowledgeSettings(db),scope=JSON.stringify(settings.groups);
@@ -208,11 +227,12 @@ async function api(req,res,route) {
       const emit=value=>{if(!controller.signal.aborted&&!res.destroyed)res.write(JSON.stringify(value)+'\n');};
       if(streaming){res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-accel-buffering':'no'});res.flushHeaders();}
       conversationBusy=true;
+      if(streaming&&localVoice.status().configured)void localVoice.start().catch(()=>{}); // Prepare local speech while fresh evidence loads.
       if(streaming&&integration&&settings.groups.length){const receipt=conversationReceipt(question);if(receipt)emit({type:'receipt',text:receipt});}
       try{
-        const result=await converse({question,context,groups:settings.groups,signal:controller.signal,onDelta:streaming?text=>emit({type:'delta',text}):null,
+        const result=await converse({question,context,outlineCache:outlineFor(user,integration,settings.groups),groups:settings.groups,signal:controller.signal,onDelta:streaming?text=>emit({type:'delta',text}):null,
           runtimeContext:{name:'REI',version:reiVersion,conversation:chatProvider(user)==='chatgpt'?'ChatGPT（接続済み）':'ローカルQwen',voice:'ローカルQwen',synapseConfigured:!!integration,selectedGroupCount:settings.groups.length,execution:'OpenClaw、作業は承認待ちを作成してから実行',capabilities:['継続した文章・音声会話','選択したSynapse Connectの記録検索と原記録確認','承認待ち作業の作成','接続端末の稼働状況'],limitations:['一般質問と継続会話は実機確認済み','音声品質と応答速度は調整中','会社情報は原記録が取れる範囲のみ回答','商用配布の署名・公証、別Macでの検証は未完了','Coworkは接続パッケージ実装済み、実機連携は未確認']},
-          generate:(messages,options)=>(chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options),
+          generate:(messages,options)=>{if(streaming&&options.phase==='evidence_answer'&&localVoice.status().configured)void localVoice.start().catch(()=>{});return (chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options);},
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,instruction,'operations',user.id,true,null,null,context));}});
         if(!controller.signal.aborted){

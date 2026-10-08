@@ -1,19 +1,23 @@
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
-import {mkdtempSync,symlinkSync,readdirSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,copyFileSync,cpSync,readdirSync,writeFileSync,rmSync} from 'node:fs';
 import os from 'node:os';import path from 'node:path';import assert from 'node:assert/strict';
 import {readConversationStream} from '../public/conversation-stream.js';
 const root=path.resolve(import.meta.dirname,'..'),tmp=mkdtempSync(path.join(os.tmpdir(),'rei-stream-api-'));
-for(const name of readdirSync(root))if(name.endsWith('.mjs')||['public','package.json'].includes(name))symlinkSync(path.join(root,name),path.join(tmp,name));
-const worker=path.join(tmp,'worker.cjs');writeFileSync(path.join(tmp,'model.safetensors'),'fixture');
-writeFileSync(worker,`#!${process.execPath}\nconst readline=require('node:readline');console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);console.log(JSON.stringify({id:r.id,text:JSON.stringify({action:'answer',text:'こんにちは。試験の返答です。'})}));});`,{mode:0o700});
+for(const name of readdirSync(root))if(name.endsWith('.mjs'))copyFileSync(path.join(root,name),path.join(tmp,name));
+cpSync(path.join(root,'public'),path.join(tmp,'public'),{recursive:true});
+// Run the fixture worker through Node on every OS; no executable shebang or Python required.
+writeFileSync(path.join(tmp,'package.json'),JSON.stringify({version:'0.5.39',type:'commonjs'}));
+writeFileSync(path.join(tmp,'public/package.json'),JSON.stringify({type:'module'}));
+writeFileSync(path.join(tmp,'model.safetensors'),'fixture');
+writeFileSync(path.join(tmp,'local-chat-worker.py'),`const readline=require('node:readline');console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);console.log(JSON.stringify({id:r.id,text:JSON.stringify({action:'answer',text:'こんにちは。試験の返答です。'})}));});`);
 const reservation=createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r));const port=reservation.address().port;await new Promise(r=>reservation.close(r));
 // Spawn the real Hub with fixture-only data and a model worker that never calls external AI.
-const child=spawn(process.execPath,[path.join(root,'hub.mjs')],{cwd:root,env:{...process.env,REI_PORT:String(port),REI_DATA_DIR:tmp,REI_LOCAL_CHAT_PYTHON:worker,REI_LOCAL_CHAT_MODEL:tmp},stdio:['ignore','pipe','pipe']});
+const child=spawn(process.execPath,[path.join(tmp,'hub.mjs')],{cwd:tmp,env:{...process.env,REI_PORT:String(port),REI_DATA_DIR:tmp,REI_LOCAL_CHAT_PYTHON:process.execPath,REI_LOCAL_CHAT_MODEL:tmp},stdio:['ignore','pipe','pipe']});
 let log='';child.stdout.on('data',c=>log+=c);child.stderr.on('data',c=>log+=c);
 const base=`http://127.0.0.1:${port}`;let cookie='';
 try{
- for(let i=0;i<100&&!log.includes('REI Hub:');i++)await new Promise(r=>setTimeout(r,20));assert.match(log,/REI Hub:/);
+ for(let i=0;i<100&&!log.includes('REI Hub:');i++)await new Promise(r=>setTimeout(r,20));assert.ok(log.includes('REI Hub:'),log.replace(/\?setup=[^\s]+/g,'?setup=redacted'));
  const setup=log.match(/\?setup=([^\s]+)/)[1];
  const post=async(route,value,authenticated=true)=>fetch(base+'/api?route='+encodeURIComponent(route),{method:'POST',headers:{'content-type':'application/json',...(authenticated?{cookie}:{} )},body:JSON.stringify(value)});
  const registered=await post('setup/complete',{token:setup,username:'owner',password:'stream-fixture-password'},false);assert.equal(registered.status,201);const login=await post('auth/login',{username:'owner',password:'stream-fixture-password'},false);assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];
@@ -22,4 +26,4 @@ try{
  const response=await post('conversation/stream',{question:'こんにちは'});assert.match(response.headers.get('content-type'),/ndjson/);const result=await readConversationStream(response);assert.equal(result.answer,'こんにちは。試験の返答です。');
  const history=await (await fetch(base+'/api?route=conversation%2Fhistory',{headers:{cookie}})).json();assert.equal(history.turns.length,1);assert.equal(history.turns[0].answer,result.answer);
  console.log('real Hub streaming route, auth, completion, fallback and stored history passed (fixture model)');
-}finally{child.kill();await new Promise(r=>child.once('exit',r));rmSync(tmp,{recursive:true,force:true});}
+}finally{if(child.exitCode===null){const exited=new Promise(r=>child.once('exit',r));child.kill();await exited;}rmSync(tmp,{recursive:true,force:true});}

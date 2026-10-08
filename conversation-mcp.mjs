@@ -29,9 +29,13 @@ export class ConversationMcp {
   async call(integration,tool,args,signal){
     if(!['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode'].includes(tool))throw new Error('会話からは読み取り専用の検索だけを利用できます');
     if(!Array.isArray(args.group_ids)||!args.group_ids.length)throw new Error('検索範囲が必要です');
+    const started=performance.now();
     const runtime=await this.connect(integration);if(signal?.aborted)throw new Error('検索を中断しました');
+    const ready=performance.now();
     let result;
     try{result=await runtime.callTool(integration.name,tool,args);}catch{await this.close();throw new Error('Synapse Connectの検索に接続できませんでした。接続状態を確認して再試行してください');}
-    if(signal?.aborted)throw new Error('検索を中断しました');return result;
+    if(signal?.aborted)throw new Error('検索を中断しました');
+    const finished=performance.now();
+    return {...result,reiMcpTiming:{connectMs:Math.round(ready-started),requestMs:Math.round(finished-ready),totalMs:Math.round(finished-started)}};
   }
 }

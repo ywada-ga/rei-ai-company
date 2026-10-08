@@ -135,7 +135,11 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     if(decision.action!=='search'&&(!allowedIds.has(decision.uuid)||excludedIds.has(decision.uuid)))throw new Error('取得済み記録以外は参照できません');
     if(decision.action==='search'&&evidence.filter(e=>e.tool==='search_memory_facts').length>=2)throw new Error('検索で確認できる範囲を超えました');
     const tool={search:'search_memory_facts',source:'get_fact_source',episode:'get_episode'}[decision.action];
-    const result=await call(tool,decision.action==='search'?{query:decision.query,group_ids:groups.map(g=>g.id),limit:5,max_facts:5}:{uuid:decision.uuid,group_ids:groups.map(g=>g.id)},signal);
+    const args=decision.action==='search'?{query:decision.query,group_ids:groups.map(g=>g.id),limit:5,max_facts:5}:{uuid:decision.uuid,group_ids:groups.map(g=>g.id)};
+    // Both searches have the same validated scope and query, with no dependency.
+    const [result,recentCandidates]=readingSkill&&recentEvidence&&decision.action==='search'
+      ?await Promise.all([call(tool,args,signal),call('search_episodes',{query:decision.query,group_ids:groups.map(g=>g.id),limit:5},signal)])
+      :[await call(tool,args,signal),null];
     if(signal?.aborted)throw new Error('会話を中断しました');
     let data=result.structuredContent;
     if(!data)for(const item of result.content||[])if(item.type==='text')try{data=JSON.parse(item.text);break;}catch{}
@@ -159,7 +163,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
       const unavailable=unavailableGroups(result,groups);groups=groups.filter(g=>!unavailable.includes(g.id));
       if(!groups.length)return unavailableAnswer();
       if(Array.isArray(data?.facts)&&(!data.facts.length||recentEvidence)){
-        const candidates=await call('search_episodes',{query:decision.query,group_ids:groups.map(g=>g.id),limit:5},signal);
+        const candidates=recentCandidates||await call('search_episodes',{query:decision.query,group_ids:groups.map(g=>g.id),limit:5},signal);
         if(signal?.aborted)throw new Error('会話を中断しました');
         if(candidates.isError)throw new Error('Synapse Connectの原文検索に失敗しました。今回の本文は未確認です。');
         evidence.push({tool:'search_episodes',result:candidates});
@@ -216,6 +220,7 @@ export async function converse(options){
     const result=await operation();
     const stage={kind,startMs,durationMs:Math.round(performance.now()-begin)};
     if(kind==='model'&&result.timing){stage.transport={};for(const key of ['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs'])if(Number.isFinite(result.timing[key]))stage.transport[key]=result.timing[key];}
+    if(kind!=='model'&&result.reiMcpTiming){stage.transport={};for(const key of ['connectMs','requestMs','totalMs'])if(Number.isFinite(result.reiMcpTiming[key])&&result.reiMcpTiming[key]>=0)stage.transport[key]=result.reiMcpTiming[key];}
     stages.push(stage);return result;
   };
   const result=await converseInternal({...options,generate:(...args)=>timed('model',()=>options.generate(...args)),call:(tool,...args)=>timed(['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode'].includes(tool)?tool:'mcp',()=>options.call(tool,...args))});

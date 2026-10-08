@@ -28,14 +28,15 @@ assert.equal(needsRecentEvidence('シナプスにあると思うんだけど',[{
 assert.equal(needsRecentEvidence('案件Aの説明'),false);
 const datedRows={structuredContent:{episodes:[{uuid:'old',group_id:'allowed',created_at:'2026-09-01',content_representation:'full',content:'old'},{uuid:'new',group_id:'allowed',created_at:'2026-10-08',content_representation:'full',content:'new'}]}};
 assert.deepEqual(episodeLookups(datedRows,groups,{recent:true}).map(x=>x.uuid),['new','old']);
-steps=[];round=0;
+steps=[];round=0;let activeSearches=0,peakSearches=0;
 const recent=await converse({question:'会社の案件Aは今どうなった？',groups,generate:async messages=>{
  if(++round===1)return {text:'{"action":"search","query":"案件A"}'};
  assert.ok(messages.some(m=>m.content.includes('案件Aは金曜日の予定')));return {text:'{"action":"answer","text":"保存本文に書かれた予定です。"}'};
 },call:async(tool,args)=>{
+ if(['search_memory_facts','search_episodes'].includes(tool)){activeSearches++;peakSearches=Math.max(peakSearches,activeSearches);await new Promise(r=>setTimeout(r,20));activeSearches--;}
  if(tool==='search_memory_facts'){steps.push(tool);return {structuredContent:{facts:[{uuid:'fact-old',group_id:'allowed',fact:'古い予定'}]}};}
  if(tool==='get_fact_source'){steps.push(tool);return {structuredContent:{sources:[]}};}
  return call(tool,args);
 }});
-assert.ok(steps.includes('search_episodes'));assert.equal(recent.synapseRead,true);
+assert.ok(steps.includes('search_episodes'));assert.equal(recent.synapseRead,true);assert.equal(peakSearches,2);assert.equal(activeSearches,0);
 console.log('PASS load-synapse outline, graph search, episode fallback, full body lookup and unavailable-group no-retry');

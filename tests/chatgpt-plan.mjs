@@ -31,7 +31,7 @@ try{
   const first=await account.begin();authorization=new URL(first.url);assert.equal(authorization.searchParams.get('client_id'),'dynamic_agent_client');assert.equal(authorization.searchParams.get('agent_name_hint'),'REI');
   const callback=new URL(authorization.searchParams.get('redirect_uri'));callback.searchParams.set('code','code');callback.searchParams.set('client_id','oaiapp_fixture');callback.searchParams.set('state','wrong');assert.equal((await fetch(callback)).status,400);assert.equal(exchanges,0);
   callback.searchParams.set('state',authorization.searchParams.get('state'));assert.equal((await fetch(callback)).status,200);assert.equal(exchanges,1);assert.equal(account.status().model,'available-model');assert.equal(inference,0);
-  assert.ok(!JSON.stringify(account.status()).includes('private-'));assert.equal(statSync(path.join(directory,'account.json')).mode&0o777,0o600);assert.equal(statSync(directory).mode&0o777,0o700);
+  assert.ok(!JSON.stringify(account.status()).includes('private-'));if(process.platform!=='win32'){assert.equal(statSync(path.join(directory,'account.json')).mode&0o777,0o600);assert.equal(statSync(directory).mode&0o777,0o700);}
   assert.throws(()=>account.select({model:'hidden'}));
   const result=await account.generate([{role:'system',content:'rules'},{role:'user',content:'hi'}]);assert.match(result.text,/こんにちは/);assert.equal(requestBody.store,false);assert.equal(requestBody.stream,true);assert.equal(requestBody.instructions,'rules');assert.deepEqual(requestBody.input,[{role:'user',content:'hi'}]);assert.equal(inference,1);
   account.account().expiresAt=0;await Promise.all([account.token(),account.token()]);assert.equal(refreshes,1);assert.equal(account.account().refreshToken,'rotated');

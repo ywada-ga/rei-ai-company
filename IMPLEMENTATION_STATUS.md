@@ -300,3 +300,9 @@ REIの設定に「ChatGPTで会話」を追加。公式Sign in with ChatGPTの�
 追加費用を避けるため、利用者はChatGPT設定のUsageからREIのクレジット使用をOFFにする。現行の公式HTTP仕様にはクレジット使用をアプリから禁止するパラメータがないため、REI単独ではその設定を保証できない。実ログイン・クレジットOFF確認・Proの推論・Synapse経由の回答確認は未完了。秘密情報を使わない模擬テストでPKCE、state、署名、保管権限、更新競合、モデル選択、失敗ストリーム、切断を確認済み。
 
 公式資料: https://developers.openai.com/siwc/token-sharing-open-source/sign-in 、 https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+
+### ChatGPT接続の実機確認
+
+2026-10-08、このMacで公式OAuth登録、署名検証、利用枠スコープ、モデル取得に成功。Chromeは最後のローカル完了ページでERR_BLOCKED_BY_CLIENTを表示したが、REIの資格情報保存とモデル取得は完了していた。再ログインせず設定の更新で接続成功を確認。ChatGPTのUsage画面で外部アプリのクレジット使用OFFを確認し、REIの会話先をGPT-6.1-Solへ切替。REIメイン画面の挨拶質問に「こんにちは。」と返ることを確認。Synapseの原記録を伴う回答とQwenの音声再生は今回まだ確認していない。
+
+CIのWindowsでPOSIXのファイルモード比較だけが失敗したため、Unixの保管権限検証をUnix環境に限定。その他の認証・推論・更新・切断のテストはWindowsでも実行する。

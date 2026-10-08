@@ -21,3 +21,11 @@ controller=new AbortController();
 const incomplete=createLocalSpeechStream(controller.signal,()=>{}, {context,streamRequest:async()=>new Response(JSON.stringify({type:'chunk',index:2,wav})+'\n')});
 incomplete.push('不正です。');await tick();await assert.rejects(incomplete.finish('不正です。'));
 console.log('PASS early chunk playback, continuous timeline, completion, cancellation and invalid ordering');
+// Preparing answer audio may start after receipt generation, while its playback waits.
+sources=[];controller=new AbortController();let releaseGeneration,releasePlayback,requests=0;
+const synthesisReady=new Promise(r=>releaseGeneration=r),playbackReady=new Promise(r=>releasePlayback=r);
+const prefetched=createLocalSpeechStream(controller.signal,()=>{}, {context,synthesisReady,playbackReady,streamRequest:async()=>{requests++;return new Response([JSON.stringify({type:'chunk',index:0,wav}),JSON.stringify({type:'done',chunkCount:1})].join('\n')+'\n');}});
+prefetched.push('本回答です。');await tick();assert.equal(requests,0,'avoid simultaneous Qwen synthesis');
+releaseGeneration();await tick();await tick();assert.equal(requests,1,'answer synthesis starts during receipt playback');assert.equal(sources.length,0,'never overlap receipt and answer playback');
+releasePlayback();await tick();await tick();assert.equal(sources.length,1);const prefetchedDone=prefetched.finish('本回答です。');sources[0].onended();await prefetchedDone;
+console.log('PASS answer preparation overlaps receipt playback without overlapping audio or Qwen generation');

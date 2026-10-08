@@ -9,9 +9,12 @@ export function parseDecision(text){
   if(typeof value[key]!=='string'||!value[key].trim()||value[key].length>4000)throw new Error('会話AIの返答内容を確認できませんでした');return value;
 }
 // Deterministic receipt, not a factual answer or a claim that evidence is already read.
+function overviewSubject(question){
+  return String(question).trim().match(/^([^\n。！？!?]{1,60}(?:グループ|株式会社|会社))について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u)?.[1]||null;
+}
 export function conversationReceipt(question){
-  const match=String(question).trim().match(/^([^\n。！？!?]{1,60}(?:グループ|株式会社|会社))について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u);
-  return match?`${match[1]}についてですね。まず概要から確認します。`:null;
+  const subject=overviewSubject(question);
+  return subject?`${subject}についてですね。まず概要から確認します。`:null;
 }
 // Decode only complete JSON string tokens. Never emit decisions or tool arguments.
 export function streamedAnswerPrefix(raw){
@@ -133,7 +136,9 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     if(signal?.aborted)throw new Error('会話を中断しました');
     let emitted='';
     const canStream=sourceRead||(!searched&&!needsCompanyRead(question,context)&&(!groups.length||/(?:こんにちは|こんばんは|おはよう|物語|桃太郎|読み上げ|言い換え|書き換え|短く|REI|レイ)/iu.test(question)));
-    const generated=await generate(messages,{signal,effort:/(比較|判断|検討|リスク|設計|原因|計画)/u.test(question)?'low':undefined,onDelta:canStream&&onDelta?raw=>{
+    // The user supplied an exact overview subject; search it without a planning round.
+    const directSubject=round===0&&readingSkill&&surveyed&&groups.length?overviewSubject(question):null;
+    const generated=directSubject?{text:JSON.stringify({action:'search',query:directSubject})}:await generate(messages,{signal,effort:/(比較|判断|検討|リスク|設計|原因|計画)/u.test(question)?'low':undefined,onDelta:canStream&&onDelta?raw=>{
       if(signal?.aborted)return;const prefix=streamedAnswerPrefix(raw);
       if(prefix.length>emitted.length&&prefix.startsWith(emitted)){onDelta(prefix.slice(emitted.length));emitted=prefix;}
     }:undefined}),decision=parseDecision(generated.text);

@@ -94,8 +94,13 @@ console.log('PASS episode and source overlap after coverage validation, with ans
 round=0;const broadOrder=[];
 await converse({question:'テストグループについて教えてください',groups,generate:async messages=>{
  broadOrder.push('model');assert.equal(broadOrder[0],'survey_space','a named group overview must survey before the first model call');
- assert.ok(messages.some(message=>message.content.includes('全体像')));
- return {text:JSON.stringify(++round===1?{action:'search',query:'テストグループ'}:{action:'answer',text:'本文に基づく概要です。'})};
-},call:async(tool,args)=>{broadOrder.push(tool);return call(tool,args);}});
-assert.equal(broadOrder.filter(step=>step==='model').length,2);
-console.log('PASS named company-group overview starts scoped survey before planning, avoiding a discarded model round');
+ assert.ok(broadOrder.includes('get_episode'),'the first model call must already have a verified body');
+ assert.ok(messages.some(message=>message.content.includes('案件Aは金曜日の予定')));
+ round++;return {text:JSON.stringify({action:'answer',text:'本文に基づく概要です。'})};
+},call:async(tool,args)=>{broadOrder.push(tool);if(tool==='search_memory_facts'||tool==='search_episodes')assert.equal(args.query,'テストグループ');return call(tool,args);}});
+assert.equal(round,1);assert.equal(broadOrder.filter(step=>step==='model').length,1);
+console.log('PASS named company-group overview searches the explicit subject after survey and reads the body before a single answer model call');
+
+let deniedOverviewCalls=0;
+const deniedOverview=await converse({question:'テストグループについて教えてください',groups,generate:()=>{throw new Error('must not answer without access');},call:async tool=>{deniedOverviewCalls++;assert.equal(tool,'survey_space');return denied;}});
+assert.equal(deniedOverviewCalls,1);assert.match(deniedOverview.answer,/アクセスできず/);

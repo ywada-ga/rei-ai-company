@@ -222,7 +222,7 @@ async function api(req,res,route) {
           if(streaming){const {evidence,...publicResult}=result;emit({type:'done',result:publicResult});res.end();return;}
           return send(res,200,result);
         }
-      }catch(e){if(!streaming)throw e;emit({type:'error',message:'回答を完了できませんでした。接続状態を確認して再試行してください。'});res.end();}finally{conversationBusy=false;}
+      }catch(e){if(!streaming)throw e;emit({type:'error',message:'回答を完了できませんでした。接続状態を確認して再試行してください。',diagnostics:e.conversationDiagnostics||null});res.end();}finally{conversationBusy=false;}
       return;
     }
   }

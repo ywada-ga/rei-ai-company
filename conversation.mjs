@@ -73,13 +73,14 @@ function currentCandidate(fact){
 function needsCompanyRead(question,context){
   // A greeting or read-aloud request must not hide an explicit company question.
   const companyQuestion=/(会社|社内|弊社|当社|社員|案件|売上|決定事項|シナプス|Synapse)/iu;
+  if(conversationReceipt(question))return true;
   const searchHelp=/^会社情報.*(?:どうやって|検索でき|調べられ)/u.test(question);
   if(companyQuestion.test(question)&&!searchHelp)return true;
   if(/(売上|社員|案件|決定事項)/u.test(question))return true;
   if(/(?:(?:REI|レイ|あなた).*(?:できること|何ができ|機能|接続状態)|会社情報.*(?:どうやって|検索でき|調べられ))/iu.test(question))return false;
   if(/^\s*(?:ありがとう(?:ございます)?|こんにちは|こんばんは|おはよう(?:ございます)?)[。！!\s]*$/u.test(question))return false;
   const previous=context.at(-1);
-  const companyFollowUp=previous&&(previous.synapseRead||companyQuestion.test(previous.question));
+  const companyFollowUp=previous&&(previous.synapseRead||companyQuestion.test(previous.question)||conversationReceipt(previous.question));
   if(companyFollowUp&&/(?:それ|その|今|最新|続き|続け|誰|いつ|どうな|担当|期限|もっと|詳し|具体|ほか|他に|理由|なぜ|要約|簡単|読み上げ|短く|確認)/u.test(question))return true;
   return companyQuestion.test(question);
 }
@@ -251,12 +252,18 @@ export async function converse(options){
   const stages=[],started=performance.now();
   const timed=async(kind,operation)=>{
     const startMs=Math.round(performance.now()-started),begin=performance.now();
-    const result=await operation();
+    let result;
+    try{result=await operation();}catch(error){stages.push({kind,startMs,durationMs:Math.round(performance.now()-begin),failed:true});throw error;}
     const stage={kind,startMs,durationMs:Math.round(performance.now()-begin)};
     if(kind==='model'&&result.timing){stage.transport={};for(const key of ['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs'])if(Number.isFinite(result.timing[key]))stage.transport[key]=result.timing[key];}
     if(kind!=='model'&&result.reiMcpTiming){stage.transport={};for(const key of ['connectMs','requestMs','totalMs'])if(Number.isFinite(result.reiMcpTiming[key])&&result.reiMcpTiming[key]>=0)stage.transport[key]=result.reiMcpTiming[key];}
     stages.push(stage);return result;
   };
+  try{
   const result=await converseInternal({...options,generate:(...args)=>timed('model',()=>options.generate(...args)),call:(tool,...args)=>timed(['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode'].includes(tool)?tool:'mcp',()=>options.call(tool,...args))});
   return {...result,readingSkill:stages.some(s=>s.kind==='survey_space')?{name:loadSynapseSkill.name,version:loadSynapseSkill.version}:null,timing:{totalMs:Math.round(performance.now()-started),stages}};
+  }catch(error){
+    const failure=stages.find(stage=>stage.failed)?.kind||(/返答形式/.test(error.message)?'response_format':/確認できる範囲/.test(error.message)?'search_limit':/確認が終わりません/.test(error.message)?'round_limit':'controller');
+    error.conversationDiagnostics={failure,totalMs:Math.round(performance.now()-started),stages};throw error;
+  }
 }

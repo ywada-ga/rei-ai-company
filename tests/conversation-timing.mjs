@@ -15,3 +15,10 @@ await new Promise(r=>setTimeout(r,20));assert.equal(prefix,'answer');
 controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed"}\n\n'));controller.close();
 const received=await reading;assert.equal(received.text,'answer');assert.ok(received.timing.streamCompleteMs>=received.timing.streamFirstDeltaMs);assert.ok(received.timing.streamCompleteMs>=15);
 console.log('PASS transport stages, early delta and numeric-only conversation timing');
+
+await assert.rejects(converse({question:'非公開質問',groups:[],generate:async()=>{throw Object.assign(new Error('private token and company body'),{status:502,secret:'private token'});},call:()=>{throw Error('unexpected MCP');}}),error=>{
+ assert.equal(error.conversationDiagnostics.failure,'model');assert.equal(error.conversationDiagnostics.stages[0].failed,true);
+ const serialized=JSON.stringify(error.conversationDiagnostics);assert.ok(!serialized.includes('private'));assert.ok(!serialized.includes('非公開'));assert.ok(!serialized.includes('secret'));return true;
+});
+await assert.rejects(converse({question:'こんにちは',groups:[],generate:async()=>({text:'invalid response'}),call:()=>{throw Error('unexpected MCP');}}),error=>error.conversationDiagnostics.failure==='response_format');
+console.log('PASS failed conversations expose stage timings and fixed failure categories without messages or company data');

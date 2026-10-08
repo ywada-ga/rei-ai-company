@@ -90,3 +90,12 @@ const unavailableRecent=await converse({question:'会社の案件Aは今どう�
 }});
 assert.equal(forbiddenReads,0);assert.match(unavailableRecent.answer,/アクセスできず/);
 console.log('PASS episode and source overlap after coverage validation, with answer gate and no unavailable-group reads');
+
+round=0;const broadOrder=[];
+await converse({question:'テストグループについて教えてください',groups,generate:async messages=>{
+ broadOrder.push('model');assert.equal(broadOrder[0],'survey_space','a named group overview must survey before the first model call');
+ assert.ok(messages.some(message=>message.content.includes('全体像')));
+ return {text:JSON.stringify(++round===1?{action:'search',query:'テストグループ'}:{action:'answer',text:'本文に基づく概要です。'})};
+},call:async(tool,args)=>{broadOrder.push(tool);return call(tool,args);}});
+assert.equal(broadOrder.filter(step=>step==='model').length,2);
+console.log('PASS named company-group overview starts scoped survey before planning, avoiding a discarded model round');

@@ -67,3 +67,9 @@ const failedReceipt=createConversationSpeech(new AbortController().signal,()=>{
 });
 failedReceipt.receipt('案内。');failedReceipt.push('本回答。');await failedReceipt.finish('本回答。');assert.deepEqual(afterFailure,['はい。','本回答。']);
 console.log('failed receipt playback does not discard the verified answer');
+
+const failureDiagnostics={failure:'model',totalMs:120,stages:[{kind:'model',startMs:0,durationMs:120,failed:true}]};
+await assert.rejects(readConversationStream(new Response(JSON.stringify({type:'error',message:'回答を完了できませんでした',diagnostics:failureDiagnostics})+'\n')),error=>{
+ assert.deepEqual(error.conversationDiagnostics,failureDiagnostics);return true;
+});
+console.log('PASS streaming failure diagnostics reach the UI without pretending that an answer completed');

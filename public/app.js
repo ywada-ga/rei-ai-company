@@ -437,7 +437,7 @@ $('command-form').onsubmit = async event => {
       streamingTurn={question:text,answer:''};renderConversation();
       let response;
       try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);},receipt=>{feedback(receipt);if(state.voiceOn&&commandSpeech===audio)audio?.receipt(receipt);});backendTiming=response.timing||null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
-      catch(error){audio?.cancel();throw error;}finally{streamingTurn=null;renderConversation();}
+      catch(error){audio?.cancel();if(error.conversationDiagnostics){backendTiming=error.conversationDiagnostics;publishLatency();}throw error;}finally{streamingTurn=null;renderConversation();}
       conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
       input.value='';await refresh();renderConversation();
       if(response.task){state.selectedTask=response.task.id;state.taskDetail=null;setView('missions');feedback('依頼内容を確認して承認してください');}else feedback('REIから返答が届きました');

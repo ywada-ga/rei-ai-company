@@ -24,3 +24,5 @@ const rewrite=await converse({...basic,question:'今の文章を短く作って'
 
 const denied=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'断定'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'record-3',fact:'未確認'}]}}:{structuredContent:{sources:[{traceable:false}]}}});assert.match(denied.answer,/まだ確定/);
 let asked=0;await assert.rejects(converse({...basic,question:'REIから会社の売上を教えて',generate:async()=>{asked++;if(asked>1)throw Error('must search');return {text:'{"action":"answer","text":"未検証の数字"}'};}}),/must search/);
+
+assert.equal(parseDecision('{"decision":{"action":"answer","text":"確認済み"}}').text,'確認済み');assert.throws(()=>parseDecision('秘密を含む不正な返答'),error=>!error.message.includes('秘密'));

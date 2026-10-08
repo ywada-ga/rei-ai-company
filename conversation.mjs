@@ -1,7 +1,8 @@
 // The model proposes operations. This controller owns the permitted operations.
 export function parseDecision(text){
   const raw=String(text).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
-  const value=JSON.parse(raw);
+  let value;try{value=JSON.parse(raw);}catch{throw Object.assign(new Error('会話AIの返答形式を確認できませんでした'),{status:502});}
+  if(value?.decision)value=value.decision;
   if(!value||!['answer','search','source','episode','work'].includes(value.action))throw new Error('会話AIの返答形式を確認できませんでした');
   const key={answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}[value.action];
   if(typeof value[key]!=='string'||!value[key].trim()||value[key].length>4000)throw new Error('会話AIの返答内容を確認できませんでした');return value;

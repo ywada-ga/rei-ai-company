@@ -6,6 +6,7 @@ const issuer='https://auth.openai.com',resource='https://api.openai.com/v1';
 const scopes='openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
 const random=()=>crypto.randomBytes(32).toString('base64url');
 const failure=message=>Object.assign(new Error(message),{status:400});
+const decisionFormat={type:'json_schema',name:'rei_decision',strict:true,schema:{type:'object',properties:{decision:{anyOf:Object.entries({answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}).map(([action,key])=>({type:'object',properties:{action:{type:'string',enum:[action]},[key]:{type:'string'}},required:['action',key],additionalProperties:false}))}},required:['decision'],additionalProperties:false}};
 export function validateIdToken(token,keys,{clientId,nonce,subject,now=Date.now()}){
   try{
     const parts=token.split('.');if(parts.length!==3)throw 0;
@@ -117,7 +118,7 @@ export class ChatGPTPlan {
   async generate(messages,{signal,effort}={}){
     const account=this.account();if(!account?.model)throw failure('ChatGPTの接続状態を更新してモデルを選んでください');
     const token=await this.token(),instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),input=messages.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}));
-    const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions,input,store:false,stream:true,reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
+    const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions:instructions+'\nAPIの出力形式のdecisionフィールドへ判断JSONを入れて返す。',input,store:false,stream:true,text:{format:decisionFormat},reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
     if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');return readResponseStream(response);
   }
 }

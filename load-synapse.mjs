@@ -20,8 +20,26 @@ export function unavailableGroups(result,groups){
  visit(mcpData(result));return ids.size?[...ids]:global?groups.map(g=>g.id):[];
 }
 export function needsRecentEvidence(question,context=[]){
- const recent=/(今|現在|最新|直近|昨日|今日|一昨日|先週|今週|今月|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})/u;
- return recent.test(question)||(/(それ|その|シナプス|Synapse|記録|データ)/iu.test(question)&&recent.test(context.at(-1)?.question||''));
+ const recent=/(work[._ -]?log|作業ログ|業務ログ|今|現在|最新|直近|昨日|今日|一昨日|先週|今週|今月|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})/iu;
+ const work=/(?:さん|氏|社員|担当者).*(?:作業|タスク|仕事|進捗|担当|予定)/u;
+ return recent.test(question)||work.test(question)||(/(それ|その|シナプス|Synapse|記録|データ)/iu.test(question)&&(recent.test(context.at(-1)?.question||'')||work.test(context.at(-1)?.question||'')));
+}
+// Read the full scoped record first, then expose bounded excerpts instead of only
+// its beginning. Offsets make omitted sections explicit; excerpts prove no absence.
+export function evidenceBodyContext(content,question,{recent=false,budget=6000}={}){
+ if(typeof content!=='string'||content.length<=budget)return content;
+ const windows=[[0,Math.min(600,Math.floor(budget/3),content.length)]];
+ const terms=[...new Set((String(question).match(/[\p{L}\p{N}_.-]+/gu)||[]).flatMap(t=>[t,t.replace(/(?:さん|氏)の.*$/u,'')]).filter(t=>t.length>=2&&t.length<=80))];
+ const matches=[];
+ for(const term of terms){let offset=0;while((offset=content.indexOf(term,offset))!==-1){matches.push(offset);offset+=term.length;if(matches.length>=100)break;}if(matches.length>=100)break;}
+ matches.sort((a,b)=>recent?b-a:a-b);
+ if(recent)windows.push([Math.max(0,content.length-Math.min(1600,budget-windows[0][1])),content.length]);
+ let remaining=budget-windows.reduce((n,[a,b])=>n+b-a,0);
+ for(const offset of matches){if(remaining<300)break;if(windows.some(([a,b])=>offset>=a&&offset<b))continue;const length=Math.min(1000,remaining),start=Math.max(0,offset-250);windows.push([start,Math.min(content.length,start+length)]);remaining-=length;}
+ if(remaining>0&&!recent)windows.push([Math.max(0,content.length-remaining),content.length]);
+ windows.sort((a,b)=>a[0]-b[0]);const merged=[];
+ for(const [start,end] of windows){const last=merged.at(-1);if(last&&start<=last[1])last[1]=Math.max(last[1],end);else merged.push([start,end]);}
+ return {representation:'selected_excerpts',originalChars:content.length,omitted:true,excerpts:merged.map(([start,end])=>({start,end,text:content.slice(start,end)}))};
 }
 export function episodeLookups(result,groups,{recent=false}={}){
  const data=mcpData(result),rows=data?.episodes||data?.results||data?.items||[];
@@ -37,5 +55,5 @@ export function episodeLookups(result,groups,{recent=false}={}){
   // Only the declared read arguments survive; never forward arbitrary candidate fields.
   found.set(readArgs.uuid,{uuid:readArgs.uuid,...(readArgs.group_id?{group_id:readArgs.group_id}:{}),group_ids:groups.map(g=>g.id)});
  }
- return [...found.values()].slice(0,2);
+ return [...found.values()].slice(0,4);
 }

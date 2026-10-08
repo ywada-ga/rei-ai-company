@@ -6,7 +6,7 @@ const issuer='https://auth.openai.com',resource='https://api.openai.com/v1';
 const scopes='openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
 const random=()=>crypto.randomBytes(32).toString('base64url');
 const failure=message=>Object.assign(new Error(message),{status:400});
-const decisionFormat={type:'json_schema',name:'rei_decision',strict:true,schema:{type:'object',properties:{decision:{anyOf:Object.entries({answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}).map(([action,key])=>({type:'object',properties:{action:{type:'string',enum:[action]},[key]:{type:'string'}},required:['action',key],additionalProperties:false}))}},required:['decision'],additionalProperties:false}};
+const decisionFormat={type:'json_schema',name:'rei_decision',strict:true,schema:{type:'object',properties:{decision:{anyOf:Object.entries({answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}).map(([action,key])=>({type:'object',properties:{action:{type:'string',enum:[action]},[key]:{type:'string'}},required:['action',key],additionalProperties:false})).concat([{type:'object',properties:{action:{type:'string',enum:['assess']},status:{type:'string',enum:['supported','partial','insufficient','ambiguous']},sourceIds:{type:'array',items:{type:'string'}},reason:{type:'string'},query:{type:'string'}},required:['action','status','sourceIds','reason','query'],additionalProperties:false}])}},required:['decision'],additionalProperties:false}};
 export function validateIdToken(token,keys,{clientId,nonce,subject,now=Date.now()}){
   try{
     const parts=token.split('.');if(parts.length!==3)throw 0;

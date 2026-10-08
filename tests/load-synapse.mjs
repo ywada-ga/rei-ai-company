@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {converse} from '../conversation.mjs';
+import {converse as rawConverse} from '../conversation.mjs';
+const converse=options=>rawConverse({...options,reviewEvidence:async({verifiedIds})=>({status:'supported',sourceIds:verifiedIds,reason:'',query:''})});
 import {episodeLookups,unavailableGroups,needsRecentEvidence} from '../load-synapse.mjs';
 const groups=[{id:'allowed',name:'共有'}];let steps=[],round=0;
 const call=async(tool,args)=>{

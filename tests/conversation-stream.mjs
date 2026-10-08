@@ -12,7 +12,8 @@ let complete=false,deltas=[];
 const response=new Response(new ReadableStream({start(c){c.enqueue(encoder.encode('data: {"type":"response.output_text.delta","delta":"first"}\n\n'));setTimeout(()=>{complete=true;c.enqueue(encoder.encode('data: {"type":"response.completed"}\n\n'));c.close();},10);}}));
 await readResponseStream(response,{onDelta:text=>{assert.equal(complete,false);deltas.push(text);}});assert.deepEqual(deltas,['first']);
 const events=[];let sourceRead=false;
-const result=await converse({question:'会社の予定は？',groups:[{id:'g',name:'共有'}],onDelta:text=>{assert.equal(sourceRead,true);events.push(text);},generate:async(messages,{onDelta})=>{
+const result=await converse({question:'会社の予定は？',groups:[{id:'g',name:'共有'}],onDelta:text=>{assert.equal(sourceRead,true);events.push(text);},generate:async(messages,{onDelta,phase})=>{
+ if(phase==='evidence_review')return {text:JSON.stringify({action:'assess',status:'supported',sourceIds:['fact'],reason:'',query:''})};
  if(!sourceRead){onDelta?.('{"decision":{"action":"answer","text":"未検証"}}');return {text:'{"action":"search","query":"予定"}'};}
  const raw='{"decision":{"action":"answer","text":"確認した予定です。"}}';for(let i=1;i<=raw.length;i++)onDelta?.(raw.slice(0,i));return {text:raw};
 },call:async tool=>{if(tool==='get_fact_source'){sourceRead=true;return {structuredContent:{sources:[{traceable:true,group_id:"g",body:"確認する本文"}]}};}return {structuredContent:{facts:[{uuid:'fact',group_id:'g',fact:'予定'}]}};},submit:()=>{throw Error('no work')}});

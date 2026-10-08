@@ -26,3 +26,18 @@ const denied=await converse({...basic,generate:make([{action:'search',query:'予
 let asked=0;await assert.rejects(converse({...basic,question:'REIから会社の売上を教えて',generate:async()=>{asked++;if(asked>1)throw Error('must search');return {text:'{"action":"answer","text":"未検証の数字"}'};}}),/must search/);
 
 assert.equal(parseDecision('{"decision":{"action":"answer","text":"確認済み"}}').text,'確認済み');assert.throws(()=>parseDecision('秘密を含む不正な返答'),error=>!error.message.includes('秘密'));
+
+// A handwritten note has no PDF, but its scoped, complete saved body is evidence.
+const noteCalls=[];
+const noteFixture=(episodeOverride={})=>async tool=>{
+ noteCalls.push(tool);
+ if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'fact-note',fact:'会議は金曜日',group_id:'allowed',episodes:['episode-note']}]}};
+ if(tool==='get_fact_source')return {structuredContent:{sources:[{episode_uuid:'episode-note',group_id:'allowed',origin:'obsidian',reason:'source_unavailable',traceable:false}]}};
+ return {structuredContent:{episode:{uuid:'episode-note',group_id:'allowed',origin:'obsidian',content:'金曜日に会議をするという記録です。',source_ref:'obsidian://note',recorded_at:'2026-10-01T10:00:00Z',doc_name:'会議メモ',...episodeOverride},coverage:{complete:true},truncated:false}};
+};
+const noteAnswer=await converse({...basic,call:noteFixture(),generate:make([{action:'search',query:'会議'},{action:'answer',text:'保存されたメモによると、金曜日に会議をする予定でした。'}])});
+assert.deepEqual(noteCalls,['search_memory_facts','get_fact_source','get_episode']);assert.match(noteAnswer.answer,/会議メモ/);assert.match(noteAnswer.answer,/外部原本・現在の状態は未照合/);assert.equal(noteAnswer.sources[0].uuid,'episode-note');
+for(const override of [{group_id:'outside'},{uuid:'wrong'},{content_truncated:true},{content:''}]){
+ const bad=await converse({...basic,call:noteFixture(override),generate:make([{action:'search',query:'会議'},{action:'answer',text:'断定'}])});assert.match(bad.answer,/まだ確定/);
+}
+console.log('saved note provenance and complete scoped body tests passed');

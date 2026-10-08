@@ -4,7 +4,7 @@ assert.throws(()=>parseDecision('{"action":"delete","text":"x"}'));
 const groups=[{id:'allowed',name:'会社共有'}];
 const make=actions=>async()=>({text:JSON.stringify(actions.shift())});
 let calls=[],submitted=[];
-const basic={question:'会社の予定は？',groups,call:async(tool,args)=>{calls.push({tool,args});return {content:[{type:'text',text:JSON.stringify({uuid:'record-1',group_id:'allowed',text:'資料',sources:[{traceable:true,group_id:"allowed",body:"確認する本文"}]})}]};},submit:async instruction=>{submitted.push(instruction);return {id:'task',status:'approval_pending'};}};
+const basic={readingSkill:false,question:'会社の予定は？',groups,call:async(tool,args)=>{calls.push({tool,args});return {content:[{type:'text',text:JSON.stringify({uuid:'record-1',group_id:'allowed',text:'資料',sources:[{traceable:true,group_id:"allowed",body:"確認する本文"}]})}]};},submit:async instruction=>{submitted.push(instruction);return {id:'task',status:'approval_pending'};}};
 const result=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'source',uuid:'record-1'},{action:'answer',text:'確認した予定です。'}])});
 assert.equal(result.answer,'確認した予定です。');assert.equal(calls.length,2);assert.deepEqual(calls[0].args.group_ids,['allowed']);
 await assert.rejects(converse({...basic,generate:make([{action:'episode',uuid:'outside'}])}),/取得済み/);

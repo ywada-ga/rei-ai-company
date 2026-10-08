@@ -1,5 +1,9 @@
 # REI ローカル版の設計図
 
+## 会話のSynapse読み取り手順
+
+`load-synapse.mjs` は公式load-synapse 0.8.0の手順を会話用に適用する。会社検索は選択グループのsurvey_space → search_memory_facts → get_fact_source/本文確認で進む。空の事実検索、または現在・指定日の質問ではsearch_episodesも呼び、full_content_lookupの読み取り引数だけを採用してget_episodeで本文・範囲・完全性・出どころを確認する。全文候補にも本文取得を適用する。現在の質問は返された候補集合内の新しい保存日を優先するが、作業日と保存日を混同せず、候補集合全体の最新性は保証しない。group_unavailableは再試行せず、選択済みの利用可能グループだけで続行する。MCP呼び出しは既存認証の読み取り専用で、公開診断には本文・記録ID・グループID・認証を含めない。
+
 ```mermaid
 flowchart LR
   U[利用者のブラウザ] -->|localhost| H[中心PCのREI Hub]

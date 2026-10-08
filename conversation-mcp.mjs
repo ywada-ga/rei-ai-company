@@ -27,7 +27,7 @@ export class ConversationMcp {
     this.signature=integration.name;return this.runtime;
   }
   async call(integration,tool,args,signal){
-    if(!['survey_space','search_memory_facts','get_fact_source','get_episode'].includes(tool))throw new Error('会話からは読み取り専用の検索だけを利用できます');
+    if(!['survey_space','search_memory_facts','search_episodes','get_fact_source','get_episode'].includes(tool))throw new Error('会話からは読み取り専用の検索だけを利用できます');
     if(!Array.isArray(args.group_ids)||!args.group_ids.length)throw new Error('検索範囲が必要です');
     const runtime=await this.connect(integration);if(signal?.aborted)throw new Error('検索を中断しました');
     let result;

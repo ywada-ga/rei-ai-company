@@ -1,6 +1,6 @@
 import {readConversationStream} from './conversation-stream.js';
 import {playLocalVoice,playLocalReply,createLocalSpeechStream} from './local-voice.js';
-import { VoiceConversation, spokenText, speechChunks } from './voice.js';
+import { VoiceConversation, createTurnLatency, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
 let conversationTurns=[],streamingTurn=null;
@@ -431,10 +431,12 @@ $('command-form').onsubmit = async event => {
   try {
     if(['owner','admin'].includes(state.data?.user.role)&&!state.selectedCommandSkill&&!$('command-project').value){
       const controller=new AbortController();commandSpeechController?.abort();commandSpeechController=controller;
-      commandSpeech?.cancel();const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request):null;
+      commandSpeech?.cancel();const latency=createTurnLatency(()=>performance.now());
+      const publishLatency=()=>{$('command-feedback').dataset.responseLatency=JSON.stringify(latency.snapshot());};publishLatency();
+      const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request,{onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
       streamingTurn={question:text,answer:''};renderConversation();
       let response;
-      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);});if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
+      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);});latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
       catch(error){audio?.cancel();throw error;}finally{streamingTurn=null;renderConversation();}
       conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
       input.value='';await refresh();renderConversation();

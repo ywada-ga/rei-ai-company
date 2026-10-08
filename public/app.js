@@ -528,7 +528,7 @@ function renderVoiceChannel() {
   if(!history.length&&!voiceDisplay.transcript)return;
   let turns=history.slice();
   const last=turns.at(-1);
-  if(voiceDisplay.transcript&&(!last||last.question!==voiceDisplay.transcript||voiceDisplay.phase==='thinking'||voiceDisplay.phase==='listening'))turns.push({question:voiceDisplay.transcript,answer:voiceDisplay.phase==='thinking'?'返答を考えています…':voiceDisplay.phase==='listening'?'聞いています…':voiceDisplay.answer});
+  if(voiceDisplay.transcript&&(!last||last.question!==voiceDisplay.transcript||voiceDisplay.phase==='thinking'||voiceDisplay.phase==='listening'))turns.push({question:voiceDisplay.transcript,answer:voiceDisplay.phase==='thinking'?(voiceDisplay.answer||'返答を考えています…'):voiceDisplay.phase==='listening'?'聞いています…':voiceDisplay.answer});
   const block=document.createElement('div');block.dataset.voiceChannel='true';
   block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会話</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
 }
@@ -566,6 +566,7 @@ async function askCompany(question,context,signal,onDelta=null,fullReport=false)
 function updateVoiceDisplay(data) {
   const labels={idle:'会話を開始すると、話しかけて質問できます。',listening:'聞いています。話し終えると、そのまま質問を送ります。',thinking:'REIが返答を考えています…',speaking:'REIが話しています。続けて質問できます。',error:'会話を再開できます。'};
   $('voice-conversation-status').textContent=data.message||labels[data.phase];
+  if(data.latency)$('voice-conversation-status').dataset.responseLatency=JSON.stringify(data.latency);else delete $('voice-conversation-status').dataset.responseLatency;
   voiceDisplay=data;renderVoiceChannel();
   $('voice-conversation-start').disabled=data.active;
   $('voice-conversation-stop').disabled=!data.active;

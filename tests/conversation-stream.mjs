@@ -3,7 +3,7 @@ import {streamedAnswerPrefix,converse} from '../conversation.mjs';
 import {readResponseStream} from '../chatgpt-plan.mjs';
 import {readConversationStream} from '../public/conversation-stream.js';
 import {createLocalSpeechStream} from '../public/local-voice.js';
-import {VoiceConversation} from '../public/voice.js';
+import {VoiceConversation,createTurnLatency} from '../public/voice.js';
 const encoder=new TextEncoder();
 const answer=JSON.stringify({decision:{action:'answer',text:'こんにちは。\n"確認"😀'}});
 let previous='';for(let i=1;i<=answer.length;i++){const text=streamedAnswerPrefix(answer.slice(0,i));assert.ok(text.startsWith(previous));previous=text;}assert.equal(previous,'こんにちは。\n"確認"😀');
@@ -29,3 +29,9 @@ const changes=[];let resolveFinal,spokenParts=[];
 const voice=new VoiceConversation({Recognition:class{},ask:async(q,c,s,onDelta)=>{onDelta('こんにちは。');return new Promise(r=>resolveFinal=r);},onChange:s=>changes.push(s)});
 voice.streamReply=(signal,onPlaying)=>({push(t){spokenParts.push(t);onPlaying();},async finish(){},cancel(){}});voice.active=true;voice.epoch=1;voice.listen=()=>{voice.phase='listening';};const responding=voice.respond('こんにちは',1);assert.deepEqual(spokenParts,['こんにちは。']);assert.equal(voice.history.length,0);resolveFinal('こんにちは。');await responding;assert.equal(voice.history.length,1);assert.equal(voice.phase,'listening');voice.stop();
 console.log('incremental decoding, source gate, transport completion, ordered audio and continuous voice passed');
+
+let time=1100;const measured=createTurnLatency(()=>time,1000);measured.text(' ');assert.equal(measured.snapshot().firstTextMs,null);time=1250;measured.text('回答');time=1600;measured.audio();time=2000;measured.audio();measured.complete();assert.deepEqual(measured.snapshot(),{anchor:'speech_end',firstTextMs:250,firstAudioMs:600,textCompleteMs:1000});
+const fallback=createTurnLatency(()=>time);assert.equal(fallback.snapshot().anchor,'request_start');
+let started=0,rejectPlay;class BlockedAudio{pause(){}removeAttribute(){}play(){return new Promise((resolve,reject)=>rejectPlay=reject);}}
+const blocked=createLocalSpeechStream(new AbortController().signal,async()=>({wav:btoa('RIFF')}),{AudioClass:BlockedAudio,urls,onPlaying(){started++;}});blocked.push('試験。');await new Promise(r=>setTimeout(r,0));assert.equal(started,0,'synthesis is not audio onset');rejectPlay(new Error('blocked'));await assert.rejects(blocked.finish('試験。'),/blocked/);assert.equal(started,0);
+console.log('speech-end timing, request-start fallback and rejected playback onset passed');

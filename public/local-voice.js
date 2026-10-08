@@ -3,7 +3,7 @@ export async function playLocalVoice(text,signal,request,{AudioClass=globalThis.
   const result=await request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text}),signal});
   return playVoiceAudio(result,signal,{AudioClass,urls});
 }
-async function playVoiceAudio(result,signal,{AudioClass=globalThis.Audio,urls=globalThis.URL}={}) {
+async function playVoiceAudio(result,signal,{AudioClass=globalThis.Audio,urls=globalThis.URL,onPlaying=()=>{}}={}) {
   if(signal.aborted)throw new Error('音声を中断しました');
   const bytes=Uint8Array.from(atob(result.wav),c=>c.charCodeAt(0));
   const url=urls.createObjectURL(new Blob([bytes],{type:'audio/wav'}));
@@ -13,7 +13,7 @@ async function playVoiceAudio(result,signal,{AudioClass=globalThis.Audio,urls=gl
     const abort=()=>{audio.pause();cleanup();reject(new Error('音声を中断しました'));};
     audio.onended=()=>{cleanup();resolve();};audio.onerror=()=>{cleanup();reject(new Error('音声を再生できませんでした'));};
     signal.addEventListener('abort',abort,{once:true});
-    Promise.resolve(audio.play()).catch(error=>{cleanup();reject(error);});
+    Promise.resolve(audio.play()).then(()=>{if(!signal.aborted)onPlaying();}).catch(error=>{cleanup();reject(error);});
   });}finally{audio.pause();audio.removeAttribute?.('src');urls.revokeObjectURL(url);}
 }
 
@@ -42,7 +42,7 @@ export function createLocalSpeechStream(signal,request,options={}){
     if(!phrase.trim()||controller.signal.aborted)return;
     const audio=synthesis.then(()=>request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal}));
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
-    playback=playback.then(async()=>{const result=await audio;options.onPlaying?.();await playVoiceAudio(result,controller.signal,options);});
+    playback=playback.then(async()=>{const result=await audio;await playVoiceAudio(result,controller.signal,options);});
     audio.catch(error=>{failure=error;controller.abort();});playback.catch(error=>{failure=error;controller.abort();});
   };
   const flush=final=>{let match;while((match=pending.match(/^([\s\S]*?[。！？\n])([\s\S]*)$/))){for(const chunk of speechChunks(match[1],120))enqueue(chunk);pending=match[2];}while(Array.from(pending).length>=120){const chars=Array.from(pending);enqueue(chars.slice(0,120).join(''));pending=chars.slice(120).join('');}if(final){for(const chunk of speechChunks(pending,120))enqueue(chunk);pending='';}};

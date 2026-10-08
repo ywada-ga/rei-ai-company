@@ -207,6 +207,7 @@ async function api(req,res,route) {
       conversationBusy=true;
       try{
         const result=await converse({question,context,groups:settings.groups,signal:controller.signal,
+          runtimeContext:{name:'REI',version:reiVersion,conversation:chatProvider(user)==='chatgpt'?'ChatGPT（接続済み）':'ローカルQwen',voice:'ローカルQwen',synapseConfigured:!!integration,selectedGroupCount:settings.groups.length,execution:'OpenClaw、作業は承認待ちを作成してから実行',capabilities:['継続した文章・音声会話','選択したSynapse Connectの記録検索と原記録確認','承認待ち作業の作成','接続端末の稼働状況'],limitations:['一般質問と継続会話は実機確認済み','音声品質と応答速度は調整中','会社情報は原記録が取れる範囲のみ回答','商用配布の署名・公証、別Macでの検証は未完了','Coworkは接続パッケージ実装済み、実機連携は未確認']},
           generate:(messages,options)=>(chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options),
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,instruction,'operations',user.id,true,null,null,context));}});

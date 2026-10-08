@@ -114,10 +114,10 @@ export class ChatGPTPlan {
     }catch{revoked=false;}
     if(account){delete account.accessToken;delete account.refreshToken;delete account.idToken;account.models=[];account.model=null;}this.record.active=null;this.save();return {ok:true,revoked};
   }
-  async generate(messages,{signal}={}){
+  async generate(messages,{signal,effort}={}){
     const account=this.account();if(!account?.model)throw failure('ChatGPTの接続状態を更新してモデルを選んでください');
     const token=await this.token(),instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),input=messages.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}));
-    const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions,input,store:false,stream:true}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
+    const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions,input,store:false,stream:true,reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
     if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');return readResponseStream(response);
   }
 }

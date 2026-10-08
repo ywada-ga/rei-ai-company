@@ -1,14 +1,15 @@
-import {playLocalVoice,playLocalReply} from './local-voice.js';
+import {readConversationStream} from './conversation-stream.js';
+import {playLocalVoice,playLocalReply,createLocalSpeechStream} from './local-voice.js';
 import { VoiceConversation, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
-let conversationTurns=[];
-let conversationHistoryLoaded=false;
+let conversationTurns=[],streamingTurn=null;
+let conversationHistoryLoaded=false;let commandSpeechController=null,commandSpeech=null;
 function renderConversation(){
   const feed=$('mission-feed');feed.querySelector('[data-conversation-channel]')?.remove();
-  if(!conversationTurns.length)return;
+  const turns=streamingTurn?[...conversationTurns,streamingTurn]:conversationTurns;if(!turns.length)return;
   const block=document.createElement('div');block.dataset.conversationChannel='true';
-  block.innerHTML=conversationTurns.slice(-3).reverse().map(turn=>`<div class="exchange"><div class="exchange-user"><small>YOU / 会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会話</small><p>${escapeHtml(turn.answer)}</p></div></div>`).join('');feed.prepend(block);
+  block.innerHTML=turns.slice(-3).reverse().map(turn=>`<div class="exchange"><div class="exchange-user"><small>YOU / 会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / ${turn===streamingTurn?'返答中':'会話'}</small><p>${escapeHtml(turn.answer)}</p></div></div>`).join('');feed.prepend(block);
 }
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
 const formatTime = value => value ? new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo', month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(value)) : '—';
@@ -50,6 +51,10 @@ function commandSkill(skill) {state.selectedCommandSkill=skill||null;$('command-
 
 function setSkillPane(pane){if(pane==='create'&&state.data?.user.role==='viewer')pane='library';state.skillPane=pane;document.querySelector('.playbook-grid').classList.toggle('hidden',pane!=='library');$('playbook-search-form').classList.toggle('hidden',pane!=='library');$('playbook-total').classList.toggle('hidden',pane!=='library');$('playbook-form').classList.toggle('hidden',pane!=='create');document.querySelector('.marketplace-panel').classList.toggle('hidden',pane!=='marketplace');document.querySelector('[data-skill-pane="create"]').classList.toggle('hidden',state.data?.user.role==='viewer');document.querySelectorAll('[data-skill-pane]').forEach(button=>button.classList.toggle('active',button.dataset.skillPane===pane));}
 
+async function streamConversation(question,context,signal,onDelta){
+  const response=await fetch('/api?route=conversation%2Fstream',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,context}),signal});
+  if(response.status===401)showAuth();return readConversationStream(response,{signal,onDelta});
+}
 async function request(url, options) {
   const route=url.replace(/^\/api\//,'');
   const response = await fetch(`/api?route=${encodeURIComponent(route)}`, options);
@@ -425,11 +430,16 @@ $('command-form').onsubmit = async event => {
   feedback('REIに伝えています...');
   try {
     if(['owner','admin'].includes(state.data?.user.role)&&!state.selectedCommandSkill&&!$('command-project').value){
-      const response=await request('/api/conversation/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question:text})});
+      const controller=new AbortController();commandSpeechController?.abort();commandSpeechController=controller;
+      commandSpeech?.cancel();const audio=commandSpeech=state.voiceOn?createLocalSpeechStream(controller.signal,request):null;
+      streamingTurn={question:text,answer:''};renderConversation();
+      let response;
+      try{response=await streamConversation(text,[],controller.signal,delta=>{streamingTurn.answer+=delta;renderConversation();if(state.voiceOn&&commandSpeech===audio)audio?.push(delta);});if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
+      catch(error){audio?.cancel();throw error;}finally{streamingTurn=null;renderConversation();}
       conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
       input.value='';await refresh();renderConversation();
       if(response.task){state.selectedTask=response.task.id;state.taskDetail=null;setView('missions');feedback('依頼内容を確認して承認してください');}else feedback('REIから返答が届きました');
-      if(state.voiceOn)void speak(response.answer);return;
+      return;
     }
     const result = await request('/api/command', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-AI-Company':'1' }, body:JSON.stringify({ text, department:state.selectedDepartment || 'operations', projectId:$('command-project').value||null,skillId:state.selectedCommandSkill?.id||null }) });
     input.value = '';
@@ -522,11 +532,11 @@ function renderVoiceChannel() {
   const block=document.createElement('div');block.dataset.voiceChannel='true';
   block.innerHTML=turns.slice(-4).reverse().map(turn=>`<div class="exchange voice-exchange"><div class="exchange-user"><small>YOU / 音声会話</small><p>${escapeHtml(turn.question)}</p></div><div class="exchange-rei"><small>REI / 会話</small><p>${escapeHtml(turn.answer||voiceDisplay.message||'確認中')}</p></div></div>`).join('');feed.prepend(block);
 }
-async function askCompany(question,context,signal,fullReport=false) {
+async function askCompany(question,context,signal,onDelta=null,fullReport=false) {
   if(!fullReport){
-    const result=await request('/api/conversation/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question,context}),signal});
+    const result=await streamConversation(question,context,signal,onDelta);
     if(result.task){state.pendingReplyTaskId=result.task.id;void refresh();}
-    return spokenText(result.answer);
+    return result.answer;
   }
   if(/^(?:こんにちは|こんばんは|おはよう(?:ございます)?|よろしく(?:お願いします)?)[。！]?$/u.test(question))return fullReport?{status:'local',answer:'こんにちは。REIです。会社のことや、次に準備することを聞いてください。',uncertainties:[]}: 'こんにちは。REIです。会社のことや、次に準備することを聞いてください。';
   const current=await request('/api/knowledge/status',{signal});
@@ -563,6 +573,7 @@ function updateVoiceDisplay(data) {
 const voiceConversation=new VoiceConversation({ask:askCompany,onChange:updateVoiceDisplay});
 voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
 voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);
+voiceConversation.streamReply=(signal,onPlaying)=>createLocalSpeechStream(signal,request,{onPlaying});
 const currentVoice=()=>voiceConversation;
 let localVoiceAvailable=false;
 async function loadLocalVoiceStatus() {
@@ -606,14 +617,14 @@ $('voice-output').onclick = () => {
   state.voiceOn = !state.voiceOn;
   $('voice-output').textContent = `音声応答 ${state.voiceOn ? 'ON' : 'OFF'}`;
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
-  if (!state.voiceOn) {replyVoiceController?.abort();}
+  if (!state.voiceOn) {replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
 };
 $('voice-button').onclick = () => $('voice-conversation-open').click();
 $('voice-preview').onclick=()=>{void speak('こんにちは、レイです。この画面のまま、続けて話せます。');};
 function showAuth() {
   const setupToken = new URLSearchParams(location.search).get('setup');
-  state.authEpoch++;
+  commandSpeechController?.abort();commandSpeech?.cancel();streamingTurn=null;state.authEpoch++;
   const epoch=state.authEpoch;
   state.data=null;
   state.taskDetail=null;

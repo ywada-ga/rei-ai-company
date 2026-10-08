@@ -167,3 +167,9 @@ REIの設定に「ChatGPTで会話」を追加。公式Sign in with ChatGPTの�
 追加費用を避けるため、利用者はChatGPT設定のUsageからREIのクレジット使用をOFFにする。現行の公式HTTP仕様にはクレジット使用をアプリから禁止するパラメータがないため、REI単独ではその設定を保証できない。実ログイン・クレジットOFF確認・Proの推論・Synapse経由の回答確認は未完了。秘密情報を使わない模擬テストでPKCE、state、署名、保管権限、更新競合、モデル選択、失敗ストリーム、切断を確認済み。
 
 公式資料: https://developers.openai.com/siwc/token-sharing-open-source/sign-in 、 https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+
+## 生成途中の回答と音声（2026-10-08）
+
+ChatGPTの回答デルタから、answerの本文だけを取り出す。会社の質問は今回のSynapse Connect検索と本文確認が済むまでデルタを出さない。Hubのconversation/streamは認証・役割・検索範囲を検証し、delta/done/errorをNDJSONで送る。Responsesの完了イベントと最終JSONが有効な場合だけ履歴を保存する。
+
+ブラウザはデルタを表示し、句点または120文字でQwenの音声生成を順に開始する。音声生成列と再生列を分け、次の音声生成を現在の再生と重ねる。停止・切断・失敗時はAbortSignalで両方を止める。音声会話は全文と全音声の完了後に次の聞き取りへ戻る。これは文ごとの音声配信であり、QwenのPCM生成自体の逐次送信ではない。ローカル会話モデルは同じ経路で完成結果を送る。

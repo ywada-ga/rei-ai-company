@@ -64,15 +64,16 @@ export class VoiceConversation {
     try{recognition.start();}catch{this.stop('音声認識を開始できませんでした。マイクを使っている別の会話を終了して再開してください。');}
   }
   async respond(question,epoch) {
-    this.transcript=question;this.emit('thinking');this.controller=new AbortController();
+    this.transcript=question;this.answer='';this.emit('thinking');this.controller=new AbortController();
+    const speech=this.streamReply?.(this.controller.signal,()=>{if(this.active&&epoch===this.epoch){clearTimeout(this.progressTimer);this.emit('speaking');}});
     const progressTimer=this.progressTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.emit('thinking','情報源を確認しています。回答まで1〜2分かかる場合があります。');},20000);
     const answerTimer=this.answerTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.stop('回答の確認に時間がかかっています。会社の記憶の画面で結果を確認し、会話を再開してください。');},this.answerTimeoutMs);
     try {
-      const answer=await this.ask(question,this.history.slice(-3),this.controller.signal);
+      const answer=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?delta=>{if(!this.active||epoch!==this.epoch)return;this.answer+=delta;this.emit(this.phase==='speaking'?'speaking':'thinking');speech.push(delta);}:undefined);
       if(!this.active||epoch!==this.epoch)return;
       this.answer=String(answer);this.history.push({question,answer:this.answer.slice(0,2000)});
-      this.history=this.history.slice(-3);this.say(this.answer);
-    } catch(error){if(this.active&&epoch===this.epoch)this.stop(error.message||'回答を確認できませんでした。');}
+      this.history=this.history.slice(-3);clearTimeout(progressTimer);if(speech){clearTimeout(answerTimer);await speech.finish(this.answer);if(this.active&&epoch===this.epoch)this.listen();}else this.say(this.answer);
+    } catch(error){speech?.cancel();if(this.active&&epoch===this.epoch)this.stop(error.message||'回答を確認できませんでした。');}
     finally {clearTimeout(answerTimer);clearTimeout(progressTimer);}
   }
   say(answer) {

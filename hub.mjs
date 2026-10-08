@@ -195,7 +195,7 @@ async function api(req,res,route) {
       return send(res,200,{turns:history?.scope===JSON.stringify(knowledgeSettings(db).groups)?history.turns:[]});
     }
     if(route==='conversation/prepare'&&req.method==='POST'){if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
-    if(route==='conversation/ask'&&req.method==='POST'){
+    if(['conversation/ask','conversation/stream'].includes(route)&&req.method==='POST'){
       if(conversationBusy)return error(res,409,'会話AIが返答中です。少し待ってください');
       const input=await body(req),question=text(input.question,4000),settings=knowledgeSettings(db),scope=JSON.stringify(settings.groups);
       knowledgeContext(input.context); // Validate client payload; authoritative history stays on the server.
@@ -204,9 +204,12 @@ async function api(req,res,route) {
       const localDevice=localConnectorStatus().deviceId;
       const integration=localDevice?one(db,"SELECT name,url FROM mcp_integrations WHERE device_id=? AND url='https://mcp.synapse-connect.ai/mcp'",localDevice):null;
       const controller=new AbortController();res.once('close',()=>{if(!res.writableEnded)controller.abort();});
+      const streaming=route==='conversation/stream';
+      const emit=value=>{if(!controller.signal.aborted&&!res.destroyed)res.write(JSON.stringify(value)+'\n');};
+      if(streaming){res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-accel-buffering':'no'});res.flushHeaders();}
       conversationBusy=true;
       try{
-        const result=await converse({question,context,groups:settings.groups,signal:controller.signal,
+        const result=await converse({question,context,groups:settings.groups,signal:controller.signal,onDelta:streaming?text=>emit({type:'delta',text}):null,
           runtimeContext:{name:'REI',version:reiVersion,conversation:chatProvider(user)==='chatgpt'?'ChatGPT（接続済み）':'ローカルQwen',voice:'ローカルQwen',synapseConfigured:!!integration,selectedGroupCount:settings.groups.length,execution:'OpenClaw、作業は承認待ちを作成してから実行',capabilities:['継続した文章・音声会話','選択したSynapse Connectの記録検索と原記録確認','承認待ち作業の作成','接続端末の稼働状況'],limitations:['一般質問と継続会話は実機確認済み','音声品質と応答速度は調整中','会社情報は原記録が取れる範囲のみ回答','商用配布の署名・公証、別Macでの検証は未完了','Coworkは接続パッケージ実装済み、実機連携は未確認']},
           generate:(messages,options)=>(chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options),
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
@@ -215,9 +218,10 @@ async function api(req,res,route) {
           if(JSON.stringify(knowledgeSettings(db).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
           const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true}].slice(-6);
           run(db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`conversation:${user.id}`,JSON.stringify({scope,turns}));
+          if(streaming){const {evidence,...publicResult}=result;emit({type:'done',result:publicResult});res.end();return;}
           return send(res,200,result);
         }
-      }finally{conversationBusy=false;}
+      }catch(e){if(!streaming)throw e;emit({type:'error',message:'回答を完了できませんでした。接続状態を確認して再試行してください。'});res.end();}finally{conversationBusy=false;}
       return;
     }
   }
@@ -517,7 +521,7 @@ async function api(req,res,route) {
   if(route==='chatwork/poll'&&req.method==='POST') {if(!['owner','admin'].includes(user.role))return error(res,403,'権限がありません');return send(res,200,await pollChatwork(db,root));}
   return error(res,404,'APIが見つかりません');
 }
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/live-voice.js':'live-voice.js','/local-voice.js':'local-voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/voice.js':'voice.js','/conversation-stream.js':'conversation-stream.js','/live-voice.js':'live-voice.js','/local-voice.js':'local-voice.js','/mcp-presets.js':'mcp-presets.js','/style.css':'style.css'};
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const server=http.createServer(async(req,res)=>{
   try {

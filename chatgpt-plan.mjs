@@ -18,12 +18,12 @@ export function validateIdToken(token,keys,{clientId,nonce,subject,now=Date.now(
     return claims;
   }catch{throw failure('ChatGPTのログイン情報を検証できませんでした。再接続してください');}
 }
-export async function readResponseStream(response){
+export async function readResponseStream(response,{onDelta}={}){
   let buffer='',text='',completed=false;const decoder=new TextDecoder();
   const consume=block=>{
     const lines=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart());if(!lines.length)return;
     const raw=lines.join('\n');if(raw==='[DONE]')return;const event=JSON.parse(raw);
-    if(event.type==='response.output_text.delta')text+=event.delta||'';
+    if(event.type==='response.output_text.delta'){text+=event.delta||'';onDelta?.(text);}
     if(['response.failed','response.incomplete','error'].includes(event.type))throw failure('ChatGPTの返答を完了できませんでした。利用枠または接続状態を確認してください');
     if(event.type==='response.completed')completed=true;
     if(text.length>50000)throw failure('ChatGPTの返答が長すぎます');
@@ -115,10 +115,10 @@ export class ChatGPTPlan {
     }catch{revoked=false;}
     if(account){delete account.accessToken;delete account.refreshToken;delete account.idToken;account.models=[];account.model=null;}this.record.active=null;this.save();return {ok:true,revoked};
   }
-  async generate(messages,{signal,effort}={}){
+  async generate(messages,{signal,effort,onDelta}={}){
     const account=this.account();if(!account?.model)throw failure('ChatGPTの接続状態を更新してモデルを選んでください');
     const token=await this.token(),instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),input=messages.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}));
     const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions:instructions+'\nAPIの出力形式のdecisionフィールドへ判断JSONを入れて返す。',input,store:false,stream:true,text:{format:decisionFormat},reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
-    if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');return readResponseStream(response);
+    if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');return readResponseStream(response,{onDelta});
   }
 }

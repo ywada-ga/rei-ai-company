@@ -7,6 +7,21 @@ export function parseDecision(text){
   const key={answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}[value.action];
   if(typeof value[key]!=='string'||!value[key].trim()||value[key].length>4000)throw new Error('会話AIの返答内容を確認できませんでした');return value;
 }
+// Decode only complete JSON string tokens. Never emit decisions or tool arguments.
+export function streamedAnswerPrefix(raw){
+  const match=String(raw).match(/^\s*\{\s*(?:"decision"\s*:\s*\{\s*)?"action"\s*:\s*"answer"\s*,\s*"text"\s*:\s*"/);
+  if(!match)return '';
+  let value='',i=match[0].length;
+  for(;i<raw.length;i++){
+    const c=raw[i];if(c==='"')break;
+    if(c==='\\'){
+      const length=raw[i+1]==='u'?6:2;if(i+length>raw.length)break;
+      try{value+=JSON.parse('"'+raw.slice(i,i+length)+'"');}catch{return '';}
+      i+=length-1;
+    }else{if(c<' ')return '';value+=c;}
+  }
+  return value.replace(/[\uD800-\uDBFF]$/u,'');
+}
 function resultData(result){
   if(result.structuredContent)return result.structuredContent;
   for(const item of result.content||[])if(item.type==='text')try{return JSON.parse(item.text);}catch{}
@@ -36,7 +51,7 @@ function needsCompanyRead(question,context){
   if(/(?:言い換え|書き換え|短く(?:して|作って)|読み上げ|ありがとう|こんにちは)/u.test(question))return false;
   return /(会社|社内|弊社|当社|社員|案件|売上|決定事項|シナプス|Synapse)/iu.test(question)||(/(?:それ|その|今|最新|続き|誰|いつ|どうな|担当|期限)/u.test(question)&&context.some(t=>t.synapseRead||/(会社|社内|案件|売上)/u.test(t.question)));
 }
-export async function converse({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null}){
+export async function converse({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false;const recordedNotes=[],recordCache=new Map();
   const readRecord=async(tool,uuid)=>{const key=tool+':'+uuid;if(!recordCache.has(key))recordCache.set(key,call(tool,{uuid,group_ids:groups.map(g=>g.id)},signal));return recordCache.get(key);};
   if(signal?.aborted)throw new Error('会話を中断しました');
@@ -64,7 +79,13 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
   const messages=[{role:'system',content:system},...context.slice(-6).flatMap(t=>[{role:'user',content:t.question},{role:'assistant',content:t.answer}]),{role:'user',content:question}];
   for(let round=0;round<6;round++){
     if(signal?.aborted)throw new Error('会話を中断しました');
-    const generated=await generate(messages,{signal,effort:/(比較|判断|検討|リスク|設計|原因|計画)/u.test(question)?'low':undefined}),decision=parseDecision(generated.text);
+    let emitted='';
+    const canStream=sourceRead||(!searched&&!needsCompanyRead(question,context)&&(!groups.length||/(?:こんにちは|こんばんは|おはよう|物語|桃太郎|読み上げ|言い換え|書き換え|短く|REI|レイ)/iu.test(question)));
+    const generated=await generate(messages,{signal,effort:/(比較|判断|検討|リスク|設計|原因|計画)/u.test(question)?'low':undefined,onDelta:canStream&&onDelta?raw=>{
+      if(signal?.aborted)return;const prefix=streamedAnswerPrefix(raw);
+      if(prefix.length>emitted.length&&prefix.startsWith(emitted)){onDelta(prefix.slice(emitted.length));emitted=prefix;}
+    }:undefined}),decision=parseDecision(generated.text);
+    if(emitted&&(decision.action!=='answer'||!decision.text.startsWith(emitted)))throw new Error('途中の返答を確認できませんでした');
     messages.push({role:'assistant',content:generated.text});
     if(decision.action==='answer'){
       if(!searched&&needsCompanyRead(question,context)){

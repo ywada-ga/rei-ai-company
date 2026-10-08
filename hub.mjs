@@ -246,6 +246,16 @@ async function api(req,res,route) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'音声会話は所有者・管理者が利用できます');
     if(route==='voice/local/status'&&req.method==='GET')return send(res,200,localVoice.status());
     if(route==='voice/local/prepare'&&req.method==='POST'){await localVoice.start();return send(res,200,localVoice.status());}
+    if(route==='voice/local/stream'&&req.method==='POST'){
+      const input=await body(req);if(typeof input.text!=='string'||!input.text.trim()||Array.from(input.text).length>500)return error(res,400,'音声の文章は500文字以内にしてください');
+      if(localVoice.status().busy)return error(res,409,'Qwenは別の音声を作成中です');
+      const controller=new AbortController();const abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
+      res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-accel-buffering':'no'});res.flushHeaders();
+      const emit=event=>{if(!res.destroyed&&!controller.signal.aborted)res.write(JSON.stringify(event)+'\n');};
+      try{const result=await localVoice.synthesize(input.text,{signal:controller.signal,onChunk:chunk=>emit({type:'chunk',...chunk})});const {wav,...timing}=result;emit({type:'done',...timing});}
+      catch{emit({type:'error',message:'音声の配信を完了できませんでした'});}finally{res.off('close',abort);res.end();}
+      return;
+    }
     if(route==='voice/local/speak'&&req.method==='POST'){
       const input=await body(req),controller=new AbortController();
       const abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);

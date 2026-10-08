@@ -43,6 +43,9 @@ def main():
             started = time.monotonic()
             first = None
             chunks = []
+            streaming = request.get('stream') is True
+            chunk_count = 0
+            sample_count = 0
             with contextlib.redirect_stdout(sys.stderr):
                 mx.random.seed(42)
                 for result in model.generate(
@@ -50,13 +53,27 @@ def main():
                     instruct='Speak fluent standard Japanese in a mature, confident professional female voice. Sound like an attentive, capable colleague in a real conversation. Use clear articulation, a brisk natural pace, smooth connected phrasing and short conversational pauses. Match the meaning of the text: warm and responsive in casual conversation, composed and precise for work or serious topics. When the text contains ふふ, express it as a brief, subtle natural chuckle and smoothly continue the sentence. Give short acknowledgements natural conversational intonation. Use your natural vocal register; avoid a cute, breathy or exaggerated performance.',
                     stream=True, streaming_interval=0.5, max_tokens=500, verbose=False,
                 ):
-                    if first is None:
-                        first = time.monotonic() - started
                     samples = np.asarray(result.audio).reshape(-1)
                     if not np.isfinite(samples).all():
                         raise ValueError('Invalid generated audio')
-                    chunks.append(samples)
+                    if not len(samples):
+                        continue
+                    if first is None:
+                        first = time.monotonic() - started
                     rate = int(result.sample_rate)
+                    sample_count += len(samples)
+                    if streaming:
+                        part = io.BytesIO()
+                        sf.write(part, np.clip(samples, -0.95, 0.95), rate, format='WAV', subtype='PCM_16')
+                        emit({'type': 'chunk', 'id': request_id, 'index': chunk_count, 'wav': base64.b64encode(part.getvalue()).decode('ascii'), 'sampleRate': rate, 'audioSeconds': len(samples) / rate, 'firstGeneratedSeconds': round(first, 3)})
+                        chunk_count += 1
+                    else:
+                        chunks.append(samples)
+                if streaming:
+                    if not chunk_count:
+                        raise ValueError('Empty generated audio')
+                    emit({'type': 'done', 'id': request_id, 'chunkCount': chunk_count, 'audioSeconds': sample_count / rate, 'firstGeneratedSeconds': round(first, 3), 'totalSeconds': round(time.monotonic() - started, 3)})
+                    continue
                 audio = np.concatenate(chunks)
                 if not len(audio):
                     raise ValueError('Empty generated audio')

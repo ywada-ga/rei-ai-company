@@ -19,18 +19,19 @@ export function validateIdToken(token,keys,{clientId,nonce,subject,now=Date.now(
   }catch{throw failure('ChatGPTのログイン情報を検証できませんでした。再接続してください');}
 }
 export async function readResponseStream(response,{onDelta}={}){
+  const started=performance.now();let firstDeltaMs=null;
   let buffer='',text='',completed=false;const decoder=new TextDecoder();
   const consume=block=>{
     const lines=block.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart());if(!lines.length)return;
     const raw=lines.join('\n');if(raw==='[DONE]')return;const event=JSON.parse(raw);
-    if(event.type==='response.output_text.delta'){text+=event.delta||'';onDelta?.(text);}
+    if(event.type==='response.output_text.delta'){if(event.delta&&firstDeltaMs===null)firstDeltaMs=Math.round(performance.now()-started);text+=event.delta||'';onDelta?.(text);}
     if(['response.failed','response.incomplete','error'].includes(event.type))throw failure('ChatGPTの返答を完了できませんでした。利用枠または接続状態を確認してください');
     if(event.type==='response.completed')completed=true;
     if(text.length>50000)throw failure('ChatGPTの返答が長すぎます');
   };
   for await(const chunk of response.body){buffer+=decoder.decode(chunk,{stream:true}).replace(/\r\n/g,'\n');if(buffer.length>2000000)throw failure('ChatGPTの返答を読み取れません');let split;while((split=buffer.indexOf('\n\n'))>=0){consume(buffer.slice(0,split));buffer=buffer.slice(split+2);}}
   buffer+=decoder.decode();if(buffer.trim())consume(buffer);
-  if(!completed||!text.trim())throw failure('ChatGPTの返答が途中で切れました。もう一度質問してください');return {text};
+  if(!completed||!text.trim())throw failure('ChatGPTの返答が途中で切れました。もう一度質問してください');return {text,timing:{streamFirstDeltaMs:firstDeltaMs,streamCompleteMs:Math.round(performance.now()-started)}};
 }
 export class ChatGPTPlan {
   constructor(directory,{fetcher=fetch}={}){
@@ -117,8 +118,8 @@ export class ChatGPTPlan {
   }
   async generate(messages,{signal,effort,onDelta}={}){
     const account=this.account();if(!account?.model)throw failure('ChatGPTの接続状態を更新してモデルを選んでください');
-    const token=await this.token(),instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),input=messages.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}));
+    const started=performance.now();const token=await this.token(),tokenMs=Math.round(performance.now()-started),instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),input=messages.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}));
     const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions:instructions+'\nAPIの出力形式のdecisionフィールドへ判断JSONを入れて返す。',input,store:false,stream:true,text:{format:decisionFormat},reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
-    if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');return readResponseStream(response,{onDelta});
+    if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');const headersMs=Math.round(performance.now()-started);const result=await readResponseStream(response,{onDelta});return {...result,timing:{tokenMs,headersMs,...result.timing,totalMs:Math.round(performance.now()-started)}};
   }
 }

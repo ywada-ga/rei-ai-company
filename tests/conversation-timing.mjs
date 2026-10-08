@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {converse} from '../conversation.mjs';
+import {readResponseStream} from '../chatgpt-plan.mjs';
+const result=await converse({question:'こんにちは',groups:[],generate:async()=>({text:'{"action":"answer","text":"こんにちは。"}',timing:{tokenMs:1,headersMs:2,streamFirstDeltaMs:3,streamCompleteMs:4,totalMs:6,secret:'must not escape',companyText:'must not escape'}}),call:()=>{throw Error('unexpected MCP');}});
+assert.equal(result.timing.stages.length,1);assert.equal(result.timing.stages[0].kind,'model');assert.equal(result.timing.stages[0].transport.streamFirstDeltaMs,3);
+assert.ok(!JSON.stringify(result.timing).includes('こんにちは'));assert.ok(!JSON.stringify(result.timing).includes('escape'));
+let controller;const stream=new ReadableStream({start(c){controller=c;}});let prefix;
+const reading=readResponseStream(new Response(stream),{onDelta:text=>prefix=text});
+controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"answer"}\n\n'));
+await new Promise(r=>setTimeout(r,20));assert.equal(prefix,'answer');
+controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed"}\n\n'));controller.close();
+const received=await reading;assert.equal(received.text,'answer');assert.ok(received.timing.streamCompleteMs>=received.timing.streamFirstDeltaMs);assert.ok(received.timing.streamCompleteMs>=15);
+console.log('PASS transport stages, early delta and numeric-only conversation timing');

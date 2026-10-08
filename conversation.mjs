@@ -51,7 +51,7 @@ function needsCompanyRead(question,context){
   if(/(?:言い換え|書き換え|短く(?:して|作って)|読み上げ|ありがとう|こんにちは)/u.test(question))return false;
   return /(会社|社内|弊社|当社|社員|案件|売上|決定事項|シナプス|Synapse)/iu.test(question)||(/(?:それ|その|今|最新|続き|誰|いつ|どうな|担当|期限)/u.test(question)&&context.some(t=>t.synapseRead||/(会社|社内|案件|売上)/u.test(t.question)));
 }
-export async function converse({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null}){
+async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false;const recordedNotes=[],recordCache=new Map();
   const readRecord=async(tool,uuid)=>{const key=tool+':'+uuid;if(!recordCache.has(key))recordCache.set(key,call(tool,{uuid,group_ids:groups.map(g=>g.id)},signal));return recordCache.get(key);};
   if(signal?.aborted)throw new Error('会話を中断しました');
@@ -154,4 +154,18 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
 
   }
   throw new Error('会社情報の確認が終わりませんでした。質問を具体的にしてください');
+}
+
+// Numeric, per-request stages only: never include questions, sources or model output.
+export async function converse(options){
+  const stages=[],started=performance.now();
+  const timed=async(kind,operation)=>{
+    const startMs=Math.round(performance.now()-started),begin=performance.now();
+    const result=await operation();
+    const stage={kind,startMs,durationMs:Math.round(performance.now()-begin)};
+    if(kind==='model'&&result.timing){stage.transport={};for(const key of ['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs'])if(Number.isFinite(result.timing[key]))stage.transport[key]=result.timing[key];}
+    stages.push(stage);return result;
+  };
+  const result=await converseInternal({...options,generate:(...args)=>timed('model',()=>options.generate(...args)),call:(tool,...args)=>timed(['search_memory_facts','get_fact_source','get_episode'].includes(tool)?tool:'mcp',()=>options.call(tool,...args))});
+  return {...result,timing:{totalMs:Math.round(performance.now()-started),stages}};
 }

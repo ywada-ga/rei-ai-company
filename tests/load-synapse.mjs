@@ -64,3 +64,29 @@ const mixed=await converse({question:'会社の案件Bは？',groups,generate:as
 }});
 assert.equal(mixed.synapseRead,true);
 console.log('PASS load-synapse outline, graph search, episode fallback, full body lookup and unavailable-group no-retry');
+
+// An episode body must not hold up an independent fact source request.
+round=0;let sourceStarted;const sourceGate=new Promise(resolve=>{sourceStarted=resolve;});
+let simultaneousReads=0,peakReads=0;
+await converse({question:'会社の案件Aは今どうなった？',groups,generate:async()=>({text:JSON.stringify(++round===1?{action:'search',query:'案件A'}:{action:'answer',text:'保存された予定です。'})}),call:async(tool,args)=>{
+ if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'fact-a',group_id:'allowed'}]}};
+ if(tool==='get_episode'||tool==='get_fact_source'){
+  simultaneousReads++;peakReads=Math.max(peakReads,simultaneousReads);
+  if(tool==='get_fact_source')sourceStarted();
+  let timer;
+  try{await Promise.race([sourceGate,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('source request blocked behind episode body')),500);})]);await new Promise(resolve=>setTimeout(resolve,10));}
+  finally{clearTimeout(timer);simultaneousReads--;}
+  if(tool==='get_fact_source')return {structuredContent:{sources:[{group_id:'allowed',episode_uuid:'episode-a'}]}};
+ }
+ return call(tool,args);
+}});
+assert.equal(peakReads,2);assert.equal(simultaneousReads,0);
+round=0;let forbiddenReads=0;
+const unavailableRecent=await converse({question:'会社の案件Aは今どうなった？',groups,generate:async()=>({text:'{"action":"search","query":"案件A"}'}),call:async(tool,args)=>{
+ if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'fact-a',group_id:'allowed'}]}};
+ if(tool==='search_episodes')return denied;
+ if(tool==='get_fact_source'||tool==='get_episode'){forbiddenReads++;throw new Error('must not read an unavailable group');}
+ return call(tool,args);
+}});
+assert.equal(forbiddenReads,0);assert.match(unavailableRecent.answer,/アクセスできず/);
+console.log('PASS episode and source overlap after coverage validation, with answer gate and no unavailable-group reads');

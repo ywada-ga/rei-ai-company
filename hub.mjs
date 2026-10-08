@@ -14,6 +14,7 @@ import { configureChatwork, chatworkStatus, sendPendingHuman, pollChatwork } fro
 import {liveVoiceStatus,configureLiveVoice,LiveVoiceSessions} from './live-voice.mjs';
 import {LocalVoice} from './local-voice.mjs';
 import {LocalChat} from './local-chat.mjs';
+import {ChatGPTPlan} from './chatgpt-plan.mjs';
 import {ConversationMcp} from './conversation-mcp.mjs';
 import {converse} from './conversation.mjs';
 import {approveCowork,coworkStatus} from './cowork.mjs';
@@ -31,6 +32,13 @@ const liveVoiceSessions=new LiveVoiceSessions();
 const localVoice=new LocalVoice(root);
 const localChat=new LocalChat(root),conversationMcp=new ConversationMcp(root);
 let conversationBusy=false;
+const chatgptAccounts=new Map();
+function chatgptFor(user){
+  if(!chatgptAccounts.has(user.id))chatgptAccounts.set(user.id,new ChatGPTPlan(path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'chatgpt',crypto.createHash('sha256').update(user.id).digest('hex'))));
+  return chatgptAccounts.get(user.id);
+}
+function chatProvider(user){return one(db,'SELECT value FROM settings WHERE key=?',`conversation-provider:${user.id}`)?.value==='chatgpt'?'chatgpt':'local';}
+process.once('exit',()=>{for(const account of chatgptAccounts.values())account.stop();});
 process.once('exit',()=>localChat.close());
 process.once('SIGTERM',()=>localChat.close());
 process.once('exit',()=>localVoice.close());
@@ -159,15 +167,34 @@ async function api(req,res,route) {
     }
   }
 
+  if(route.startsWith('chatgpt/')){
+    if(!['owner','admin'].includes(user.role))return error(res,403,'ChatGPT接続は所有者・管理者が利用できます');
+    const account=chatgptFor(user);
+    if(route==='chatgpt/status'&&req.method==='GET')return send(res,200,{...account.status(),selected:chatProvider(user)});
+    if(conversationBusy)return error(res,409,'会話が終わってから接続設定を変更してください');
+    if(route==='chatgpt/connect'&&req.method==='POST'){const input=await body(req);return send(res,200,await account.begin({accountId:input.accountId||null}));}
+    if(route==='chatgpt/models'&&req.method==='POST')return send(res,200,await account.models());
+    if(route==='chatgpt/select'&&req.method==='POST'){
+      const input=await body(req);if(!['chatgpt','local'].includes(input.provider))return error(res,400,'会話の接続先を選んでください');
+      if(input.accountId||input.model)account.select({accountId:input.accountId,model:input.model});
+      if(input.provider==='chatgpt'){if(input.creditsDisabled!==true)return error(res,400,'ChatGPT側でREIのクレジット使用をOFFにしてから切り替えてください');if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを接続し、モデルを選んでください');}
+      run(db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`conversation-provider:${user.id}`,input.provider);
+      return send(res,200,{ok:true});
+    }
+    if(route==='chatgpt/disconnect'&&req.method==='POST'){
+      const result=await account.disconnect();run(db,'DELETE FROM settings WHERE key=?',`conversation-provider:${user.id}`);return send(res,200,result);
+    }
+  }
+
   if(route.startsWith('conversation/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'会話AIは所有者・管理者が利用できます');
-    if(route==='conversation/status'&&req.method==='GET')return send(res,200,localChat.status());
+    if(route==='conversation/status'&&req.method==='GET')return send(res,200,chatProvider(user)==='chatgpt'?chatgptFor(user).status():localChat.status());
     if(route==='conversation/history'&&req.method==='GET'){
       const saved=one(db,'SELECT value FROM settings WHERE key=?',`conversation:${user.id}`);
       const history=saved?JSON.parse(saved.value):null;
       return send(res,200,{turns:history?.scope===JSON.stringify(knowledgeSettings(db).groups)?history.turns:[]});
     }
-    if(route==='conversation/prepare'&&req.method==='POST'){await localChat.start();return send(res,200,localChat.status());}
+    if(route==='conversation/prepare'&&req.method==='POST'){if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
     if(route==='conversation/ask'&&req.method==='POST'){
       if(conversationBusy)return error(res,409,'会話AIが返答中です。少し待ってください');
       const input=await body(req),question=text(input.question,4000),settings=knowledgeSettings(db),scope=JSON.stringify(settings.groups);
@@ -180,7 +207,7 @@ async function api(req,res,route) {
       conversationBusy=true;
       try{
         const result=await converse({question,context,groups:settings.groups,signal:controller.signal,
-          generate:(messages,options)=>localChat.generate(messages,options),
+          generate:(messages,options)=>(chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options),
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,instruction,'operations',user.id,true,null,null,context));}});
         if(!controller.signal.aborted){

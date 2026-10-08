@@ -287,3 +287,16 @@ Macアプリを中心PCとして開いたとき、Hubのログイン時自動起
 - 検証: 合成データのHub API → MCP受け取り → 報告 → REI確認まで通過。Viewer拒否、OpenClaw隔離、中止、重複報告、ZIP整合性を確認。
 - 未検証: Claude Desktop/Cowork本体のプラグイン導入と実際の作業。現時点では接続済みとは扱わない。
 - 制約: 同じMacのClaude Desktopと有料Claude契約が必要。Cowork内から開始する。自動起動、遠隔PC接続、実行中断後の自動再配信は未対応。有料APIの呼び出しなし。
+
+
+## ChatGPT Pro接続（2026-10-08）
+
+REIの設定に「ChatGPTで会話」を追加。公式Sign in with ChatGPTの動的登録・PKCE・ループバックコールバックで、利用者ごとに接続する。対象Plus/Proの利用枠に対応し、APIキーへの切替や有料APIへのフォールバックは行わない。利用可否は実際のアカウントとアプリ登録で確認が必要。商用販売向けの利用は別途OpenAI側の提供条件を確認する。
+
+会話コントローラーとSynapse Connectの原記録確認、作業の承認待ち作成は維持。会話の推論だけを選択したアカウントのResponses APIへ切り替え、声はローカルQwenを使う。store:false、stream:trueを必須とし、response.completedまで確認する。GPT-Liveの音声モデルへ切り替える機能ではない。
+
+署名・issuer・audience・nonce・有効期限・本人一致・利用枠スコープを検証する。資格情報はデータ領域のchatgpt/<利用者IDのハッシュ>/account.jsonへ0600で保存し、UI・SQLite・ログ・Gitには出さない。通常バックアップの対象外のため、復元時には再ログインが必要。発行済みclient IDと端末IDを再利用し、更新トークンの更新は直列化する。別アカウントを追加・選択・切断できる。
+
+追加費用を避けるため、利用者はChatGPT設定のUsageからREIのクレジット使用をOFFにする。現行の公式HTTP仕様にはクレジット使用をアプリから禁止するパラメータがないため、REI単独ではその設定を保証できない。実ログイン・クレジットOFF確認・Proの推論・Synapse経由の回答確認は未完了。秘密情報を使わない模擬テストでPKCE、state、署名、保管権限、更新競合、モデル選択、失敗ストリーム、切断を確認済み。
+
+公式資料: https://developers.openai.com/siwc/token-sharing-open-source/sign-in 、 https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference

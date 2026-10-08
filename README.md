@@ -271,3 +271,16 @@ Claudeの月額契約内のCoworkを使い、REIからAnthropicの有料APIやCl
 **検証範囲:** ローカルMCPの初期化、依頼受け取り、重複拒否、結果報告、REIでの確認、権限とZIP整合性をテスト済み。Cowork本体での導入と仕事の実行は実機確認が必要です。外部からCoworkを自動起動する機能ではありません。プラグインのローカルMCPが許可されたClaude Desktopを使用します。
 
 公式仕様: [ローカルMCPを含むプラグイン](https://support.claude.com/en/articles/11725091-when-to-use-desktop-and-web-connectors)、[カスタムプラグインの導入](https://support.claude.com/en/articles/13837440-use-plugins-in-claude)。
+
+
+## ChatGPT Pro接続（2026-10-08）
+
+REIの設定に「ChatGPTで会話」を追加。公式Sign in with ChatGPTの動的登録・PKCE・ループバックコールバックで、利用者ごとに接続する。対象Plus/Proの利用枠に対応し、APIキーへの切替や有料APIへのフォールバックは行わない。利用可否は実際のアカウントとアプリ登録で確認が必要。商用販売向けの利用は別途OpenAI側の提供条件を確認する。
+
+会話コントローラーとSynapse Connectの原記録確認、作業の承認待ち作成は維持。会話の推論だけを選択したアカウントのResponses APIへ切り替え、声はローカルQwenを使う。store:false、stream:trueを必須とし、response.completedまで確認する。GPT-Liveの音声モデルへ切り替える機能ではない。
+
+署名・issuer・audience・nonce・有効期限・本人一致・利用枠スコープを検証する。資格情報はデータ領域のchatgpt/<利用者IDのハッシュ>/account.jsonへ0600で保存し、UI・SQLite・ログ・Gitには出さない。通常バックアップの対象外のため、復元時には再ログインが必要。発行済みclient IDと端末IDを再利用し、更新トークンの更新は直列化する。別アカウントを追加・選択・切断できる。
+
+追加費用を避けるため、利用者はChatGPT設定のUsageからREIのクレジット使用をOFFにする。現行の公式HTTP仕様にはクレジット使用をアプリから禁止するパラメータがないため、REI単独ではその設定を保証できない。実ログイン・クレジットOFF確認・Proの推論・Synapse経由の回答確認は未完了。秘密情報を使わない模擬テストでPKCE、state、署名、保管権限、更新競合、モデル選択、失敗ストリーム、切断を確認済み。
+
+公式資料: https://developers.openai.com/siwc/token-sharing-open-source/sign-in 、 https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference

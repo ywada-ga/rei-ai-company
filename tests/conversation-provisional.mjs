@@ -133,3 +133,14 @@ console.log('PASS early provisional sentence, delayed permission, invalid header
  s.latest.resolve(result());await s.pending;assert.equal(s.events[0].type,'answer');
 }
 console.log('PASS permission completion cannot revive rejected provisional text');
+
+{
+ let tick=0;
+ const s=await scenario({now:()=>at+tick++,generate:async(_messages,opts)=>{opts.onDelta?.(JSON.stringify(decision));return {text:JSON.stringify(decision),timing:{tokenMs:3,headersMs:4,streamFirstDeltaMs:2,streamCompleteMs:9,totalMs:13,privateText:'never expose',negative:-1}};}});
+ s.latest.resolve(result());const out=await s.pending,t=out.provisionalTiming;
+ assert.ok(t.firstSentenceMs>=0&&t.permissionStartedMs>=t.firstSentenceMs&&t.permissionMs>=0);
+ assert.ok(t.modelCompletedMs>=t.firstSentenceMs);assert.equal(t.provisionalTransport.privateText,undefined);
+ assert.deepEqual(Object.keys(t.provisionalTransport),['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs']);
+ assert.ok(Object.values(t.provisionalTransport).every(Number.isFinite),'Only numeric provider timing leaves server');
+}
+console.log('PASS sentence, permission and model completion clocks are distinct and numeric-only');

@@ -7,6 +7,13 @@ const scopes='openid profile email offline_access resource.invoke chatgpt.tokens
 const random=()=>crypto.randomBytes(32).toString('base64url');
 const failure=message=>Object.assign(new Error(message),{status:400});
 const decisionFormat={type:'json_schema',name:'rei_decision',strict:true,schema:{type:'object',properties:{decision:{anyOf:Object.entries({answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}).map(([action,key])=>({type:'object',properties:{action:{type:'string',enum:[action]},[key]:{type:'string'}},required:['action',key],additionalProperties:false})).concat([{type:'object',properties:{action:{type:'string',enum:['assess']},status:{type:'string',enum:['supported','partial','insufficient','ambiguous']},sourceIds:{type:'array',items:{type:'string'}},reason:{type:'string'},query:{type:'string'}},required:['action','status','sourceIds','reason','query'],additionalProperties:false},{type:'object',properties:{action:{type:'string',enum:['respond']},status:{type:'string',enum:['supported','partial','insufficient','ambiguous']},sourceIds:{type:'array',items:{type:'string'}},reason:{type:'string'},query:{type:'string'},text:{type:'string'}},required:['action','status','sourceIds','reason','query','text'],additionalProperties:false}])}},required:['decision'],additionalProperties:false}};
+// Provisional speech has no tool planning or long pre-text rationale. Preserve
+// the ordinary decision schema for every other phase.
+const provisionalDecisionFormat=structuredClone(decisionFormat);
+provisionalDecisionFormat.name='rei_provisional';
+provisionalDecisionFormat.schema.properties.decision=structuredClone(decisionFormat.schema.properties.decision.anyOf.at(-1));
+provisionalDecisionFormat.schema.properties.decision.properties.reason.enum=[''];
+provisionalDecisionFormat.schema.properties.decision.properties.query.enum=[''];
 export function validateIdToken(token,keys,{clientId,nonce,subject,now=Date.now()}){
   try{
     const parts=token.split('.');if(parts.length!==3)throw 0;
@@ -116,10 +123,10 @@ export class ChatGPTPlan {
     }catch{revoked=false;}
     if(account){delete account.accessToken;delete account.refreshToken;delete account.idToken;account.models=[];account.model=null;}this.record.active=null;this.save();return {ok:true,revoked};
   }
-  async generate(messages,{signal,effort,onDelta}={}){
+  async generate(messages,{signal,effort,onDelta,phase}={}){
     const account=this.account();if(!account?.model)throw failure('ChatGPTの接続状態を更新してモデルを選んでください');
     const started=performance.now();const token=await this.token(),tokenMs=Math.round(performance.now()-started),instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n'),input=messages.filter(m=>m.role!=='system').map(m=>({role:m.role,content:m.content}));
-    const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions:instructions+'\nAPIの出力形式のdecisionフィールドへ判断JSONを入れて返す。',input,store:false,stream:true,text:{format:decisionFormat},reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
+    const response=await this.fetcher(`${resource}/responses`,{method:'POST',redirect:'error',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({model:account.model,instructions:instructions+'\nAPIの出力形式のdecisionフィールドへ判断JSONを入れて返す。',input,store:false,stream:true,text:{format:phase==='provisional_answer'?provisionalDecisionFormat:decisionFormat},reasoning:{effort:effort==='low'?'low':account.model==='gpt-6-sol'?'none':'low'}}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000)});
     if(!response.ok)throw failure(response.status===429?'ChatGPTの利用枠に達しました。利用状況を確認してください':'ChatGPTが返答できませんでした。接続とモデルを確認してください');const headersMs=Math.round(performance.now()-started);const result=await readResponseStream(response,{onDelta});return {...result,timing:{tokenMs,headersMs,...result.timing,totalMs:Math.round(performance.now()-started)}};
   }
 }

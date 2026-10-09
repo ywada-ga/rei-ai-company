@@ -28,7 +28,8 @@ try {
   assert.equal((await api('voice/local/status')).configured,false);
   assert.equal((await api('conversation/status')).configured,false);
   assert.deepEqual((await api('conversation/history')).turns,[]);
-  await api('conversation/ask',{question:'こんにちは'},undefined,503);
+  await api('conversation/ask',{question:'REIについて教えて'},undefined,503);
+  const social=await api('conversation/ask',{question:'こんにちは'},undefined,200);assert.equal(social.fastPath,'social');
   await api('voice/local/speak',{text:''},undefined,400);
   await api('voice/settings',{apiKey:'sk-test-fixture-1234567890',consent:false},undefined,400);
   await api('voice/session',{sdp:'v=0',consent:false},undefined,400);

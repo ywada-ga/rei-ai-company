@@ -8,6 +8,9 @@ import {mcpData,evidenceBodyContext} from './load-synapse.mjs';
 // the generator must still assess the question against these source bodies.
 const topicRequest=/^([^\n。！？!?]{2,60})について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u;
 const detailFollowup=/^(?:(?:それ|その(?:件|内容|情報))について)?(?:もっと|もう少し)?詳しく(?:教えて(?:ください)?)?[。！!？?]*$/u;
+// Candidate matching only. Keep original questions/bodies for model assessment;
+// normalized spelling is never proof that two entities are the same.
+const topicSpelling=value=>value.normalize('NFKC').toLowerCase().replace(/\s+/gu,'');
 // Resolve only a narrow detail request from server-owned, same-scope history.
 // Previous user questions identify the subject; assistant answers are never evidence.
 export function prefetchTopicQuestion(question,context=[]){
@@ -27,7 +30,8 @@ export function selectPrefetchedRecords(snapshot,question,{limit=8,at=Date.now()
   if(period)return snapshot.records.filter(r=>{const at=Date.parse(r.addedAt);return at>=period.start&&at<period.end;}).slice(0,limit);
   const topic=prefetchTopicQuestion(question,context)?.match(topicRequest)?.[1];
   if(!topic)return [];
-  return snapshot.records.filter(r=>[r.episode.name,r.episode.doc_name,r.episode.content].some(value=>typeof value==='string'&&value.includes(topic))).slice(0,limit);
+  const spelling=topicSpelling(topic);if(spelling.length<2)return [];
+  return snapshot.records.filter(r=>[r.episode.name,r.episode.doc_name,r.episode.content].some(value=>typeof value==='string'&&topicSpelling(value).includes(spelling))).slice(0,limit);
 }
 const fingerprint=body=>createHash('sha256').update(body).digest('hex');
 function sourceFingerprints(result){

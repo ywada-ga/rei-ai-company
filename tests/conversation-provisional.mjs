@@ -228,3 +228,16 @@ console.log('PASS request date remains fixed across Japan midnight while freshne
  const fallback=await scenario({question:'もっと詳しく教えて',context:[{...history[0],synapseRead:false}],generate:async()=>{throw Error('No speculative model call');}});assert.equal(fallback.events.length,0);fallback.latest.resolve(result());assert.equal((await fallback.pending).provisionalUsed,false);
 }
 console.log('Provisional detail follow-ups: user topic only, fresh verification, narrow fallback passed');
+
+{
+ const spellings={...snapshot,records:[{...snapshot.records[0],episode:{...episode,name:'SynapseConnect',content:'SynapseConnectの仕様を検証した保存本文。'}}]};
+ for(const name of ['Synapse Connect','synapse connect','Ｓｙｎａｐｓｅ　Ｃｏｎｎｅｃｔ','SynapseConnect'])assert.equal(selectPrefetchedRecords(spellings,name+'について教えて').length,1);
+ assert.equal(selectPrefetchedRecords(spellings,'Synapse別会社について教えて').length,0);
+ assert.equal(selectPrefetchedRecords(spellings,'Ａ　について教えて').length,0,'Do not broaden a one-character normalized subject');
+ const copied=structuredClone(spellings);selectPrefetchedRecords(spellings,'synapse connectについて教えて');assert.deepEqual(spellings,copied,'Matching must not change evidence or provenance');
+ assert.equal(selectPrefetchedRecords(spellings,'もっと詳しく教えて',{context:[{question:'Ｓｙｎａｐｓｅ　Ｃｏｎｎｅｃｔについて教えて',synapseRead:true}]}).length,1);
+ let payload;const s=await scenario({question:'Synapse Connectについて教えて',getSnapshot:async()=>spellings,generate:async messages=>{payload=JSON.parse(messages.at(-1).content);return {text:JSON.stringify(decision)};}});
+ assert.equal(payload.question,'Synapse Connectについて教えて');assert.equal(payload.records[0].episode.content,spellings.records[0].episode.content);
+ s.latest.resolve(result());await s.pending;
+}
+console.log('Prefetch spelling variants select candidates without rewriting evidence passed');

@@ -33,7 +33,7 @@ export class VoiceConversation {
   }
   get supported(){return !!(this.Recognition&&(this.localSpeak||(this.synthesis&&this.Utterance)));}
   get canInterrupt(){return this.active&&['thinking','speaking'].includes(this.phase);}
-  emit(phase,message=''){this.phase=phase;this.onChange({active:this.active,phase,message,transcript:this.transcript,answer:this.answer,latency:this.latency?.snapshot()??null});}
+  emit(phase,message=''){this.phase=phase;this.onChange({active:this.active,phase,message,transcript:this.transcript,answer:this.answer,verification:this.verification||null,latency:this.latency?.snapshot()??null});}
   start() {
     if(!this.supported)throw new Error('このブラウザは音声会話に対応していません。ChromeでREIを開いてください。');
     this.stop();this.active=true;this.transcript='';this.answer='';this.emptyTurns=0;
@@ -73,14 +73,14 @@ export class VoiceConversation {
     try{recognition.start();}catch{this.stop('音声認識を開始できませんでした。マイクを使っている別の会話を終了して再開してください。');}
   }
   async respond(question,epoch) {
-    this.latency=createTurnLatency(this.now,this.speechEndedAt??null);this.speechEndedAt=null;this.transcript=question;this.answer='';this.emit('thinking');this.controller=new AbortController();
+    this.latency=createTurnLatency(this.now,this.speechEndedAt??null);this.speechEndedAt=null;this.transcript=question;this.answer='';this.verification=null;this.emit('thinking');this.controller=new AbortController();
     const speech=this.streamReply?.(this.controller.signal,()=>{if(this.active&&epoch===this.epoch){this.latency.audio();clearTimeout(this.progressTimer);this.emit('speaking');}},()=>{if(this.active&&epoch===this.epoch)this.emit('speaking','受け答えをしています');});
     const progressTimer=this.progressTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.emit('thinking','情報源を確認しています。回答まで1〜2分かかる場合があります。');},20000);
     const answerTimer=this.answerTimer=setTimeout(()=>{if(this.active&&epoch===this.epoch)this.stop('回答の確認に時間がかかっています。会社の記憶の画面で結果を確認し、会話を再開してください。');},this.answerTimeoutMs);
     try {
-      const reply=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?delta=>{if(!this.active||epoch!==this.epoch)return;this.latency.text(delta);this.answer+=delta;this.emit(this.phase==='speaking'?'speaking':'thinking');speech.push(delta);}:undefined,(receipt,notice)=>{if(this.active&&epoch===this.epoch){this.emit('thinking',receipt);if(notice?.type==='progress')clearTimeout(progressTimer);if(notice?.type==='progress')speech?.progress?.(receipt);else speech?.receipt?.(receipt);}});
+      const reply=await this.ask(question,this.history.slice(-3),this.controller.signal,speech?(delta,phase)=>{if(!this.active||epoch!==this.epoch)return;if(phase?.meaningful!==false)this.latency.text(delta);this.answer=phase?.replacementAnswer??(this.answer+delta);this.verification=phase?.verification||this.verification;this.emit(this.phase==='speaking'?'speaking':'thinking');if(phase?.phase==='correction')speech.restart?.();const spoken=phase?.speechText??delta;if(spoken)speech.push(spoken);}:undefined,(receipt,notice)=>{if(this.active&&epoch===this.epoch){this.emit('thinking',receipt);if(notice?.type==='progress')clearTimeout(progressTimer);if(notice?.type==='progress')speech?.progress?.(receipt);else speech?.receipt?.(receipt);}});
       if(!this.active||epoch!==this.epoch)return;
-      const answer=typeof reply==='string'?reply:reply.answer,spokenAnswer=typeof reply==='string'?reply:(reply.spokenAnswer??reply.answer);
+      const answer=typeof reply==='string'?reply:reply.answer,spokenAnswer=typeof reply==='string'?reply:(reply.streamedSpokenAnswer??reply.spokenAnswer??reply.answer);
       this.answer=String(answer);this.latency.text(this.answer);this.latency.complete();this.history.push({question,answer:this.answer.slice(0,2000)});
       this.history=this.history.slice(-3);clearTimeout(progressTimer);if(speech){clearTimeout(answerTimer);await speech.finish(spokenAnswer);if(this.active&&epoch===this.epoch)this.listen();}else this.say(spokenAnswer);
     } catch(error){speech?.cancel();if(this.active&&epoch===this.epoch)this.stop(error.message||'回答を確認できませんでした。');}

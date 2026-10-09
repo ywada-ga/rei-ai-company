@@ -1,4 +1,7 @@
 import {unavailableGroups,mcpData} from './load-synapse.mjs';
+import {runProvisionalConversation} from './conversation-provisional.mjs';
+import {prefetchScopeKey,prefetchAuthorized} from './conversation-prefetch.mjs';
+import {additionWindow} from './conversation-updates.mjs';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -278,14 +281,23 @@ async function api(req,res,route) {
       try{
         const additionKey=JSON.stringify([user.id,integration?.name,settings.groups]);
         if(!conversationAdditionCursors.has(additionKey)){if(conversationAdditionCursors.size>=32)conversationAdditionCursors.delete(conversationAdditionCursors.keys().next().value);conversationAdditionCursors.set(additionKey,new Map());}
-        const result=await converse({question,context,additionCache:conversationAdditionCursors.get(additionKey),outlineCache:outlineFor(user,integration,settings.groups),groups:settings.groups,signal:controller.signal,onProgress:streaming?event=>emit({type:'progress',...event}):null,onDelta:streaming?text=>emit({type:'delta',text}):null,
+        const conversationOptions={question,context,additionCache:conversationAdditionCursors.get(additionKey),outlineCache:outlineFor(user,integration,settings.groups),groups:settings.groups,signal:controller.signal,onProgress:streaming?event=>emit({type:'progress',...event}):null,onDelta:streaming?text=>emit({type:'delta',text}):null,
           runtimeContext:{name:'REI',version:reiVersion,conversation:chatProvider(user)==='chatgpt'?'ChatGPT（接続済み）':'ローカルQwen',voice:'ローカルQwen',synapseConfigured:!!integration,selectedGroupCount:settings.groups.length,execution:'OpenClaw、作業は承認待ちを作成してから実行',capabilities:['継続した文章・音声会話','選択したSynapse Connectの記録検索と原記録確認','承認待ち作業の作成','接続端末の稼働状況'],limitations:['一般質問と継続会話は実機確認済み','音声品質と応答速度は調整中','会社情報は原記録が取れる範囲のみ回答','商用配布の署名・公証、別Macでの検証は未完了','Coworkは接続パッケージ実装済み、実機連携は未確認']},
           generate:(messages,options)=>{if(streaming&&options.phase==='evidence_answer'&&localVoice.status().configured)void localVoice.start().catch(()=>{});return (chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options);},
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
-          submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,settings.groups.some(g=>g.personal)?question:instruction,'operations',user.id,true,null,null,settings.groups.some(g=>g.personal)?[]:context));}});
+          submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,settings.groups.some(g=>g.personal)?question:instruction,'operations',user.id,true,null,null,settings.groups.some(g=>g.personal)?[]:context));}};
+        const prefetched=prefetchContext(user.id);
+        const eligible=streaming&&chatProvider(user)==='chatgpt'&&prefetched&&conversationPrefetch.status(prefetched.scope).usable&&!/(実行|送って|送信|作成|変更して|削除|登録して)/u.test(question)&&(additionWindow(question)||/について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u.test(question));
+        const currentScope=()=>{const current=prefetchContext(user.id);return current&&prefetchScopeKey(current.scope)===prefetchScopeKey(prefetched.scope);};
+        const authorize=async()=>{if(!currentScope())return false;const catalog=await conversationMcp.catalog(prefetched.integration);return currentScope()&&prefetchAuthorized(catalog,prefetched.scope);};
+        const result=eligible?await runProvisionalConversation({question,scope:prefetched.scope,signal:controller.signal,
+          getSnapshot:async()=>{if(!currentScope())return null;const catalog=await conversationMcp.catalog(prefetched.integration);return currentScope()?conversationPrefetch.snapshot(prefetched.scope,catalog):null;},authorize,
+          generate:conversationOptions.generate,verify:({signal,onDelta})=>converse({...conversationOptions,signal,onDelta}),
+          onEvent:event=>{if(event.type!=='done')emit(event);}
+        }):await converse(conversationOptions);
         if(!controller.signal.aborted){
           if(JSON.stringify(conversationSettings(user).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
-          const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true}].slice(-6);
+          const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true,verification:result.synapseRead?'verified':'not_required',provisionalUsed:result.provisionalUsed===true,provisionalCheckedAt:result.provisionalCheckedAt||null}].slice(-6);
           run(db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`conversation:${user.id}`,JSON.stringify({scope,turns}));
           if(streaming){const {evidence,...publicResult}=result;emit({type:'done',result:publicResult});res.end();return;}
           return send(res,200,result);

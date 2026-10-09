@@ -57,7 +57,7 @@ export function createLocalSpeechStream(signal,request,options={}){
 
 // Speak the receipt first; it never triggers the meaningful answer onset callback.
 export function createConversationSpeech(signal,create,options={}){
-  let receipt=null,answer=null,received=false,answerStarted=false,canceled=false;
+  let receipt=null,answer=null,received=false,answerStarted=false,canceled=false,spoken='',discarded='';
   let receiptDone=Promise.resolve(),receiptGenerated=Promise.resolve();
   let progressSpeech=null,progressBusy=false,progressGenerated=Promise.resolve();
   const main=()=>answer||(answer=create({onPlaying:()=>{progressSpeech?.cancel();options.onPlaying?.();},onPrepared:options.onPrepared,synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone}));
@@ -77,8 +77,9 @@ export function createConversationSpeech(signal,create,options={}){
       notice.push(text);
       notice.finish(text).catch(()=>notice.cancel()).finally(()=>{prepared();progressBusy=false;});
     },
-    push(delta){if(canceled)throw new Error('音声を中断しました');answerStarted=true;main().push(delta);},
-    async finish(text){try{await receiptDone;if(canceled)throw new Error('音声を中断しました');await main().finish(text);}finally{signal.removeEventListener('abort',cancel);}},
+    restart(){if(canceled)throw new Error('音声を中断しました');answer?.cancel();answer=null;discarded=spoken;},
+    push(delta){if(canceled)throw new Error('音声を中断しました');spoken+=delta;answerStarted=true;main().push(delta);},
+    async finish(text){try{await receiptDone;if(canceled)throw new Error('音声を中断しました');if(!text.startsWith(discarded))throw new Error('訂正音声の順序が不正です');await main().finish(text.slice(discarded.length));}finally{signal.removeEventListener('abort',cancel);}},
     cancel
   };
 }

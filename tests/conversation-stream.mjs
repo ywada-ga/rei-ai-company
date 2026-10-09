@@ -96,3 +96,20 @@ const citedVoice=new VoiceConversation({Recognition:class{},ask:async(q,c,s,onDe
 citedVoice.streamReply=()=>({push(){},async finish(text){spokenFinal=text;},cancel(){}});citedVoice.active=true;citedVoice.epoch=1;citedVoice.listen=()=>{citedVoice.phase='listening';};
 await citedVoice.respond('試験',1);assert.equal(spokenFinal,'確認した回答です。');assert.equal(citedVoice.history[0].answer,visibleAnswer);citedVoice.stop();
 console.log('PASS source lists remain visible in history but are not added to answer speech');
+
+const phaseEvents=[
+ {type:'provisional',text:'19時の暫定情報です。担当は青山です。',speechText:'19時の暫定情報です。担当は青山です。',checkedAt:Date.now(),bodyCoverage:'limited',sourceIds:['fixture'],verification:'pending'},
+ {type:'correction',text:'先ほどの点、訂正です。担当は赤井です。',speechText:'先ほどの点、訂正です。担当は赤井です。',replacementAnswer:'担当は赤井です。',sourceIds:['fixture'],verification:'verified'},
+ {type:'done',result:{answer:'担当は赤井です。',spokenAnswer:'担当は赤井です。',streamedSpokenAnswer:'19時の暫定情報です。担当は青山です。先ほどの点、訂正です。担当は赤井です。'}}
+];
+const phasePlayback=[],phaseHandles=[];let phaseChanges=[];
+const phaseVoice=new VoiceConversation({Recognition:class{},ask:async(q,c,signal,onDelta,onReceipt)=>readConversationStream(new Response(phaseEvents.map(e=>JSON.stringify(e)+'\n').join('')),{signal,onDelta,onReceipt}),onChange:value=>phaseChanges.push(value)});
+phaseVoice.streamReply=signal=>createConversationSpeech(signal,()=>{const handle={text:'',push(t){this.text+=t;phasePlayback.push(t);},async finish(text){assert.equal(text,this.text);},cancel(){phasePlayback.push('cancel-old');}};phaseHandles.push(handle);return handle;});
+phaseVoice.active=true;phaseVoice.epoch=1;phaseVoice.listen=()=>{phaseVoice.phase='listening';};
+await phaseVoice.respond('会社の担当は？',1);
+assert.equal(phaseVoice.history[0].answer,'担当は赤井です。','History contains only the authoritative answer');
+assert.ok(phaseChanges.some(v=>v.verification==='pending'));assert.ok(phasePlayback.includes('cancel-old'));
+assert.equal(phaseHandles[1].text,'先ほどの点、訂正です。担当は赤井です。','Canceled initial speech is not replayed at completion');
+phaseVoice.stop();
+await assert.rejects(readConversationStream(new Response(JSON.stringify({...phaseEvents[0],checkedAt:'unknown'})+'\n')),/確認状態/);
+console.log('PASS provisional status, final replacement, Qwen correction restart and final-only history');

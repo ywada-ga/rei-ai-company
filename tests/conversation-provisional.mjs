@@ -69,3 +69,17 @@ assert.equal(selectPrefetchedRecords(snapshot,'架空会社について教えて
  const s=await scenario({verify:async()=>{await settle();await settle();throw new Error('Fixture retrieval failed');}});await assert.rejects(s.pending,/retrieval failed/);assert.deepEqual(s.events.map(e=>e.type),['provisional','verification_failed']);assert.equal(s.events[1].verification,'failed');
 }
 console.log('Provisional conversation: scoped evidence, expiry, correction, fallback, cancellation and races passed');
+
+{
+ const fresh=defer(),started=defer(),events=[];
+ const pending=runProvisionalConversation({question:'架空会社について教えて',scope,getSnapshot:async()=>null,authorize:async()=>true,generate:async()=>{throw Error('not called');},verify:async({onDelta})=>{await settle();onDelta('担当は青山です。');started.resolve();await fresh.promise;return result();},onEvent:e=>events.push(e)});
+ await started.promise;assert.equal(events[0].type,'delta','Unavailable prefetch preserves fresh streaming before completion');fresh.resolve();await pending;
+ assert.equal(events[1].speechText,'','Already streamed final speech is not repeated');
+}
+{
+ const s=await scenario({generate:async(messages,options)=>({text:JSON.stringify(options.phase==='verification_supplement'?{...decision,text:'開発室で対応します。'}:decision)})});
+ s.latest.resolve({...result(),answer:'開発室で対応しており、担当は青山です。',spokenAnswer:'開発室で対応しており、担当は青山です。'});await s.pending;
+ assert.equal(s.events.find(e=>e.type==='supplement').speechText,'補足です。開発室で対応します。');
+ assert.ok(s.events.at(-1).result.streamedSpokenAnswer.includes('補足です。'));
+}
+console.log('PASS fresh stream fallback and source-checked rephrased supplement');

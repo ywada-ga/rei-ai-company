@@ -6,6 +6,10 @@ export async function readConversationStream(response,{signal,onDelta=()=>{},onR
     if(event.type==='error')throw Object.assign(new Error(event.message||'返答が中断されました'),{conversationDiagnostics:event.diagnostics||null});
     if(event.type==='receipt'){if(typeof event.text!=='string'||event.text.length>200)throw new Error('受け答えの形式が不正です');onReceipt?.(event.text);}
     else if(event.type==='progress'){if(event.stage==='additions'?event.text!==additionsProgress(event.count):!Object.hasOwn(CONVERSATION_PROGRESS,event.stage)||event.text!==CONVERSATION_PROGRESS[event.stage])throw new Error('進捗案内の形式が不正です');onReceipt?.(event.text,{type:'progress',stage:event.stage});}
+    else if(['provisional','verified','answer','correction','supplement','verification_failed'].includes(event.type)){
+      if(typeof event.text!=='string'||event.text.length>10000||!['pending','verified','insufficient','failed'].includes(event.verification)||typeof event.speechText!=='string'||event.speechText.length>10000||event.replacementAnswer!==undefined&&typeof event.replacementAnswer!=='string'||event.sourceIds!==undefined&&(!Array.isArray(event.sourceIds)||event.sourceIds.length>64||event.sourceIds.some(id=>typeof id!=='string'))||event.type==='provisional'&&(!Number.isSafeInteger(event.checkedAt)||!['complete','limited'].includes(event.bodyCoverage)))throw new Error('確認状態の形式が不正です');
+      onDelta?.(event.text,{phase:event.type,verification:event.verification,replacementAnswer:event.replacementAnswer,speechText:event.speechText,checkedAt:event.checkedAt,meaningful:!['verified','verification_failed'].includes(event.type)});
+    }
     else if(event.type==='delta'){if(typeof event.text!=='string')throw new Error('返答の形式が不正です');onDelta?.(event.text);}
     else if(event.type==='done'){if(typeof event.result?.answer!=='string')throw new Error('返答の形式が不正です');done=event.result;}
   };

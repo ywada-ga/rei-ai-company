@@ -285,3 +285,7 @@ get_episodeのepisode内だけでなく、応答ルートのdeleted=true、is_la
 ### 訂正後の音声通知（2026-10-10 08:13）
 
 createConversationSpeechは本回答の世代を管理し、訂正restartと全取消で世代を進めてから古い音声を取消する。旧世代のonPlaying/onPrepared通知は同期でも遅着でも現在回答の計測に渡さない。現世代の通知は維持する。
+
+### 文字入力の音声ONの準備（2026-10-10 08:43）
+
+音声応答ON時は既存Qwen準備と並行して認証済みconversation/prepareを呼ぶ。既存ChatGPTトークン更新と会話索引準備を開始し、推論呼出は増やさない。準備完了を送信条件にせず、通常経路の権限・最新確認を維持する。

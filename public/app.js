@@ -637,6 +637,7 @@ $('voice-output').onclick = () => {
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
   if(state.voiceOn)void unlockLocalVoice().catch(error=>feedback(error.message,true));
   if(state.voiceOn)void request('/api/voice/local/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`Qwenの準備: ${error.message}`,true);});
+  if(state.voiceOn)void request('/api/conversation/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`会話の準備: ${error.message}`,true);});
 };
 $('voice-button').onclick = () => $('voice-conversation-open').click();
 $('voice-preview').onclick=()=>{void speak('こんにちは、レイです。この画面のまま、続けて話せます。');};

@@ -83,3 +83,8 @@ console.log('Provisional conversation: scoped evidence, expiry, correction, fall
  assert.ok(s.events.at(-1).result.streamedSpokenAnswer.includes('補足です。'));
 }
 console.log('PASS fresh stream fallback and source-checked rephrased supplement');
+{
+ const s=await scenario({question:'今日追加された新情報を教えて',generate:async messages=>{const payload=JSON.parse(messages[1].content);assert.equal(payload.timeZone,'Asia/Tokyo');assert.match(payload.now,/T/);assert.match(payload.checkedAt,/T/);assert.match(payload.additionDate,/^\d{4}-\d{2}-\d{2}$/);assert.equal(payload.records.length,1);return {text:JSON.stringify({...decision,status:'partial'})};}});
+ assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].text,/一部の記録/);s.latest.resolve(result());await s.pending;
+}
+console.log('PASS day questions carry explicit current date, Japan time and partial-scope wording');

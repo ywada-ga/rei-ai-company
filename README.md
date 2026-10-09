@@ -1,5 +1,7 @@
 # REI — ローカルで動くAI会社の司令室
 
+会話は既存ChatGPT Pro接続、会社の根拠はSynapse Connect、声はローカルの女性Qwen、承認後の仕事はOpenClawという構成です。選択した会社情報の先読みから時点付きの暫定要点を話し、質問ごとの最新確認で補足・訂正する経路を開発しています。対象外や根拠不足では最新取得へ戻ります。音声認識はブラウザのサービスを使う場合があり、アプリ全体が完全オフラインという意味ではありません。実測と未検証は [実装状況](IMPLEMENTATION_STATUS.md) を参照してください。
+
 > **配布前の状態:** macOS開発用アプリはNode.jsとOpenClawを同梱し、同じLAN内のMac同士をREIだけで接続できます。配布用のDeveloper ID署名・Apple公証、別ネットワーク間の接続、参加Mac実機、Chatwork実アカウントでの動作確認は未完了です。ZIP版にはNode.jsとOpenClawが別途必要です。残る配布条件は [REI単体での端末接続](SINGLE_APP_CONNECTIVITY.md) に記載しています。
 
 REIは、1台の「中心PC」にプロジェクト・仕事・権限・履歴を保存し、各PCのConnectorを通じてそのPCのOpenClawに仕事を渡します。中心PCも参加端末もmacOS、Windows、Linuxを使えます。Web画面は中心PC上で動きます。現在のTailscale方式ではREI用のクラウドデータベースは不要です。完成版で遠隔端末をつなぐ場合は、任意の暗号化中継を使う方針です。

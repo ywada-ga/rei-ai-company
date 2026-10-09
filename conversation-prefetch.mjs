@@ -26,6 +26,14 @@ function checkedRecord(result,row,scope,at){
   const fields=['uuid','group_id','name','doc_name','content','origin','recorded_at','created_at','source_ref','author_subject','doc_sha'];
   return {addedAt:row.created_at,fetchedAt:at,episode:Object.fromEntries(fields.filter(k=>episode[k]!==undefined).map(k=>[k,episode[k]]))};
 }
+// Reserve bounded yesterday coverage even when today's activity fills the cache.
+// Selection is storage policy, not a relevance ranking or complete daily read.
+export function prefetchCandidates(rows,at,maxRecords){
+  const end=Math.floor((at+9*3600000)/86400000)*86400000-9*3600000,start=end-86400000;
+  const reserved=rows.filter(row=>{const t=Date.parse(row.created_at);return t>=start&&t<end;}).slice(0,Math.floor(maxRecords/4));
+  const ids=new Set(reserved.map(row=>row.uuid));
+  return [...reserved,...rows.filter(row=>!ids.has(row.uuid)).slice(0,maxRecords-reserved.length)].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at));
+}
 export class ConversationPrefetch {
   constructor(db,{now=Date.now,maxAgeMs=600000,intervalMs=300000,maxRecords=64,maxBytes=4*1024*1024,maxScopes=16}={}){
     Object.assign(this,{db,now,maxAgeMs,intervalMs,maxRecords,maxBytes,maxScopes});this.active=new Map();
@@ -85,7 +93,7 @@ export class ConversationPrefetch {
         if(!current()||!update.complete)throw new Error('Incomplete ledger');
         // Too much cursor metadata disables prefetch instead of growing indefinitely.
         if(update.rows.length>10000)throw new Error('Ledger too large');
-        const candidates=update.rows.slice(0,this.maxRecords),at=this.now();
+        const at=this.now(),candidates=prefetchCandidates(update.rows,at,this.maxRecords);
         const records=await readConcurrent(candidates,async row=>checkedRecord(await entry.io.call('get_episode',{uuid:row.uuid,group_ids:scope.groups.map(g=>g.id)},signal),row,scope,at),{concurrency:6,signal});
         // Recheck remote permission after the reads, before persisting any source.
         if(!current()||!prefetchAuthorized(await entry.io.catalog(signal),scope)||!current())throw new Error('Scope changed');

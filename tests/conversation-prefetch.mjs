@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {ConversationPrefetch,prefetchScopeKey,prefetchAuthorized} from '../conversation-prefetch.mjs';
+import {ConversationPrefetch,prefetchScopeKey,prefetchAuthorized,prefetchCandidates} from '../conversation-prefetch.mjs';
 
 const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
 let now=1000000,denied=false,incomplete=false,missing=false,changed=false,calls=0,revision=0;
@@ -39,3 +39,12 @@ now+=501;const pending=cache.activate(scope,blocking);await new Promise(setImmed
 const limited=new ConversationPrefetch(db,{now:()=>now,maxRecords:0});await limited.activate(other,{...io,currentScope:()=>other});assert.equal(limited.status(other).bodyCoverage,'limited');assert.equal(limited.status(other).recordCount,0);
 cache.close();reload.close();limited.close();db.close();
 console.log('PASS scoped persistent prefetch, fresh permission gates, expiry, revision/deletion failure, single-flight and cancellation');
+
+const current=Date.parse('2026-10-09T03:00:00Z');
+const busyToday=Array.from({length:80},(_,i)=>({uuid:'today-'+i,created_at:new Date(current-i*1000).toISOString()}));
+const previousDay=Array.from({length:42},(_,i)=>({uuid:'yesterday-'+i,created_at:new Date(current-86400000-i*1000).toISOString()}));
+const balanced=prefetchCandidates([...busyToday,...previousDay],current,64);
+assert.equal(balanced.length,64);assert.equal(balanced.filter(r=>r.uuid.startsWith('yesterday')).length,16);
+assert.equal(new Set(balanced.map(r=>r.uuid)).size,64);assert.equal(balanced[0].uuid,'today-0');
+assert.equal(prefetchCandidates(busyToday,current,64).length,64);assert.deepEqual(prefetchCandidates(previousDay,current,0),[]);
+console.log('PASS busy current day cannot evict all yesterday sources; body cap and ordering remain bounded');

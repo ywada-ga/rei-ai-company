@@ -42,9 +42,16 @@ try{
   await account.generate([{role:'user',content:'fixture supplement'}],{phase:'verification_supplement',effort:'low'});assert.equal(requestBody.text.format.name,'rei_provisional');assert.deepEqual(requestBody.text.format.schema.properties.decision.properties.query.enum,['']);
   await account.generate([{role:'user',content:'fixture normal'}],{phase:'evidence_answer'});assert.equal(requestBody.text.format.schema.properties.decision.anyOf.length,7,'Dedicated format does not mutate ordinary questions');
   account.account().expiresAt=0;await Promise.all([account.token(),account.token()]);assert.equal(refreshes,1);assert.equal(account.account().refreshToken,'rotated');
+  const beforeInference=inference,beforeRefresh=refreshes;
+  const prepared=await account.prepare();assert.equal(prepared.configured,true);assert.equal(refreshes,beforeRefresh);assert.equal(inference,beforeInference);
+  assert.ok(!JSON.stringify(prepared).includes('refreshed'));
+  account.account().expiresAt=0;await Promise.all([account.prepare(),account.prepare(),account.token()]);assert.equal(refreshes,beforeRefresh+1);assert.equal(inference,beforeInference,'Preparation performs no model inference');
+  const originalFetcher=account.fetcher;account.account().expiresAt=0;account.fetcher=async()=>Response.json({error:'fixture'},{status:401});
+  await assert.rejects(account.prepare());assert.equal(inference,beforeInference);account.fetcher=originalFetcher;await account.prepare();
   const returning=new URL((await account.begin({accountId:'oaiapp_fixture'})).url);assert.equal(returning.searchParams.get('client_id'),'oaiapp_fixture');assert.equal(returning.searchParams.get('agent_name_hint'),null);assert.equal(returning.searchParams.get('ext_agent_host_id'),authorization.searchParams.get('ext_agent_host_id'));assert.ok(returning.searchParams.get('id_token_hint'));account.stop();
   await assert.rejects(readResponseStream(new Response('data: {"type":"response.output_text.delta","delta":"partial"}\n\n')),/途中/);
   await assert.rejects(readResponseStream(new Response('data: {"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded"}}}\n\n')),/利用枠/);
   assert.deepEqual(await account.disconnect(),{ok:true,revoked:true});assert.equal(account.status().configured,false);assert.ok(!readFileSync(path.join(directory,'account.json'),'utf8').includes('rotated'));
+  await assert.rejects(account.prepare(),/再接続/);
   console.log('ChatGPT plan: PKCE, state, signed identity, private credentials, account models, refresh serialization, stream completion, disconnect passed (no external AI calls)');
 }finally{account.stop();rmSync(directory,{recursive:true,force:true});}

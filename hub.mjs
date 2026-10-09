@@ -265,7 +265,7 @@ async function api(req,res,route) {
       const history=saved?JSON.parse(saved.value):null;
       return send(res,200,{turns:history?.scope===JSON.stringify(conversationSettings(user).groups)?history.turns:[]});
     }
-    if(route==='conversation/prepare'&&req.method==='POST'){prepareConversationOutline(user);prepareConversationPrefetch(user);if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
+    if(route==='conversation/prepare'&&req.method==='POST'){prepareConversationOutline(user);prepareConversationPrefetch(user);if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,await account.prepare());}await localChat.start();return send(res,200,localChat.status());}
     if(['conversation/ask','conversation/stream'].includes(route)&&req.method==='POST'){
       if(conversationBusy)return error(res,409,'会話AIが返答中です。少し待ってください');
       const input=await body(req),question=text(input.question,4000),settings=conversationSettings(user),scope=JSON.stringify(settings.groups);

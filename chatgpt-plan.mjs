@@ -103,6 +103,15 @@ export class ChatGPTPlan {
       Object.assign(account,{accessToken:tokens.access_token,refreshToken:tokens.refresh_token||account.refreshToken,expiresAt:Date.now()+Number(tokens.expires_in||3600)*1000,scopes:granted});this.save();return account.accessToken;
     })().finally(()=>{this.refreshing=null;});return this.refreshing;
   }
+  async prepare(){
+    const account=this.account();
+    if(!account?.accessToken||!account.model)throw failure('ChatGPTを再接続してモデルを選んでください');
+    // Refresh only when already due; share token()'s in-flight refresh. Never
+    // generate a warm-up answer or expose credentials in a preparation response.
+    await this.token();
+    if(this.account()!==account)throw failure('接続アカウントが変わりました。もう一度準備してください');
+    return this.status();
+  }
   async models(){
     const account=this.account(),token=await this.token();const data=await this.json(`${resource}/models`,{headers:{authorization:`Bearer ${token}`}});
     if(this.account()!==account)throw failure('接続アカウントが変わりました');

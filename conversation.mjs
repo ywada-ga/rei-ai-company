@@ -206,7 +206,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     evidence.push({tool:'get_updates',result:{structuredContent:{coverage:{complete:update.complete},confirmedCount:update.rows.length}}});
     messages.push({role:'user',content:`追加履歴を読みました。対象は${period.date}の日本時間0時〜24時に追加された記録（作業日・出来事の日付ではない）。確認範囲:${JSON.stringify(additions)}。各グループの確認:${JSON.stringify(update.reports.map(r=>({groupId:r.groupId,groupName:r.groupName,personal:r.personal,count:r.rows.length,complete:r.complete,denied:r.denied,pages:r.pages,reasons:r.reasons})))}。古い検索候補の情報へ切り替えず、次に確認した当日の追加本文をまとめる。全範囲の確認が不完全なら件数は確認分の件数で、全件とは呼ばない。`});
     {
-      const bodies=await readConcurrent(candidates,async row=>({row,result:await readRecord('get_episode',row.uuid,row.group_id)}),{concurrency:6,signal});
+      const bodies=await readConcurrent(candidates,async row=>({row,result:await readRecord('get_episode',row.uuid,row.group_id)}),{concurrency:12,signal});
       for(const {row,result} of bodies){
         if(signal?.aborted)throw new Error('会話を中断しました');
         evidence.push({tool:'get_episode',uuid:row.uuid,result});

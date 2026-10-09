@@ -79,3 +79,20 @@ const unproven=await converse({question:'今日シナプスコネクトに追加
 }});
 assert.equal(unproven.additions.verifiedBodies,0);assert.equal(unproven.sources.length,0);assert.match(unproven.answer,/ないとは断定できません/);
 console.log('PASS MCP records with no source reference require a recorded author; unattributed bodies cannot authorize answers');
+
+// A daily bulk read doubles the bounded window, without answering from partial bodies.
+const bulkRows=Array.from({length:24},(_,i)=>row('bulk-'+i,new Date(additionWindow('今日追加').start+3600000+i).toISOString()));
+const bodyGates=new Map(bulkRows.map(r=>[r.episode_uuid,deferred()]));let activeBodies=0,peakBodies=0,bulkGenerated=false;
+const bulkRead=converse({question:'今日シナプスコネクトに追加された情報',groups,call:async(t,a)=>{
+ if(t==='survey_space')return {structuredContent:{coverage:{complete:true}}};
+ if(t==='get_updates')return {structuredContent:{episodes:bulkRows,truncated:false,coverage:{complete:true}}};
+ if(t==='get_episode'){
+  peakBodies=Math.max(peakBodies,++activeBodies);await bodyGates.get(a.uuid).promise;activeBodies--;
+  return {structuredContent:{episode:{uuid:a.uuid,group_id:'g',origin:'mcp',content:'当日の検証本文。',author_subject:'fixture',recorded_at:bulkRows[0].created_at},coverage:{complete:true}}};
+ }
+ throw Error('unexpected read');
+},generate:async()=>{bulkGenerated=true;assert.equal(activeBodies,0,'all bodies complete before generation');return {text:JSON.stringify({action:'respond',status:'supported',sourceIds:['bulk-0'],reason:'',query:'',text:'当日の検証本文を確認しました。'})};}});
+await new Promise(setImmediate);assert.equal(peakBodies,12);assert.equal(bulkGenerated,false);
+for(const gate of bodyGates.values())gate.resolve();const bulkResult=await bulkRead;
+assert.equal(bulkResult.additions.verifiedBodies,24);assert.equal(bulkResult.additions.confirmedCount,24);assert.equal(bulkResult.additions.scopeComplete,true);
+console.log('PASS daily 12-slot bulk read retains full-body barrier, selected scope and complete counts');

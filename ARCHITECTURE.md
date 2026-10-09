@@ -205,3 +205,6 @@ Qwen workerのstreamフラグは生成片ごとにchunk（連番・WAV・レー�
 利用者が明示した対象名での定型概要質問は、初回survey後にその対象名で直接search_memory_factsを呼ぶ。検索語のためだけにモデルを呼ばず、従来の候補・出典・本文検証を通してから回答を生成する。本文不足時の追加検索と閲覧不能時の停止は維持する。
 
 会話MCPの接続準備は同時呼び出し間で共有し、初期化中の終了は準備完了を待つ。初期化失敗後は再試行可能。グループ別surveyの並行化は実会話で改善未確認のため採用せず、一括取得を維持する（2026-10-08）。
+# Daily retrieval concurrency (2026-10-09)
+
+Daily additions use concurrent read-only scope survey and ledger retrieval. Both must finish successfully before any body is used; ledger rows are filtered to the surveyed scope. Failure drains both operations and cannot release a model answer. Full bodies use a bounded six-worker pool that refills immediately when each read completes, preserving ledger order for evidence review and waiting for in-flight reads on cancellation/failure. No body cache or expanded permissions are introduced.

@@ -395,3 +395,9 @@ REI自身の開発状況・接続・機能をSynapseの社内記録検索へ誤�
 - 会社記録を毎質問MCPで再取得する条件で、独立した出典本文の取得を並行化。同じ質問内の重複取得抑制と、根拠が揃うまで回答しない制御を維持。並行取得・根拠ゲートのテストと構文検査が成功。
 - 実接続の同じ会社概要質問で本文回答まで29.654秒。AI検索判断6.598秒、search_memory_facts9.948秒、出典取得2.629秒（2件並行）、本文取得2.782秒（2件並行）、AI回答7.696秒。Qwen生成・再生開始は含まない。以前の48.504秒は検索2回・4出典を含むため、改善幅を並行化だけの効果と断定しない。
 - 1秒以内は未達成。MCP検索単体が約10秒のため、現状の上流サービス・モデルの往復で、最新根拠付きの回答を1秒以内と保証できない。相槌や受付表示を実回答の速度として計上しない。
+## 2026-10-09 retrieval scheduling
+
+- Replaced six-record batch barriers with six refilling workers. Added deterministic tests for stragglers, result order, cancellation, and draining on errors.
+- Started daily scope survey and read-only additions ledger concurrently; bodies and answers remain behind the authorization barrier. Failed survey cannot authorize body retrieval or generation.
+- Actual MCP comparison on the same 24 stored bodies: six workers 12,521 ms, twelve workers 11,533 ms. This single sequential comparison is not a controlled end-to-end benchmark; the modest difference does not justify doubling load, so production remains at six.
+- No claim of completed speed target, full-duplex conversation, or physical audio evaluation. Numeric comparison is in ignored dist/refill-benchmark.json; company content and IDs were not saved to the diagnostic artifact.

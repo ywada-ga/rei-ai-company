@@ -1,6 +1,25 @@
 import {randomUUID} from 'node:crypto';
 import {mcpData,unavailableGroups} from './load-synapse.mjs';
 
+// Refill each available slot immediately; retain ledger order for evidence review.
+// Drain in-flight reads on failure so a subsequent turn cannot overlap orphaned reads.
+export async function readConcurrent(items,read,{concurrency=6,signal}={}){
+  if(!Number.isInteger(concurrency)||concurrency<1||concurrency>16)throw new Error('Invalid read concurrency');
+  const results=new Array(items.length);let next=0,failure;
+  const workers=Array.from({length:Math.min(concurrency,items.length)},async()=>{
+    while(next<items.length&&!failure){
+      if(signal?.aborted){failure=new Error('会話を中断しました');break;}
+      const index=next++;
+      try{results[index]=await read(items[index],index);}
+      catch(error){failure??=error;}
+    }
+  });
+  await Promise.all(workers);
+  if(signal?.aborted)throw new Error('会話を中断しました');
+  if(failure)throw failure;
+  return results;
+}
+
 export function additionWindow(question,now=Date.now()){
   if(!/(追加|登録|新情報|新しい情報|新たな情報|更新)/u.test(question)||!/(今日|本日|きょう|昨日)/u.test(question))return null;
   const offset=9*3600000,day=86400000;

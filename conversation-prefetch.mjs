@@ -73,7 +73,8 @@ export class ConversationPrefetch {
     for(const [oldKey,old]of this.active)if(old.scope.userId===scope.userId&&oldKey!==key){this.invalidate(old.scope);this.active.delete(oldKey);}
     if(!this.active.has(key)){
       if(this.active.size>=this.maxScopes){const oldest=this.active.values().next().value;this.invalidate(oldest.scope);this.active.delete(this.storageKey(oldest.scope));}
-      this.active.set(key,{scope:structuredClone(scope),io,cursors:new Map(),generation:0,lastAttempt:null,failed:false});
+      const preserved=this.status(scope);
+      this.active.set(key,{scope:structuredClone(scope),io,cursors:new Map(),generation:0,lastAttempt:preserved.usable?preserved.checkedAt:null,failed:false});
     }
     const entry=this.active.get(key);entry.io=io;
     if(entry.pending)return entry.pending;

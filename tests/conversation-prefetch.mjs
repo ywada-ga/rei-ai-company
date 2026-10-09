@@ -23,6 +23,7 @@ assert.equal(cache.snapshot(scope,catalog()).records[0].episode.content,'SYNTHET
 assert.equal(cache.snapshot(other,catalog()),null);assert.ok(!JSON.stringify(cache.status(scope)).includes('SYNTHETIC_BODY'));
 const initialCalls=calls;await cache.activate(scope,io);assert.equal(calls,initialCalls,'duplicate preparation must not sync again');
 const reload=new ConversationPrefetch(db,{now:()=>now,maxAgeMs:1000});assert.equal(reload.snapshot(scope,catalog()).records.length,1,'persisted source survives restart');
+await reload.activate(scope,io);assert.equal(calls,initialCalls,'restart with a usable persisted snapshot must not duplicate full synchronization');
 now+=1001;assert.equal(cache.snapshot(scope,catalog()),null,'expired source cannot be served');
 cache.prune();assert.equal(db.prepare('SELECT count(*) AS n FROM settings').get().n,0,'expired copied source is removed from persistent storage');
 revision++;await cache.activate(scope,io);assert.equal(cache.snapshot(scope,catalog()).records[0].episode.content,'SYNTHETIC_BODY_1','retained source is freshly reread for revisions');

@@ -125,6 +125,37 @@ for(const update of [{sourceIds:['unread-source']},{sourceIds:[episode.uuid,epis
 }
 console.log('PASS early provisional sentence, delayed permission, invalid header/final and latest-wins races');
 
+// Begin the gate while the checked text is incomplete; never speak a fragment.
+{
+ const model=defer(),gate=defer();let stream,calls=0,tick=0;
+ const s=await scenario({now:()=>at+tick,authorize:()=>{calls++;return gate.promise;},generate:(_m,o)=>{stream=o.onDelta;return model.promise;}});
+ const raw=JSON.stringify(decision),partial=raw.slice(0,raw.indexOf('です。'));
+ stream(partial);await settle();assert.equal(calls,1);assert.equal(s.events.length,0);
+ tick=500;stream(raw);await settle();assert.equal(calls,1);assert.equal(s.events.length,0);
+ tick=1000;gate.resolve(true);await settle();assert.equal(s.events[0].type,'provisional');
+ model.resolve({text:raw});await settle();s.latest.resolve(result());const out=await s.pending;
+ assert.equal(out.provisionalTiming.permissionStartedMs,0);assert.equal(out.provisionalTiming.firstSentenceMs,500);
+ assert.equal(out.provisionalTiming.permissionChecks,1);
+}
+// A slow sentence cannot reuse an early authorization after it becomes old.
+{
+ const model=defer(),renew=defer();let stream,calls=0,tick=0;
+ const s=await scenario({now:()=>at+tick,authorize:()=>++calls===1?Promise.resolve(true):calls===2?renew.promise:Promise.resolve(true),generate:(_m,o)=>{stream=o.onDelta;return model.promise;}});
+ const raw=JSON.stringify(decision);stream(raw.slice(0,raw.indexOf('です。')));await settle();assert.equal(calls,1);
+ tick=1001;stream(raw);await settle();assert.equal(calls,2);assert.equal(s.events.length,0,'Expired gate does not release text');
+ renew.resolve(false);await settle();assert.equal(s.events.length,0,'Revoked scope suppresses provisional text');
+ model.resolve({text:raw});await settle();s.latest.resolve(result());const out=await s.pending;
+ assert.equal(out.provisionalUsed,false);assert.equal(out.provisionalTiming.permissionChecks,2);
+}
+// Invalid headers cannot start speculative permission requests either.
+for(const update of [{sourceIds:['unread-source']},{sourceIds:[episode.uuid,episode.uuid]},{status:'insufficient'},{query:'search again'}]){
+ const model=defer();let stream,calls=0;
+ const s=await scenario({authorize:async()=>{calls++;return true;},generate:(_m,o)=>{stream=o.onDelta;return model.promise;}});
+ const raw=JSON.stringify({...decision,...update});stream(raw);await settle();assert.equal(calls,0);
+ model.resolve({text:raw});await settle();s.latest.resolve(result());await s.pending;
+}
+console.log('PASS overlapping permission, stale permission renewal, revocation and invalid assessment isolation');
+
 {
  const model=defer(),gate=defer();let stream;
  const s=await scenario({authorize:()=>gate.promise,generate:(_messages,opts)=>{stream=opts.onDelta;return model.promise;}});

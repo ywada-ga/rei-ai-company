@@ -32,6 +32,8 @@ const simultaneous=[catalogs.catalog(integration),catalogs.catalog(integration),
 await new Promise(setImmediate);assert.equal(catalogCalls,1);
 finishCatalog({structuredContent:{groups:[{group_id:'fixture'}]}});
 const shared=await Promise.all(simultaneous);shared[0].structuredContent.groups.length=0;
+assert.deepEqual(shared.map(r=>r.reiMcpTiming.joined),[false,true,true]);
+for(const result of shared){assert.deepEqual(Object.keys(result.reiMcpTiming).sort(),['connectMs','joined','totalMs','waitMs']);for(const key of ['connectMs','waitMs','totalMs'])assert.ok(Number.isFinite(result.reiMcpTiming[key])&&result.reiMcpTiming[key]>=0);}
 assert.equal(shared[1].structuredContent.groups.length,1,'callers cannot mutate another permission result');
 const freshCatalog=catalogs.catalog(integration);await new Promise(setImmediate);assert.equal(catalogCalls,2,'subsequent permission check must fetch fresh');finishCatalog({structuredContent:{groups:[]}});assert.equal((await freshCatalog).structuredContent.groups.length,0);
 let rejectedCalls=0;runtime.callTool=async()=>{rejectedCalls++;throw Error('catalog failure');};

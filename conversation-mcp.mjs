@@ -47,17 +47,23 @@ export class ConversationMcp {
     return {...result,reiMcpTiming:{connectMs:Math.round(ready-started),requestMs:Math.round(finished-ready),totalMs:Math.round(finished-started)}};
   }
   async catalog(integration){
+    const started=performance.now();
     const runtime=await this.connect(integration);
+    const ready=performance.now();
     // Share only an unfinished request on the exact authenticated runtime.
     // Never retain a completed catalog: later permission checks fetch again.
     let flights=this.catalogFlights.get(runtime);
     if(!flights){flights=new Map();this.catalogFlights.set(runtime,flights);}
     let pending=flights.get(integration.name);
+    const joined=!!pending;
     if(!pending){
       pending=Promise.resolve().then(()=>runtime.callTool(integration.name,'list_groups',{limit:1000}));
       flights.set(integration.name,pending);
     }
-    try{return structuredClone(await pending);}
+    try{
+      const result=structuredClone(await pending),finished=performance.now();
+      return {...result,reiMcpTiming:{connectMs:Math.round(ready-started),waitMs:Math.round(finished-ready),totalMs:Math.round(finished-started),joined}};
+    }
     finally{if(flights.get(integration.name)===pending)flights.delete(integration.name);}
   }
 }

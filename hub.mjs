@@ -289,12 +289,15 @@ async function api(req,res,route) {
         const prefetched=prefetchContext(user.id);
         const eligible=streaming&&chatProvider(user)==='chatgpt'&&prefetched&&conversationPrefetch.status(prefetched.scope).usable&&!/(実行|送って|送信|作成|変更して|削除|登録して)/u.test(question)&&(additionWindow(question)||/について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u.test(question));
         const currentScope=()=>{const current=prefetchContext(user.id);return current&&prefetchScopeKey(current.scope)===prefetchScopeKey(prefetched.scope);};
-        const authorize=async()=>{if(!currentScope())return false;const catalog=await conversationMcp.catalog(prefetched.integration);return currentScope()&&prefetchAuthorized(catalog,prefetched.scope);};
+        const catalogChecks=[];
+        const timedCatalog=async phase=>{const catalog=await conversationMcp.catalog(prefetched.integration);catalogChecks.push({phase,...catalog.reiMcpTiming});return catalog;};
+        const authorize=async()=>{if(!currentScope())return false;const catalog=await timedCatalog('permission');return currentScope()&&prefetchAuthorized(catalog,prefetched.scope);};
         const result=eligible?await runProvisionalConversation({question,scope:prefetched.scope,signal:controller.signal,
-          getSnapshot:async()=>{if(!currentScope())return null;const catalog=await conversationMcp.catalog(prefetched.integration);return currentScope()?conversationPrefetch.snapshot(prefetched.scope,catalog):null;},authorize,
+          getSnapshot:async()=>{if(!currentScope())return null;const catalog=await timedCatalog('snapshot');return currentScope()?conversationPrefetch.snapshot(prefetched.scope,catalog):null;},authorize,
           generate:conversationOptions.generate,verify:({signal,onDelta,getProvisionalAnswer})=>converse({...conversationOptions,signal,onDelta,getProvisionalAnswer}),
           onEvent:event=>{if(event.type!=='done')emit(event);}
         }):await converse(conversationOptions);
+        if(eligible)result.timing={...result.timing,catalogChecks};
         if(!controller.signal.aborted){
           if(JSON.stringify(conversationSettings(user).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
           const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true,verification:result.synapseRead?'verified':'not_required',provisionalUsed:result.provisionalUsed===true,provisionalCheckedAt:result.provisionalCheckedAt||null}].slice(-6);

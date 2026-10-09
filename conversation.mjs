@@ -85,12 +85,13 @@ function candidateMetadata(data){
     episodes:Array.isArray(data?.episodes)?data.episodes.map(meta):undefined,
     episode:data?.episode?meta(data.episode):undefined};
 }
+function currentBodyState(value){return !value.invalid_at&&value.deleted!==true&&value.is_latest_revision!==false;}
 function verifiedSourceData(result,groups){
   if(result.isError)return null;
-  const data=resultData(result);if(!data||data.truncated||data.content_truncated||data.coverage?.complete===false)return null;
-  const body=value=>value&&!value.truncated&&!value.content_truncated&&value.coverage?.complete!==false&&value.content_representation!=='bounded_prefix'&&['content','text','body'].some(key=>typeof value[key]==='string'&&value[key].trim());
+  const data=resultData(result);if(!data||!currentBodyState(data)||data.truncated||data.content_truncated||data.coverage?.complete===false)return null;
+  const body=value=>value&&currentBodyState(value)&&!value.truncated&&!value.content_truncated&&value.coverage?.complete!==false&&value.content_representation!=='bounded_prefix'&&['content','text','body'].some(key=>typeof value[key]==='string'&&value[key].trim());
   const rootBody=groups.some(g=>g.id===data.group_id)&&body(data);
-  const sources=(Array.isArray(data.sources)?data.sources:[]).filter(source=>source.traceable===true&&groups.some(g=>g.id===(source.group_id||data.group_id))&&(body(source)||rootBody));
+  const sources=(Array.isArray(data.sources)?data.sources:[]).filter(source=>currentBodyState(source)&&source.traceable===true&&groups.some(g=>g.id===(source.group_id||data.group_id))&&(body(source)||rootBody));
   if(!sources.length)return null;
   // A verified sibling must not expose unread summaries or bodies from another scope.
   const fields=['uuid','group_id','episode_uuid','created_at','recorded_at','valid_at','origin','traceable','source_ref','url','source_url','title','name','doc_name'];
@@ -109,7 +110,7 @@ function bodyContext(value,question,recent,budget=4000){
 function sourceContext(result,groups,question='',recent=false){return bodyContext(verifiedSourceData(result,groups)||candidateMetadata(resultData(result)),question,recent);}
 function readableRecordedNote(result,uuid,groups){
   const data=resultData(result),episode=data?.episode;
-  if(result.isError||!episode||episode.uuid!==uuid||!groups.some(g=>g.id===episode.group_id))return null;
+  if(result.isError||!episode||!currentBodyState(data)||!currentBodyState(episode)||episode.uuid!==uuid||!groups.some(g=>g.id===episode.group_id))return null;
   if(data.truncated||data.content_truncated||episode.content_truncated||episode.content_representation==='bounded_prefix'||data.coverage?.complete!==true)return null;
   if(!['obsidian','text','manual','agent','mcp'].includes(episode.origin)||typeof episode.content!=='string'||!episode.content.trim()||(!episode.source_ref&&!(episode.origin==='mcp'&&typeof episode.author_subject==='string'&&episode.author_subject.trim()))||!episode.recorded_at)return null;
   return {uuid:episode.uuid,title:episode.doc_name||episode.name||'保存されたメモ',recordedAt:episode.recorded_at,groupId:episode.group_id,kind:'recorded_note'};

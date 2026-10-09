@@ -93,3 +93,20 @@ assert.match(metadataOnly.answer,/まだ確定/);
 console.log('traceable metadata alone cannot unlock answers; complete scoped episode bodies are required');
 const misplacedBody=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'範囲外の本文で断定'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'metadata',fact:'予定',group_id:'allowed'}]}}:{structuredContent:{group_id:'outside',body:'範囲外の本文',sources:[{traceable:true,group_id:'allowed'}]}}});
 assert.match(misplacedBody.answer,/まだ確定/);
+
+// A fresh search may point at a body deleted, superseded or invalidated before retrieval.
+for(const state of [{deleted:true},{is_latest_revision:false},{invalid_at:'2026-10-10T00:00:00Z'}]){
+ const denied=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'失効本文による断定'}]),call:bodyFixture(state)});
+ assert.match(denied.answer,/まだ確定/,'episode body state must be checked again');
+ for(const location of ['root','source']){
+  const blocked=await converse({...basic,generate:make([{action:'search',query:'予定'},{action:'answer',text:'削除旧版本文による断定'}]),call:async tool=>tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'state-fact',group_id:'allowed'}]}}:{structuredContent:{...(location==='root'?{group_id:'allowed',body:'OBSOLETE-ROOT',...state}:{}),sources:[{traceable:true,group_id:'allowed',body:'OBSOLETE-SOURCE',...(location==='source'?state:{})}]}}});
+  assert.match(blocked.answer,/まだ確定/,'source/root body state must be checked again');
+ }
+}
+console.log('body retrieval rechecks deletion, revision and invalidation after fresh search');
+const mixedBodies=await converse({...basic,readingSkill:true,question:'Synapse Connectについて教えて',generate:async messages=>{
+ const serialized=JSON.stringify(messages);assert.ok(serialized.includes('CURRENT-BODY'));assert.ok(!serialized.includes('DELETED-SIBLING'));
+ return {text:JSON.stringify({action:'respond',status:'supported',sourceIds:['mixed-fact'],reason:'',query:'',text:'有効な本文だけの回答です。'})};
+},call:async tool=>tool==='survey_space'?{structuredContent:{coverage:{complete:true}}}:tool==='search_memory_facts'?{structuredContent:{facts:[{uuid:'mixed-fact',group_id:'allowed'}]}}:{structuredContent:{sources:[{traceable:true,group_id:'allowed',body:'CURRENT-BODY'},{traceable:true,group_id:'allowed',body:'DELETED-SIBLING',deleted:true}]}}});
+assert.equal(mixedBodies.answer,'有効な本文だけの回答です。');assert.equal(mixedBodies.synapseRead,true);
+console.log('valid sibling remains readable while deleted sibling body is omitted from model input');

@@ -113,3 +113,19 @@ assert.equal(phaseHandles[1].text,'先ほどの点、訂正です。担当は赤
 phaseVoice.stop();
 await assert.rejects(readConversationStream(new Response(JSON.stringify({...phaseEvents[0],checkedAt:'unknown'})+'\n')),/確認状態/);
 console.log('PASS provisional status, final replacement, Qwen correction restart and final-only history');
+
+// Canceled playback may finish callbacks synchronously or after a correction.
+const staleHandles=[],onsets=[],correctionPrepared=[];
+const correctionSpeech=createConversationSpeech(new AbortController().signal,options=>{
+ const handle={options,push(){},async finish(){},cancel(){options.onPlaying?.();options.onPrepared?.({characters:99});}};
+ staleHandles.push(handle);return handle;
+},{onPlaying:()=>onsets.push('current'),onPrepared:value=>correctionPrepared.push(value.characters)});
+correctionSpeech.push('古い暫定回答。');correctionSpeech.restart();
+staleHandles[0].options.onPlaying();staleHandles[0].options.onPrepared({characters:88});
+assert.deepEqual(onsets,[],'canceled provisional callbacks must not count as correction audio onset');
+assert.deepEqual(correctionPrepared,[],'canceled provisional callbacks must not enter current synthesis measurements');
+correctionSpeech.push('訂正回答。');staleHandles[1].options.onPlaying();staleHandles[1].options.onPrepared({characters:7});
+assert.deepEqual(onsets,['current']);assert.deepEqual(correctionPrepared,[7]);
+correctionSpeech.cancel();staleHandles[1].options.onPlaying();staleHandles[1].options.onPrepared({characters:77});
+assert.deepEqual(onsets,['current']);assert.deepEqual(correctionPrepared,[7]);
+console.log('PASS correction and full cancellation reject synchronous and late playback measurements');

@@ -73,12 +73,16 @@ export function createLocalSpeechStream(signal,request,options={}){
 
 // Speak the receipt first; it never triggers the meaningful answer onset callback.
 export function createConversationSpeech(signal,create,options={}){
-  let receipt=null,answer=null,received=false,answerStarted=false,canceled=false,spoken='',discarded='',noticeCancellationCount=0;
+  let receipt=null,answer=null,received=false,answerStarted=false,canceled=false,spoken='',discarded='',noticeCancellationCount=0,answerGeneration=0;
   let receiptDone=Promise.resolve(),receiptGenerated=Promise.resolve();
   let progressSpeech=null,progressBusy=false,progressGenerated=Promise.resolve();
   const stopNotices=()=>{receipt?.stopPlayback?.();progressSpeech?.stopPlayback?.();};
-  const main=()=>answer||(answer=create({onPlaying:()=>{progressSpeech?.cancel();options.onPlaying?.();},onPrepared:timing=>options.onPrepared?.({...timing,...(noticeCancellationCount?{noticeCancellationCount}: {})}),synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone}));
-  const cancel=()=>{canceled=true;receipt?.cancel();progressSpeech?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
+  const main=()=>{
+    if(answer)return answer;
+    const generation=answerGeneration,current=()=>!canceled&&generation===answerGeneration;
+    return answer=create({onPlaying:()=>{if(!current())return;progressSpeech?.cancel();options.onPlaying?.();},onPrepared:timing=>{if(current())options.onPrepared?.({...timing,...(noticeCancellationCount?{noticeCancellationCount}: {})});},synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone});
+  };
+  const cancel=()=>{canceled=true;answerGeneration++;receipt?.cancel();progressSpeech?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
   signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
   return {
     receipt(text){
@@ -94,7 +98,7 @@ export function createConversationSpeech(signal,create,options={}){
       notice.push(text);
       notice.finish(text).catch(()=>notice.cancel()).finally(()=>{prepared();progressBusy=false;});
     },
-    restart(){if(canceled)throw new Error('音声を中断しました');answer?.cancel();answer=null;discarded=spoken;},
+    restart(){if(canceled)throw new Error('音声を中断しました');answerGeneration++;answer?.cancel();answer=null;discarded=spoken;},
     push(delta){if(canceled)throw new Error('音声を中断しました');if(!delta)return;stopNotices();spoken+=delta;answerStarted=true;main().push(delta);},
     async finish(text){try{if(text.slice(discarded.length)){stopNotices();answerStarted=true;}await receiptDone;if(canceled)throw new Error('音声を中断しました');if(!text.startsWith(discarded))throw new Error('訂正音声の順序が不正です');await main().finish(text.slice(discarded.length));}finally{signal.removeEventListener('abort',cancel);}},
     cancel

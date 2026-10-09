@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {converse} from '../conversation.mjs';
 import {readResponseStream} from '../chatgpt-plan.mjs';
-const result=await converse({question:'こんにちは',groups:[],generate:async()=>({text:'{"action":"answer","text":"こんにちは。"}',timing:{tokenMs:1,headersMs:2,streamFirstDeltaMs:3,streamCompleteMs:4,totalMs:6,secret:'must not escape',companyText:'must not escape'}}),call:()=>{throw Error('unexpected MCP');}});
+const result=await converse({question:'REIについて教えて',groups:[],generate:async()=>({text:'{"action":"answer","text":"こんにちは。"}',timing:{tokenMs:1,headersMs:2,streamFirstDeltaMs:3,streamCompleteMs:4,totalMs:6,secret:'must not escape',companyText:'must not escape'}}),call:()=>{throw Error('unexpected MCP');}});
 assert.equal(result.timing.stages.length,1);assert.equal(result.timing.stages[0].kind,'model');assert.equal(result.timing.stages[0].transport.streamFirstDeltaMs,3);
 assert.ok(!JSON.stringify(result.timing).includes('こんにちは'));assert.ok(!JSON.stringify(result.timing).includes('escape'));
 let round=0;
@@ -20,5 +20,5 @@ await assert.rejects(converse({question:'非公開質問',groups:[],generate:asy
  assert.equal(error.conversationDiagnostics.failure,'model');assert.equal(error.conversationDiagnostics.stages[0].failed,true);
  const serialized=JSON.stringify(error.conversationDiagnostics);assert.ok(!serialized.includes('private'));assert.ok(!serialized.includes('非公開'));assert.ok(!serialized.includes('secret'));return true;
 });
-await assert.rejects(converse({question:'こんにちは',groups:[],generate:async()=>({text:'invalid response'}),call:()=>{throw Error('unexpected MCP');}}),error=>error.conversationDiagnostics.failure==='response_format');
+await assert.rejects(converse({question:'REIについて教えて',groups:[],generate:async()=>({text:'invalid response'}),call:()=>{throw Error('unexpected MCP');}}),error=>error.conversationDiagnostics.failure==='response_format');
 console.log('PASS failed conversations expose stage timings and fixed failure categories without messages or company data');

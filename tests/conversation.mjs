@@ -11,7 +11,8 @@ await assert.rejects(converse({...basic,generate:make([{action:'episode',uuid:'o
 const unverified=await converse({...basic,generate:make([{action:'search',query:'予定'},...Array.from({length:5},()=>({action:'answer',text:'断定します'}))])});assert.match(unverified.answer,/まだ確定/);
 const unavailable=await converse({...basic,call:async()=>({structuredContent:{uuid:'record-1',sources:[{traceable:false}]}}),generate:make([{action:'search',query:'予定'},{action:'source',uuid:'record-1'},{action:'answer',text:'断定します'}])});assert.match(unavailable.answer,/まだ確定/);
 calls=[];
-const hello=await converse({...basic,question:'こんにちは',groups:[],generate:make([{action:'answer',text:'こんにちは。'}])});assert.equal(hello.answer,'こんにちは。');assert.equal(calls.length,0);
+const hello=await converse({...basic,question:'こんにちは',groups:[],generate:()=>{throw Error('social turn must not call model');}});assert.equal(hello.answer,'こんにちは。何から進めましょうか。');assert.equal(hello.fastPath,'social');assert.equal(calls.length,0);
+const thanks=await converse({...basic,question:'ありがとうございます！',groups,generate:()=>{throw Error('social turn must not call model');},onDelta:text=>assert.equal(text,'どういたしまして。続きもお手伝いします。')});assert.equal(thanks.synapseRead,false);assert.equal(thanks.timing.stages.length,0);
 const draft=await converse({...basic,question:'資料作成を作業依頼にして',generate:make([{action:'work',instruction:'資料作成'}])});assert.equal(draft.task.status,'approval_pending');assert.deepEqual(submitted,['資料作成を作業依頼にして']);
 const controller=new AbortController();controller.abort();await assert.rejects(converse({...basic,signal:controller.signal,generate:make([])}),/中断/);
 assert.equal(submitted.length,1);

@@ -28,7 +28,7 @@ try{
  const prefetchStatus=await (await fetch(base+'/api?route=conversation%2Fprefetch',{headers:{cookie}})).json();
  assert.equal(prefetchStatus.state,'unconfigured');assert.equal(prefetchStatus.usable,false);assert.equal(prefetchStatus.records,undefined,'status must not expose cached company bodies');
  assert.equal((await fetch(base+'/conversation-stream.js')).status,200);assert.equal((await fetch(base+'/conversation-progress.js')).status,200);
- const response=await post('conversation/stream',{question:'こんにちは'});assert.match(response.headers.get('content-type'),/ndjson/);const result=await readConversationStream(response);assert.equal(result.answer,'こんにちは。試験の返答です。');
+ const response=await post('conversation/stream',{question:'REIについて教えて'});assert.match(response.headers.get('content-type'),/ndjson/);const result=await readConversationStream(response);assert.equal(result.answer,'こんにちは。試験の返答です。');
  const history=await (await fetch(base+'/api?route=conversation%2Fhistory',{headers:{cookie}})).json();assert.equal(history.turns.length,1);assert.equal(history.turns[0].answer,result.answer);
  assert.equal((await post('voice/local/stream',{text:'試験'},false)).status,401);
  assert.equal((await post('voice/local/stream',{text:''})).status,400);

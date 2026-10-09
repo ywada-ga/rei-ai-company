@@ -26,6 +26,14 @@ export function conversationReceipt(question){
   const subject=overviewSubject(question);
   return subject?`${subject}についてですね。まず概要から確認します。`:null;
 }
+// Exact social turns need neither company retrieval nor a model planning round.
+// Mixed questions still take the normal evidence path.
+export function immediateConversationReply(question){
+  const value=String(question).trim().replace(/[。！!\s]+$/u,'');
+  if(/^(こんにちは|こんばんは|おはよう(?:ございます)?)$/u.test(value))return value+'。何から進めましょうか。';
+  if(/^ありがとう(?:ございます)?$/u.test(value))return 'どういたしまして。続きもお手伝いします。';
+  return null;
+}
 // Decode only complete JSON string tokens. Never emit decisions or tool arguments.
 export function streamedAnswerPrefix(raw){
   const match=String(raw).match(/^\s*\{\s*(?:"decision"\s*:\s*\{\s*)?"action"\s*:\s*"answer"\s*,\s*"text"\s*:\s*"/);
@@ -121,6 +129,8 @@ async function converseInternal({question,context=[],groups=[],generate,call,sub
     if(!recordCache.has(key))recordCache.set(key,call(tool,args,signal));return recordCache.get(key);
   };
   if(signal?.aborted)throw new Error('会話を中断しました');
+  const immediate=immediateConversationReply(question);
+  if(immediate){onDelta?.(immediate);return {answer:immediate,spokenAnswer:immediate,synapseRead:false,sources:[],evidence,fastPath:'social',seconds:(Date.now()-started)/1000};}
   // Clear work requests can go straight to a reviewable draft; no model or agent wait.
   if(/(?:作業依頼にして|実行して|送信して|依頼して)/u.test(question)&&!/(?:しない|しなく|不要|やめ|とは|方法|教えて)/u.test(question)){
     const task=await submit(question);

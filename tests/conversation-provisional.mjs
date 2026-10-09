@@ -135,10 +135,16 @@ console.log('PASS early provisional sentence, delayed permission, invalid header
 console.log('PASS permission completion cannot revive rejected provisional text');
 
 {
- let tick=0;
- const s=await scenario({now:()=>at+tick++,generate:async(_messages,opts)=>{opts.onDelta?.(JSON.stringify(decision));return {text:JSON.stringify(decision),timing:{tokenMs:3,headersMs:4,streamFirstDeltaMs:2,streamCompleteMs:9,totalMs:13,privateText:'never expose',negative:-1}};}});
+ let tick=0,inputMessages;
+ const s=await scenario({now:()=>at+tick++,generate:async(_messages,opts)=>{inputMessages=_messages;opts.onDelta?.(JSON.stringify(decision));return {text:JSON.stringify(decision),timing:{tokenMs:3,headersMs:4,streamFirstDeltaMs:2,streamCompleteMs:9,totalMs:13,privateText:'never expose',negative:-1}};}});
  s.latest.resolve(result());const out=await s.pending,t=out.provisionalTiming;
  assert.ok(t.firstSentenceMs>=0&&t.permissionStartedMs>=t.firstSentenceMs&&t.permissionMs>=0);
+ assert.ok(t.modelFirstDeltaMs<=t.firstSentenceMs);
+ assert.equal(t.provisionalInputBytes,Buffer.byteLength(JSON.stringify(inputMessages)));
+ const input=JSON.parse(inputMessages[1].content);
+ assert.equal(t.provisionalRecordCount,input.records.length);
+ assert.equal(t.provisionalBodyChars,input.records.reduce((sum,r)=>sum+r.episode.content.length,0));
+ assert.ok(Object.entries(t).filter(([key])=>['provisionalInputBytes','provisionalRecordCount','provisionalBodyChars','modelFirstDeltaMs'].includes(key)).every(([,value])=>Number.isFinite(value)));
  assert.ok(t.modelCompletedMs>=t.firstSentenceMs);assert.equal(t.provisionalTransport.privateText,undefined);
  assert.deepEqual(Object.keys(t.provisionalTransport),['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs']);
  assert.ok(Object.values(t.provisionalTransport).every(Number.isFinite),'Only numeric provider timing leaves server');

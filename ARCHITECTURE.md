@@ -223,4 +223,8 @@ Daily additions use concurrent read-only scope survey and ledger retrieval. Both
 
 conversation-prefetch.mjsは利用者・役割・連携・選択棚で分離した本文コピーを既存SQLiteへ保存する。差分ストリームと保持本文の再取得を5分間隔で行い、前後のcatalog、完全性、期限を検証する。64件を超える本文の範囲はlimitedであり、先読みが会社全体を網羅すると保証しない。失敗・失効時は旧コピーを使用不能とする。状態APIに本文や原記録IDを出さない。
 
-これは先読みの第1工程。現行の回答経路はまだこの索引を使わず、暫定回答／最新確認／補足の配信は未統合。設計はPREFETCH_CONVERSATION_DESIGN.md、実測と稼働反映の留保はIMPLEMENTATION_STATUS.mdを参照。
+19:34以降はHub・画面・Qwenへ暫定／最新確認／補足／訂正を統合済み。利用対象は限定された概要・日次追加質問で、追加質問の先読みは未対応。設計はPREFETCH_CONVERSATION_DESIGN.md、実測と留保はIMPLEMENTATION_STATUS.mdを参照。
+
+## 暫定のモデル形式と時計
+
+暫定生成だけはrespond専用JSONでreason/queryを空に制約し、通常の作業判断形式とは分離する。累積デルタの最初の完成文と根拠IDを検証後、現行権限の確認を行う。要求起点のfirstSentenceMs、permissionStartedMs、modelCompletedMsと、所要permissionMs、数値だけのprovisionalTransportを返す。応答ヘッダーはモデル要求起点、streamFirstDeltaMs／streamCompleteMsはヘッダー受信後のストリーム起点なので、そのまま同一起点として比較しない。本文や任意providerメタデータは診断に含めない。

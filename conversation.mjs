@@ -120,6 +120,14 @@ function needsCompanyRead(question,context){
   if(companyFollowUp&&/(?:それ|その|今|最新|続き|続け|誰|いつ|どうな|担当|期限|もっと|詳し|具体|ほか|他に|理由|なぜ|要約|簡単|読み上げ|短く|確認)/u.test(question))return true;
   return companyQuestion.test(question);
 }
+// Only explicit, self-contained company overview questions supply a search
+// subject. General knowledge, follow-ups and REI runtime questions keep planning.
+export function directCompanyOverviewSubject(question){
+  const value=String(question).trim();
+  const subject=value.match(/^([^\n。！？!?]{2,60})について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u)?.[1];
+  if(!subject||/(?:REI|レイ|あなた)/iu.test(subject)||!needsCompanyRead(value,[]))return null;
+  return subject;
+}
 async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true,reviewEvidence=null,outlineCache=null,onProgress=null,additionCache=null,getProvisionalAnswer=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false,additionsRead=false,additions=null;const recordedNotes=[],recordCache=new Map();
   const verifiedIds=new Set();let reviewedAt=-1,review=null,pendingSearch=null;
@@ -251,7 +259,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     let emitted='';
     const canStream=(sourceRead&&(!readingSkill||reviewedAt===evidence.length)&&!pendingSearch)||(!searched&&!needsCompanyRead(question,context)&&(!groups.length||/(?:こんにちは|こんばんは|おはよう|物語|桃太郎|読み上げ|言い換え|書き換え|短く|REI|レイ)/iu.test(question)));
     // The user supplied an exact overview subject; search it without a planning round.
-    const directSubject=pendingSearch||(round===0&&readingSkill&&surveyed&&groups.length?(overviewSubject(question)||personWorkSubject(question)):null);pendingSearch=null;
+    const directSubject=pendingSearch||(round===0&&readingSkill&&surveyed&&groups.length?(directCompanyOverviewSubject(question)||overviewSubject(question)||personWorkSubject(question)):null);pendingSearch=null;
     const generated=directSubject?{text:JSON.stringify({action:'search',query:directSubject})}:await generate(messages,{signal,effort:/(比較|判断|検討|リスク|設計|原因|計画)/u.test(question)?'low':undefined,onDelta:canStream&&onDelta?raw=>{
       if(signal?.aborted)return;const prefix=streamedAnswerPrefix(raw);
       if(prefix.length>emitted.length&&prefix.startsWith(emitted)){onDelta(prefix.slice(emitted.length));emitted=prefix;}

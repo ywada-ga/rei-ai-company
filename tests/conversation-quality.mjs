@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import {converse,reviewedAnswerPrefix} from '../conversation.mjs';
+import {converse,reviewedAnswerPrefix,directCompanyOverviewSubject} from '../conversation.mjs';
 import {needsRecentEvidence,evidenceBodyContext} from '../load-synapse.mjs';
 assert.equal(needsRecentEvidence('杉山さんの作業内容教えて'),true);
 assert.equal(needsRecentEvidence('その人は？',[{question:'杉山さんの作業内容教えて'}]),true);
 const groups=[{id:'fixture',name:'共有'}];
+assert.equal(directCompanyOverviewSubject('Synapse Connectについて教えて'),'Synapse Connect');
+assert.equal(directCompanyOverviewSubject('シナプスコネクトについて教えてください！'),'シナプスコネクト');
+for(const q of ['量子力学について教えて','それについて教えて','REIの会社情報検索機能について教えて','Synapse Connectについて教えて。それと実行して','Synapse Connectとは？'])assert.equal(directCompanyOverviewSubject(q),null);
 const assess=(status,sourceIds,reason='',query='',text='')=>({action:'respond',status,sourceIds,reason,query,text});
 const fixture=()=>{
  let searches=0;const tools=[];
@@ -110,6 +113,24 @@ assert.equal(preflightAnswer.outlineReused,true);
 assert.equal(preflightAnswer.readingSkill.name,'load-synapse');
 assert.equal(preflight.preflight,false);
 console.log('PASS preflight consumes only structural metadata and answers in one model call after fresh body read');
+for(const question of ['Synapse Connectについて教えて','社内制度について教えてください']){
+ const calls=[];let generations=0;
+ const answer=await converse({question,groups,call:async(tool,args)=>{
+  calls.push({tool,args});assert.deepEqual(args.group_ids,['fixture']);
+  if(tool==='survey_space')return {structuredContent:{coverage:{complete:true}}};
+  if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'direct-fact',group_id:'fixture'}]}};
+  if(tool==='get_fact_source')return {structuredContent:{sources:[{traceable:true,group_id:'fixture',body:'今回取得した対象の概要本文。'}]}};
+  throw Error('unexpected direct lookup');
+ },generate:async(messages,o)=>{
+  assert.equal(o.phase,'evidence_answer','No query-planning model before fresh body');generations++;
+  assert.ok(calls.some(c=>c.tool==='get_fact_source'));
+  return {text:JSON.stringify(assess('supported',['direct-fact'],'','','取得本文の概要です。'))};
+ }});
+ assert.equal(generations,1);assert.equal(calls.filter(c=>c.tool==='search_memory_facts').length,1);
+ assert.equal(calls.find(c=>c.tool==='search_memory_facts').args.query,question.split('について')[0]);
+ assert.equal(answer.synapseRead,true);assert.equal(answer.evidenceStatus,'supported');
+}
+console.log('PASS explicit company overview skips only query planning, preserving scoped search and fresh source review');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','未確定の部分回答')),ids),'');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','確認できた部分回答')),ids,{canRetry:false}),'確認できた部分回答');
 console.log('PASS a partial draft cannot leak before a possible retry');

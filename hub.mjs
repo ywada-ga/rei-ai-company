@@ -635,5 +635,5 @@ async function dailyBackup() {
 }
 setTimeout(()=>void dailyBackup(),60000).unref();
 setInterval(()=>void dailyBackup(),3600000).unref();
-setInterval(()=>void conversationPrefetch.tick().catch(()=>{}),30000).unref();
+setInterval(()=>{if(!conversationBusy)void conversationPrefetch.tick().catch(()=>{});},30000).unref();
 setInterval(()=>{try{sweep(db);scanKnowledgeIfDue(db,reiVersion);void sendPendingHuman(db,root).catch(e=>console.error('REI Chatwork送信:',e.message));void pollChatwork(db,root).catch(e=>console.error('REI Chatwork取得:',e.message));}catch(e){console.error('REI background:',e.message);}},30000).unref();

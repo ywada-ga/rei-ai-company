@@ -178,3 +178,14 @@ for(const invalid of [false,true]){
  assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Late permission cannot revive invalid or finished supplement');
 }
 console.log('PASS supplemental sentence before completion, permission gate, correction and late callback isolation');
+{
+ const model=defer(),controller=new AbortController();let stream;
+ const s=await scenario({signal:controller.signal,generate:async(_messages,opts)=>{
+  if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};stream=opts.onDelta;return model.promise;
+ }});
+ s.latest.resolve({...result(),spokenAnswer:'開発室が窓口です。'});await settle();
+ controller.abort();await assert.rejects(s.pending,/中断/);const count=s.events.length;
+ stream(JSON.stringify({...decision,text:'開発室が窓口です。'}));model.resolve({text:JSON.stringify(decision)});await settle();
+ assert.equal(s.events.length,count,'Abort-ignoring supplement cannot delay cancellation or emit later');
+}
+console.log('PASS supplement cancellation does not await an abort-ignoring model');

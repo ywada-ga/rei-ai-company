@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export const LOCAL_RECEIPT_TEXT='はい。';
+const cancelledSpeech=()=>Object.assign(new Error('音声を中断しました'),{code:'VOICE_CANCELLED'});
 
 export class LocalVoice {
   constructor(root,{python=process.env.REI_LOCAL_VOICE_PYTHON||path.join(root,'../local-voice/python/bin/python3'),model=process.env.REI_LOCAL_VOICE_MODEL||path.join(root,'../local-voice/qwen-model'),timeoutMs=120000}={}) {
@@ -45,18 +46,18 @@ export class LocalVoice {
   }
   async synthesize(text,{signal,cancelSignal,onChunk}={}){
     if(typeof text!=='string'||!text.trim()||Array.from(text).length>500)throw Object.assign(new Error('音声の文章は500文字以内にしてください'),{status:400});
-    if(signal?.aborted||cancelSignal?.aborted)throw new Error('音声を中断しました');
+    if(signal?.aborted)throw new Error('音声を中断しました');if(cancelSignal?.aborted)throw cancelledSpeech();
     if(text===LOCAL_RECEIPT_TEXT&&onChunk&&this.receiptCache){
-      for(const chunk of this.receiptCache.chunks){if(signal?.aborted||cancelSignal?.aborted)throw new Error('音声を中断しました');onChunk({...chunk});}
+      for(const chunk of this.receiptCache.chunks){if(signal?.aborted)throw new Error('音声を中断しました');if(cancelSignal?.aborted)throw cancelledSpeech();onChunk({...chunk});}
       return {...this.receiptCache.result,preparationMs:0,firstGeneratedSeconds:0,totalSeconds:0,cached:true};
     }
     if(onChunk&&Object.values(CONVERSATION_PROGRESS).includes(text)&&this.receiptPreparing)await this.receiptPreparing;
     const cachedNotice=onChunk?this.noticeCache.get(text):null;
-    if(cachedNotice){for(const chunk of cachedNotice.chunks){if(signal?.aborted||cancelSignal?.aborted)throw new Error('音声を中断しました');onChunk({...chunk});}return {...cachedNotice.result,preparationMs:0,firstGeneratedSeconds:0,totalSeconds:0,cached:true};}
+    if(cachedNotice){for(const chunk of cachedNotice.chunks){if(signal?.aborted)throw new Error('音声を中断しました');if(cancelSignal?.aborted)throw cancelledSpeech();onChunk({...chunk});}return {...cachedNotice.result,preparationMs:0,firstGeneratedSeconds:0,totalSeconds:0,cached:true};}
     if(this.busy)throw Object.assign(new Error('ローカル音声は別の返答を作成中です'),{status:409});
     this.busy=true;
     try{
-      const prepareStarted=performance.now();await this.start();const preparationMs=Math.round(performance.now()-prepareStarted);if(signal?.aborted||cancelSignal?.aborted)throw new Error('音声を中断しました');
+      const prepareStarted=performance.now();await this.start();const preparationMs=Math.round(performance.now()-prepareStarted);if(signal?.aborted)throw new Error('音声を中断しました');if(cancelSignal?.aborted)throw cancelledSpeech();
       return await new Promise((resolve,reject)=>{
         const id=crypto.randomUUID();let timer,chunkCount=0,cancelling=false;const receiptChunks=[],noticeChunks=[];
         const abort=()=>this.close('client_abort');
@@ -66,7 +67,7 @@ export class LocalVoice {
         const finish=(error,result)=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);cancelSignal?.removeEventListener('abort',cancel);this.pending=null;this.reject=null;error?reject(error):resolve(result);};
         this.reject=error=>finish(error);
         this.pending={id,resolve:message=>{
-          if(message.type==='cancelled'){if(!cancelling)return this.close('invalid_chunk');return finish(new Error('音声を中断しました'));}
+          if(message.type==='cancelled'){if(!cancelling)return this.close('invalid_chunk');return finish(cancelledSpeech());}
           if(onChunk&&message.type==='chunk'){
             if(message.index!==chunkCount||typeof message.wav!=='string'||message.wav.length>2000000||!Number.isFinite(message.audioSeconds)||message.audioSeconds<=0||message.audioSeconds>30||!Number.isInteger(message.sampleRate)||message.sampleRate<8000||message.sampleRate>192000)return this.close('invalid_chunk');
             chunkCount++;const chunk={index:message.index,wav:message.wav,sampleRate:message.sampleRate,audioSeconds:message.audioSeconds,firstGeneratedSeconds:message.firstGeneratedSeconds};if(text===LOCAL_RECEIPT_TEXT)receiptChunks.push({...chunk});if(Object.values(CONVERSATION_PROGRESS).includes(text))noticeChunks.push({...chunk});if(!cancelling)onChunk(chunk);return;

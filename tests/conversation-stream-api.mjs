@@ -12,7 +12,7 @@ writeFileSync(path.join(tmp,'package.json'),JSON.stringify({version:'0.5.39',typ
 writeFileSync(path.join(tmp,'public/package.json'),JSON.stringify({type:'module'}));
 writeFileSync(path.join(tmp,'model.safetensors'),'fixture');
 writeFileSync(path.join(tmp,'local-chat-worker.py'),`const readline=require('node:readline');console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);console.log(JSON.stringify({id:r.id,text:JSON.stringify({action:'answer',text:'こんにちは。試験の返答です。'})}));});`);
-writeFileSync(path.join(tmp,'local-tts-worker.py'),`const readline=require('node:readline');console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);console.log(JSON.stringify({id:r.id,type:'chunk',index:0,wav:'UklGRg==',sampleRate:24000,audioSeconds:0.5}));setTimeout(()=>console.log(JSON.stringify({id:r.id,type:'done',chunkCount:1,audioSeconds:0.5,totalSeconds:0.05})),50);});`);
+writeFileSync(path.join(tmp,'local-tts-worker.py'),`const readline=require('node:readline');let pending;console.log(JSON.stringify({type:'ready',cancelSupported:true}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);const emit=value=>console.log(JSON.stringify({id:r.id,...value}));if(r.type==='cancel'){if(pending?.id!==r.id)throw Error('wrong cancellation');clearTimeout(pending.timer);pending=null;setTimeout(()=>emit({type:'cancelled'}),25);return;}if(pending)throw Error('overlap');emit({type:'chunk',index:0,wav:'UklGRg==',sampleRate:24000,audioSeconds:0.5});pending={id:r.id,timer:setTimeout(()=>{pending=null;emit({type:'done',chunkCount:1,audioSeconds:0.5,totalSeconds:0.05});},r.text==='long notice'?1000:50)};});`);
 const reservation=createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r));const port=reservation.address().port;await new Promise(r=>reservation.close(r));
 // Spawn the real Hub with fixture-only data and a model worker that never calls external AI.
 const child=spawn(process.execPath,[path.join(tmp,'hub.mjs')],{cwd:tmp,env:{...process.env,REI_PORT:String(port),REI_DATA_DIR:tmp,REI_LOCAL_CHAT_PYTHON:process.execPath,REI_LOCAL_CHAT_MODEL:tmp,REI_LOCAL_VOICE_PYTHON:process.execPath,REI_LOCAL_VOICE_MODEL:tmp},stdio:['ignore','pipe','pipe']});
@@ -35,6 +35,22 @@ try{
  assert.equal((await post('voice/local/stream',{text:'試験'},false)).status,401);
  assert.equal((await post('voice/local/stream',{text:''})).status,400);
  const audio=await post('voice/local/stream',{text:'試験'});assert.match(audio.headers.get('content-type'),/ndjson/);let events='';let firstAt=null,doneAt=null;for await(const bytes of audio.body){events+=new TextDecoder().decode(bytes);if(firstAt===null&&events.includes('"type":"chunk"'))firstAt=performance.now();if(events.includes('"type":"done"'))doneAt=performance.now();}assert.ok(firstAt!==null&&doneAt>firstAt,'audio chunk precedes completion');const audioEvents=events.trim().split('\n').map(JSON.parse);assert.deepEqual(audioEvents.map(e=>e.type),['chunk','done']);assert.equal(audioEvents[1].wav,undefined);assert.equal(audioEvents[1].chunkCount,1);
+
+ assert.equal((await post('voice/local/cancel',{requestId:'00000000-0000-0000-0000-000000000001'},false)).status,401);
+ assert.equal((await post('voice/local/cancel',{requestId:'invalid'})).status,400);
+ assert.equal((await post('voice/local/stream',{text:'bad id',requestId:'invalid'})).status,400);
+ const invitation=await (await post('users/invite',{role:'admin'})).json();
+ assert.equal((await post('setup/complete',{token:invitation.token,username:'other-admin',password:'other-fixture-password'},false)).status,201);
+ const otherLogin=await post('auth/login',{username:'other-admin',password:'other-fixture-password'},false);const otherCookie=otherLogin.headers.get('set-cookie').split(';')[0];
+ const requestId='00000000-0000-0000-0000-000000000001';
+ const notice=await post('voice/local/stream',{text:'long notice',requestId});
+ const foreignCancel=await fetch(base+'/api?route=voice%2Flocal%2Fcancel',{method:'POST',headers:{'content-type':'application/json',cookie:otherCookie},body:JSON.stringify({requestId})});assert.equal(foreignCancel.status,404,'other authorized users must not cancel this stream');
+ assert.equal((await post('voice/local/stream',{text:'overlap'})).status,409);
+ assert.equal((await post('voice/local/cancel',{requestId})).status,200);
+ const noticeEvents=(await notice.text()).trim().split('\n').map(JSON.parse);assert.equal(noticeEvents.at(-1).type,'cancelled');assert.ok(!noticeEvents.some(e=>e.type==='done'));
+ assert.equal((await post('voice/local/cancel',{requestId})).status,404,'completed requests must be removed');
+ const recoveredEvents=(await (await post('voice/local/stream',{text:'after cancellation'})).text()).trim().split('\n').map(JSON.parse);
+ assert.equal(recoveredEvents.at(-1).type,'done');assert.equal(recoveredEvents.at(-1).workerGeneration,audioEvents.at(-1).workerGeneration,'API cancellation reuses the worker');
  const emptyScope=await (await fetch(base+'/api?route=conversation%2Fscope',{headers:{cookie}})).json();assert.equal(emptyScope.groups.length,0);
  assert.equal((await post('conversation/scope',{groups:[{id:'invented',name:'未確認'}]})).status,400);
  const fixtureDb=new DatabaseSync(path.join(tmp,'rei.sqlite'));

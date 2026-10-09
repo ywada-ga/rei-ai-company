@@ -35,6 +35,8 @@ const reiVersion=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8'))
 const db=openStorage(root);
 const liveVoiceSessions=new LiveVoiceSessions();
 const localVoice=new LocalVoice(root);
+const localVoiceStreams=new Map();
+const validVoiceRequestId=id=>typeof id==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id);
 const localChat=new LocalChat(root),conversationMcp=new ConversationMcp(root);
 const conversationOutlines=new Map();
 const conversationAdditionCursors=new Map();
@@ -330,14 +332,24 @@ async function api(req,res,route) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'音声会話は所有者・管理者が利用できます');
     if(route==='voice/local/status'&&req.method==='GET')return send(res,200,localVoice.status());
     if(route==='voice/local/prepare'&&req.method==='POST'){await localVoice.start();await localVoice.prepareReceipt();return send(res,200,localVoice.status());}
+    if(route==='voice/local/cancel'&&req.method==='POST'){
+      const input=await body(req);if(!validVoiceRequestId(input.requestId))return error(res,400,'音声の要求IDが不正です');
+      const pending=localVoiceStreams.get(JSON.stringify([user.id,input.requestId]));
+      if(!pending)return error(res,404,'中断する音声が見つかりません');
+      pending.abort();return send(res,200,{accepted:true});
+    }
     if(route==='voice/local/stream'&&req.method==='POST'){
       const input=await body(req);if(typeof input.text!=='string'||!input.text.trim()||Array.from(input.text).length>500)return error(res,400,'音声の文章は500文字以内にしてください');
+      if(input.requestId!==undefined&&!validVoiceRequestId(input.requestId))return error(res,400,'音声の要求IDが不正です');
       if(localVoice.status().busy)return error(res,409,'Qwenは別の音声を作成中です');
-      const controller=new AbortController();const abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
+      const controller=new AbortController(),cancelController=new AbortController();
+      const key=input.requestId===undefined?null:JSON.stringify([user.id,input.requestId]);
+      if(key)localVoiceStreams.set(key,cancelController);
+      const abort=()=>{if(!res.writableEnded)controller.abort();};res.once('close',abort);
       res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-accel-buffering':'no'});res.flushHeaders();
       const emit=event=>{if(!res.destroyed&&!controller.signal.aborted)res.write(JSON.stringify(event)+'\n');};
-      try{const result=await localVoice.synthesize(input.text,{signal:controller.signal,onChunk:chunk=>emit({type:'chunk',...chunk})});const {wav,...timing}=result;emit({type:'done',...timing});}
-      catch{emit({type:'error',message:'音声の配信を完了できませんでした'});}finally{res.off('close',abort);res.end();}
+      try{const result=await localVoice.synthesize(input.text,{signal:controller.signal,cancelSignal:cancelController.signal,onChunk:chunk=>emit({type:'chunk',...chunk})});const {wav,...timing}=result;emit({type:'done',...timing});}
+      catch(e){emit(e.code==='VOICE_CANCELLED'?{type:'cancelled'}:{type:'error',message:'音声の配信を完了できませんでした'});}finally{if(key&&localVoiceStreams.get(key)===cancelController)localVoiceStreams.delete(key);res.off('close',abort);res.end();}
       return;
     }
     if(route==='voice/local/speak'&&req.method==='POST'){

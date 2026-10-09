@@ -1,5 +1,17 @@
 import {speechChunks} from './voice.js';
 import {validProgressText} from './conversation-progress.js';
+// The cancellation POST asks the server to stop generation. Keep reading the
+// original stream until its acknowledgement, so the next request stays serial.
+export async function requestLocalVoiceStream(text,signal,cancelSignal,{fetch:send=globalThis.fetch,makeId=()=>globalThis.crypto.randomUUID()}={}){
+  const requestId=makeId();let responsePromise;
+  const cancel=()=>{void responsePromise.then(response=>{if(response.ok)return send('/api?route=voice%2Flocal%2Fcancel',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({requestId}),signal});}).catch(()=>{});};
+  responsePromise=send('/api?route=voice%2Flocal%2Fstream',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,requestId}),signal});
+  cancelSignal?.addEventListener('abort',cancel,{once:true});if(cancelSignal?.aborted)cancel();
+  const releaseCancellation=()=>cancelSignal?.removeEventListener('abort',cancel);
+  try{const response=await responsePromise;return {ok:response.ok,status:response.status,body:response.body,releaseCancellation};}
+  catch(error){releaseCancellation();throw error;}
+}
+
 export async function playLocalVoice(text,signal,request,{AudioClass=globalThis.Audio,urls=globalThis.URL}={}) {
   const result=await request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text}),signal});
   return playVoiceAudio(result,signal,{AudioClass,urls});
@@ -38,13 +50,13 @@ export async function playLocalReply(text,signal,request,options={}) {
 // Serialize synthesis, but let the next phrase prepare while the current one plays.
 export function createLocalSpeechStream(signal,request,options={}){
   const controller=new AbortController();let text='',pending='',synthesis=Promise.resolve(),playback=Promise.resolve(),failure=null;
-  const playbackController=new AbortController();
+  const playbackController=new AbortController(),noticeController=new AbortController();let noticeStopped=false;
   const abort=()=>{controller.abort();playbackController.abort();};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
-  const chunkPlayer=options.streamRequest?createChunkPlayer(playbackController.signal,options):null;options={...options,chunkPlayer,playbackSignal:playbackController.signal};
+  const chunkPlayer=options.streamRequest?createChunkPlayer(playbackController.signal,options):null;options={...options,chunkPlayer,playbackSignal:playbackController.signal,cancelSignal:noticeController.signal};
   const enqueue=phrase=>{
     if(!phrase.trim()||controller.signal.aborted)return;
     const clock=options.now||(()=>performance.now()),queuedAt=clock();let waits;
-    const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');return options.streamRequest?playChunkedVoice(phrase,controller.signal,options):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{options.onPrepared?.({characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
+    const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');if(noticeStopped)return {cancelled:true};return options.streamRequest?playChunkedVoice(phrase,controller.signal,options):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{options.onPrepared?.({characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
     playback=playback.then(async()=>{const result=await audio;if(!options.streamRequest&&!playbackController.signal.aborted){await options.playbackReady;if(!playbackController.signal.aborted)try{await playVoiceAudio(result,playbackController.signal,options);}catch(error){if(!playbackController.signal.aborted)throw error;}}});
     audio.catch(error=>{failure=error;controller.abort();});playback.catch(error=>{failure=error;controller.abort();});
@@ -53,8 +65,8 @@ export function createLocalSpeechStream(signal,request,options={}){
   return {
     push(delta){if(failure)throw failure;if(controller.signal.aborted)throw new Error('音声を中断しました');text+=delta;pending+=delta;flush(false);},
     async finish(answer){if(!answer.startsWith(text))throw new Error('途中の返答と完了した返答が一致しません');this.push(answer.slice(text.length));flush(true);try{await playback;if(chunkPlayer&&!playbackController.signal.aborted)await chunkPlayer.finish();if(failure)throw failure;}finally{chunkPlayer?.cancel();signal.removeEventListener('abort',abort);}},
-    // Drain the active synthesis response; aborting it would restart the Qwen worker.
-    stopPlayback(){playbackController.abort();chunkPlayer?.cancel();},
+    // Stop notice generation without closing the HTTP stream or killing Qwen.
+    stopPlayback(){noticeStopped=true;noticeController.abort();playbackController.abort();chunkPlayer?.cancel();},
     cancel(){abort();chunkPlayer?.cancel();signal.removeEventListener('abort',abort);}
   };
 }
@@ -123,8 +135,8 @@ export function createChunkPlayer(signal,{context=voiceContext,onPlaying=()=>{},
 
 async function playChunkedVoice(text,signal,options){
   const player=options.chunkPlayer;let index=0,done=null,pending='';
-  const response=await options.streamRequest(text,signal);
-  if(!response.ok||!response.body)throw new Error('Qwen音声の配信を開始できませんでした');
+  const response=await options.streamRequest(text,signal,options.cancelSignal);
+  if(!response.ok||!response.body){response.releaseCancellation?.();throw new Error('Qwen音声の配信を開始できませんでした');}
   const reader=response.body.getReader(),decoder=new TextDecoder();
   const consume=async line=>{
     if(!line.trim())return;
@@ -133,6 +145,8 @@ async function playChunkedVoice(text,signal,options){
     if(item.type==='chunk'){
       if(item.index!==index++||typeof item.wav!=='string'||item.wav.length>2000000)throw new Error('音声片が不正です');
       try{await player.push(item.wav);}catch(error){if(!options.playbackSignal?.aborted)throw error;}
+    }else if(item.type==='cancelled'&&options.cancelSignal?.aborted){
+      done={cancelled:true};
     }else if(item.type==='done'){
       if(!index||item.chunkCount!==index)throw new Error('音声片が不足しています');done=item;
     }else throw new Error('音声の配信を完了できませんでした');
@@ -140,5 +154,5 @@ async function playChunkedVoice(text,signal,options){
   try{
     while(true){const part=await reader.read();if(part.done)break;pending+=decoder.decode(part.value,{stream:true});if(pending.length>2200000)throw new Error('音声片が大きすぎます');let newline;while((newline=pending.indexOf('\n'))>=0){await consume(pending.slice(0,newline));pending=pending.slice(newline+1);}}
     pending+=decoder.decode();await consume(pending);if(!done)throw new Error('音声配信が途中で終了しました');return done;
-  }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  }finally{response.releaseCancellation?.();await reader.cancel().catch(()=>{});reader.releaseLock();}
 }

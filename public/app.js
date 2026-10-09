@@ -1,5 +1,5 @@
 import {readConversationStream} from './conversation-stream.js';
-import {playLocalVoice,playLocalReply,createLocalSpeechStream,createConversationSpeech,unlockLocalVoice} from './local-voice.js';
+import {requestLocalVoiceStream,playLocalVoice,playLocalReply,createLocalSpeechStream,createConversationSpeech,unlockLocalVoice} from './local-voice.js';
 import { VoiceConversation, createTurnLatency, spokenText, speechChunks } from './voice.js';
 import { MCP_PRESETS } from './mcp-presets.js';
 const $ = id => document.getElementById(id);
@@ -875,7 +875,7 @@ $('logout').onclick=async()=>{await request('/api/auth/logout',{method:'POST'});
 tick();setInterval(tick,1000);refresh();setInterval(()=>{if(!document.hidden&&$('auth-screen').classList.contains('hidden'))refresh();},5000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&$('auth-screen').classList.contains('hidden'))void refresh();});
 
-async function streamVoiceRequest(text,signal){
-  const response=await fetch('/api?route=voice%2Flocal%2Fstream',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text}),signal});
+async function streamVoiceRequest(text,signal,cancelSignal){
+  const response=await requestLocalVoiceStream(text,signal,cancelSignal);
   if(response.status===401)showAuth();return response;
 }

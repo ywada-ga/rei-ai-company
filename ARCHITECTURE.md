@@ -241,3 +241,7 @@ conversation-prefetch.mjsは利用者・役割・連携・選択棚で分離し�
 ## 実行中の権限一覧要求（2026-10-09 23:13）
 
 catalogは認証runtimeをWeakMapのキーとし、連携名ごとに未完了Promiseだけを共有する。完了・失敗で削除し、次の確認は新しいlist_groupsを呼ぶ。各呼出元へstructuredCloneで独立結果を渡す。別連携・認証runtime置換を跨ぐ再利用はしない。権限一覧のTTLキャッシュや確認省略ではない。
+
+## 権限一覧の待ち時間の診断（2026-10-09 23:43）
+
+catalogは呼出元ごとにconnectMs（runtime準備）、waitMs（準備後から結果まで）、totalMs、joined（実行中要求への合流）だけを付ける。合流後の待ち時間は元のRPC全時間ではない。Hubは暫定経路のsnapshot/permission別にcatalogChecksとして回答の数値診断へ渡す。連携名・利用者・棚ID・本文・認証・要求内容は含めない。失敗時の値は返さず、欠落を0と解釈しない。

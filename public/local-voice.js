@@ -56,7 +56,7 @@ export function createLocalSpeechStream(signal,request,options={}){
   const enqueue=phrase=>{
     if(!phrase.trim()||controller.signal.aborted)return;
     const clock=options.now||(()=>performance.now()),queuedAt=clock();let waits;
-    const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');if(noticeStopped)return {cancelled:true};return options.streamRequest?playChunkedVoice(phrase,controller.signal,options):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{options.onPrepared?.({characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
+    const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');if(noticeStopped)return {cancelled:true};return options.streamRequest?playChunkedVoice(phrase,controller.signal,options):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{options.onPrepared?.({... (result.noticeGenerationCancelled?{noticeGenerationCancelled:true}:{}),characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
     playback=playback.then(async()=>{const result=await audio;if(!options.streamRequest&&!playbackController.signal.aborted){await options.playbackReady;if(!playbackController.signal.aborted)try{await playVoiceAudio(result,playbackController.signal,options);}catch(error){if(!playbackController.signal.aborted)throw error;}}});
     audio.catch(error=>{failure=error;controller.abort();});playback.catch(error=>{failure=error;controller.abort();});
@@ -73,24 +73,24 @@ export function createLocalSpeechStream(signal,request,options={}){
 
 // Speak the receipt first; it never triggers the meaningful answer onset callback.
 export function createConversationSpeech(signal,create,options={}){
-  let receipt=null,answer=null,received=false,answerStarted=false,canceled=false,spoken='',discarded='';
+  let receipt=null,answer=null,received=false,answerStarted=false,canceled=false,spoken='',discarded='',noticeCancellationCount=0;
   let receiptDone=Promise.resolve(),receiptGenerated=Promise.resolve();
   let progressSpeech=null,progressBusy=false,progressGenerated=Promise.resolve();
   const stopNotices=()=>{receipt?.stopPlayback?.();progressSpeech?.stopPlayback?.();};
-  const main=()=>answer||(answer=create({onPlaying:()=>{progressSpeech?.cancel();options.onPlaying?.();},onPrepared:options.onPrepared,synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone}));
+  const main=()=>answer||(answer=create({onPlaying:()=>{progressSpeech?.cancel();options.onPlaying?.();},onPrepared:timing=>options.onPrepared?.({...timing,...(noticeCancellationCount?{noticeCancellationCount}: {})}),synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone}));
   const cancel=()=>{canceled=true;receipt?.cancel();progressSpeech?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
   signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
   return {
     receipt(text){
       if(canceled||received||answerStarted)return;
       let prepared;receiptGenerated=new Promise(resolve=>prepared=resolve);
-      text='はい。';received=true;receipt=create({onPlaying:options.onReceiptPlaying,onPrepared:prepared});receipt.push(text);
+      text='はい。';received=true;receipt=create({onPlaying:options.onReceiptPlaying,onPrepared:timing=>{if(timing?.noticeGenerationCancelled)noticeCancellationCount++;prepared();}});receipt.push(text);
       receiptDone=receipt.finish(text).catch(()=>{receipt.cancel();}).finally(prepared);
     },
     progress(text){
       if(canceled||answerStarted||progressBusy||!validProgressText(text))return;
       let prepared;progressGenerated=new Promise(resolve=>prepared=resolve);progressBusy=true;
-      const notice=progressSpeech=create({onPlaying:options.onReceiptPlaying,onPrepared:prepared,synthesisReady:receiptGenerated,playbackReady:receiptDone});
+      const notice=progressSpeech=create({onPlaying:options.onReceiptPlaying,onPrepared:timing=>{if(timing?.noticeGenerationCancelled)noticeCancellationCount++;prepared();},synthesisReady:receiptGenerated,playbackReady:receiptDone});
       notice.push(text);
       notice.finish(text).catch(()=>notice.cancel()).finally(()=>{prepared();progressBusy=false;});
     },
@@ -146,7 +146,7 @@ async function playChunkedVoice(text,signal,options){
       if(item.index!==index++||typeof item.wav!=='string'||item.wav.length>2000000)throw new Error('音声片が不正です');
       try{await player.push(item.wav);}catch(error){if(!options.playbackSignal?.aborted)throw error;}
     }else if(item.type==='cancelled'&&options.cancelSignal?.aborted){
-      done={cancelled:true};
+      done={cancelled:true,noticeGenerationCancelled:true};
     }else if(item.type==='done'){
       if(!index||item.chunkCount!==index)throw new Error('音声片が不足しています');done=item;
     }else throw new Error('音声の配信を完了できませんでした');

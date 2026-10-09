@@ -51,7 +51,7 @@ console.log('PASS first answer delta silences notices, drains synthesis and pres
 // Use the production HTTP transport: cancellation acceptance must not release
 // answer generation until the original stream acknowledges that it stopped.
 const {requestLocalVoiceStream}=await import('../public/local-voice.js');
-sources=[];controller=new AbortController();let noticeWire,cancelBody,cancelAccepted=false,softAnswerRequests=0,softRequestNumber=0,noticeHttpSignal;
+sources=[];controller=new AbortController();let softMeasured,noticeWire,cancelBody,cancelAccepted=false,softAnswerRequests=0,softRequestNumber=0,noticeHttpSignal;
 const softFetch=async(url,input)=>{
  const body=JSON.parse(input.body);
  if(url.endsWith('cancel')){cancelBody=body;cancelAccepted=true;return new Response(JSON.stringify({accepted:true}));}
@@ -63,7 +63,7 @@ const softFetch=async(url,input)=>{
  return new Response([JSON.stringify({type:'chunk',index:0,wav}),JSON.stringify({type:'done',chunkCount:1})].join('\n')+'\n');
 };
 const softTransport=(text,signal,cancelSignal)=>requestLocalVoiceStream(text,signal,cancelSignal,{fetch:softFetch,makeId:()=>`00000000-0000-0000-0000-${String(++softRequestNumber).padStart(12,'0')}`});
-const softSpeech=createConversationSpeech(controller.signal,options=>createLocalSpeechStream(controller.signal,()=>{}, {...options,context,streamRequest:softTransport}));
+const softSpeech=createConversationSpeech(controller.signal,options=>createLocalSpeechStream(controller.signal,()=>{}, {...options,context,streamRequest:softTransport}),{onPrepared:timing=>softMeasured=timing});
 softSpeech.progress('資料の本文を確認しています。');await tick();await tick();
 softSpeech.push('本回答です。');await tick();await tick();
 assert.equal(cancelAccepted,true);assert.deepEqual(cancelBody,{requestId:'00000000-0000-0000-0000-000000000001'});
@@ -71,7 +71,7 @@ assert.equal(noticeHttpSignal.aborted,false,'soft cancellation keeps the origina
 assert.equal(softAnswerRequests,0,'acceptance alone does not permit overlapping generation');assert.equal(sources[0].stopped,true);
 noticeWire.enqueue(new TextEncoder().encode(JSON.stringify({type:'cancelled'})+'\n'));noticeWire.close();
 await tick();await tick();assert.equal(softAnswerRequests,1);assert.equal(sources.length,2);
-const softDone=softSpeech.finish('本回答です。');sources[1].onended();await softDone;
+const softDone=softSpeech.finish('本回答です。');sources[1].onended();await softDone;assert.equal(softMeasured.noticeCancellationCount,1);
 // Do not generate a notice whose prerequisite is still pending after it stops.
 let releaseStoppedGate,stoppedRequests=0;
 const stoppedGate=new Promise(r=>releaseStoppedGate=r);

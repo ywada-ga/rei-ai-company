@@ -69,7 +69,7 @@ export async function runProvisionalConversation({question,scope,getSnapshot,aut
       // Start the permission gate when a sentence is ready, overlapping it with
       // remaining generation. Do not authorize too early in a slow generation.
       const releasePrefix=()=>{
-        if(initial||!pendingPrefix||!permissionReady||!alive()||latestSettled||!validSnapshot(snapshot,scope,now(),maxAgeMs))return;
+        if(provisionalFinished||initial||!pendingPrefix||!permissionReady||!alive()||latestSettled||!validSnapshot(snapshot,scope,now(),maxAgeMs))return;
         const prefix=pendingPrefix,selected=records.filter(r=>prefix.sourceIds.includes(r.episode.uuid));
         initial={text:prefix.text,sources:selected.map(r=>({uuid:r.episode.uuid,groupId:r.episode.group_id,hash:fingerprint(r.episode.content)})),checkedAt:snapshot.checkedAt,valid:false};
         timing.provisionalMs=now()-started;

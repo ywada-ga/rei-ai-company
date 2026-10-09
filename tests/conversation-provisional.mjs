@@ -124,3 +124,12 @@ for(const update of [{sourceIds:['unread-source']},{sourceIds:[episode.uuid,epis
  model.resolve({text:JSON.stringify(decision)});await settle();assert.deepEqual(s.events.map(e=>e.type),['answer','done'],'Late permission/model cannot release obsolete provisional');
 }
 console.log('PASS early provisional sentence, delayed permission, invalid header/final and latest-wins races');
+
+{
+ const model=defer(),gate=defer();let stream;
+ const s=await scenario({authorize:()=>gate.promise,generate:(_messages,opts)=>{stream=opts.onDelta;return model.promise;}});
+ stream(JSON.stringify(decision));await settle();model.resolve({text:'malformed final'});await settle();gate.resolve(true);await settle();
+ assert.equal(s.events.length,0,'Late permission cannot revive a failed provisional generation');
+ s.latest.resolve(result());await s.pending;assert.equal(s.events[0].type,'answer');
+}
+console.log('PASS permission completion cannot revive rejected provisional text');

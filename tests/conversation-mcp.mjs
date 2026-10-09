@@ -24,3 +24,21 @@ await assert.rejects(history.call(integration,'get_updates',{group_ids:['g'],gro
 await history.call(integration,'get_updates',{group_ids:['g'],group_id:'g',advance:false,start:'beginning'});
 assert.equal(sent.advance,false);assert.equal(sent.group_ids,undefined);
 console.log('PASS update reads require explicit readonly mode and selected group; no bookmark writes');
+
+const catalogs=new ConversationMcp('.');let finishCatalog,catalogCalls=0;
+const runtime={callTool:async()=>{catalogCalls++;return new Promise(r=>finishCatalog=r);}};
+catalogs.connect=async()=>runtime;
+const simultaneous=[catalogs.catalog(integration),catalogs.catalog(integration),catalogs.catalog(integration)];
+await new Promise(setImmediate);assert.equal(catalogCalls,1);
+finishCatalog({structuredContent:{groups:[{group_id:'fixture'}]}});
+const shared=await Promise.all(simultaneous);shared[0].structuredContent.groups.length=0;
+assert.equal(shared[1].structuredContent.groups.length,1,'callers cannot mutate another permission result');
+const freshCatalog=catalogs.catalog(integration);await new Promise(setImmediate);assert.equal(catalogCalls,2,'subsequent permission check must fetch fresh');finishCatalog({structuredContent:{groups:[]}});assert.equal((await freshCatalog).structuredContent.groups.length,0);
+let rejectedCalls=0;runtime.callTool=async()=>{rejectedCalls++;throw Error('catalog failure');};
+assert.ok((await Promise.allSettled([catalogs.catalog(integration),catalogs.catalog(integration)])).every(r=>r.status==='rejected'));assert.equal(rejectedCalls,1);
+await assert.rejects(catalogs.catalog(integration),/catalog failure/);assert.equal(rejectedCalls,2,'failure must not be retained');
+let separateCalls=0;runtime.callTool=async()=>({call:++separateCalls});
+await Promise.all([catalogs.catalog(integration),catalogs.catalog({...integration,name:'rei_abcdef012345'})]);assert.equal(separateCalls,2,'integrations never share permission catalogs');
+const replaced={callTool:async()=>({runtime:'new'})};catalogs.connect=async()=>replaced;
+assert.equal((await catalogs.catalog(integration)).runtime,'new','replacement authenticated runtime has a separate flight');
+console.log('PASS only simultaneous catalogs coalesce; completion, failure, integration and runtime remain fresh and isolated');

@@ -6,7 +6,7 @@ import {runOpenClawCli} from './openclaw-process.mjs';
 // Reuse the pinned, bundled MCP transport/OAuth implementation, not its agent.
 // No AI inference, agent job or credential copy happens here.
 export class ConversationMcp {
-  constructor(root){this.root=root;}
+  constructor(root){this.root=root;this.catalogFlights=new WeakMap();}
   async dispose(){await this.runtime?.dispose();this.runtime=null;this.signature=null;}
   async close(){await this.connecting?.catch(()=>{});await this.dispose();}
   async connect(integration){
@@ -48,6 +48,16 @@ export class ConversationMcp {
   }
   async catalog(integration){
     const runtime=await this.connect(integration);
-    return runtime.callTool(integration.name,'list_groups',{limit:1000});
+    // Share only an unfinished request on the exact authenticated runtime.
+    // Never retain a completed catalog: later permission checks fetch again.
+    let flights=this.catalogFlights.get(runtime);
+    if(!flights){flights=new Map();this.catalogFlights.set(runtime,flights);}
+    let pending=flights.get(integration.name);
+    if(!pending){
+      pending=Promise.resolve().then(()=>runtime.callTool(integration.name,'list_groups',{limit:1000}));
+      flights.set(integration.name,pending);
+    }
+    try{return structuredClone(await pending);}
+    finally{if(flights.get(integration.name)===pending)flights.delete(integration.name);}
   }
 }

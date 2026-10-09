@@ -18,6 +18,7 @@ import {LocalChat} from './local-chat.mjs';
 import {ChatGPTPlan} from './chatgpt-plan.mjs';
 import {ConversationMcp} from './conversation-mcp.mjs';
 import {converse,conversationReceipt} from './conversation.mjs';
+import {ConversationPrefetch} from './conversation-prefetch.mjs';
 import {approveCowork,coworkStatus} from './cowork.mjs';
 import {prepareCoworkPlugin} from './cowork-plugin.mjs';
 import { MCP_PRESETS } from './public/mcp-presets.js';
@@ -34,6 +35,7 @@ const localVoice=new LocalVoice(root);
 const localChat=new LocalChat(root),conversationMcp=new ConversationMcp(root);
 const conversationOutlines=new Map();
 const conversationAdditionCursors=new Map();
+const conversationPrefetch=new ConversationPrefetch(db);
 function conversationSettings(user){
   const settings=knowledgeSettings(db),saved=one(db,'SELECT value FROM settings WHERE key=?',`conversation-scope:${user.id}`);
   return saved?{...settings,groups:JSON.parse(saved.value).groups.filter(g=>!g.personal||user.role==='owner')}:settings;
@@ -42,6 +44,22 @@ function outlineFor(user,integration,groups){
   const key=JSON.stringify([user.id,integration?.name,groups]);
   if(!conversationOutlines.has(key)){if(conversationOutlines.size>=32)conversationOutlines.delete(conversationOutlines.keys().next().value);conversationOutlines.set(key,{});}
   return conversationOutlines.get(key);
+}
+function prefetchContext(userId){
+  const user=one(db,'SELECT id,role,disabled FROM users WHERE id=?',userId);
+  if(!user||user.disabled||!['owner','admin'].includes(user.role))return null;
+  const settings=conversationSettings(user),device=localConnectorStatus().deviceId;
+  const integration=device?one(db,"SELECT name,url FROM mcp_integrations WHERE device_id=? AND url='https://mcp.synapse-connect.ai/mcp'",device):null;
+  if(!integration||!settings.groups.length)return null;
+  return {scope:{userId:user.id,role:user.role,integration:integration.name+'|'+integration.url,groups:settings.groups},integration};
+}
+function prepareConversationPrefetch(user){
+  const current=prefetchContext(user.id);if(!current)return;
+  void conversationPrefetch.activate(current.scope,{
+    currentScope:()=>prefetchContext(user.id)?.scope,
+    catalog:()=>conversationMcp.catalog(current.integration),
+    call:(tool,args,signal)=>conversationMcp.call(current.integration,tool,args,signal)
+  }).catch(()=>{});
 }
 function prepareConversationOutline(user){
   const settings=conversationSettings(user),device=localConnectorStatus().deviceId;
@@ -63,6 +81,7 @@ function chatgptFor(user){
 function chatProvider(user){return one(db,'SELECT value FROM settings WHERE key=?',`conversation-provider:${user.id}`)?.value==='chatgpt'?'chatgpt':'local';}
 process.once('exit',()=>{for(const account of chatgptAccounts.values())account.stop();});
 process.once('exit',()=>localChat.close());
+process.once('exit',()=>conversationPrefetch.close());
 process.once('SIGTERM',()=>localChat.close());
 process.once('exit',()=>localVoice.close());
 process.once('SIGTERM',()=>{localVoice.close();process.exit(0);});
@@ -211,6 +230,10 @@ async function api(req,res,route) {
 
   if(route.startsWith('conversation/')) {
     if(!['owner','admin'].includes(user.role))return error(res,403,'会話AIは所有者・管理者が利用できます');
+    if(route==='conversation/prefetch'&&req.method==='GET'){
+      const current=prefetchContext(user.id);
+      return send(res,200,current?conversationPrefetch.status(current.scope):{state:'unconfigured',usable:false,recordCount:0});
+    }
     if(route==='conversation/scope'&&req.method==='GET')return send(res,200,{groups:conversationSettings(user).groups});
     if(route==='conversation/catalog'&&req.method==='POST'){
       const device=localConnectorStatus().deviceId;
@@ -232,11 +255,12 @@ async function api(req,res,route) {
     if(route==='conversation/status'&&req.method==='GET')return send(res,200,chatProvider(user)==='chatgpt'?chatgptFor(user).status():localChat.status());
     if(route==='conversation/history'&&req.method==='GET'){
       prepareConversationOutline(user);
+      prepareConversationPrefetch(user);
       const saved=one(db,'SELECT value FROM settings WHERE key=?',`conversation:${user.id}`);
       const history=saved?JSON.parse(saved.value):null;
       return send(res,200,{turns:history?.scope===JSON.stringify(conversationSettings(user).groups)?history.turns:[]});
     }
-    if(route==='conversation/prepare'&&req.method==='POST'){prepareConversationOutline(user);if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
+    if(route==='conversation/prepare'&&req.method==='POST'){prepareConversationOutline(user);prepareConversationPrefetch(user);if(chatProvider(user)==='chatgpt'){const account=chatgptFor(user);if(!account.status().configured||!account.status().model)return error(res,409,'ChatGPTを再接続してください');return send(res,200,account.status());}await localChat.start();return send(res,200,localChat.status());}
     if(['conversation/ask','conversation/stream'].includes(route)&&req.method==='POST'){
       if(conversationBusy)return error(res,409,'会話AIが返答中です。少し待ってください');
       const input=await body(req),question=text(input.question,4000),settings=conversationSettings(user),scope=JSON.stringify(settings.groups);
@@ -599,4 +623,5 @@ async function dailyBackup() {
 }
 setTimeout(()=>void dailyBackup(),60000).unref();
 setInterval(()=>void dailyBackup(),3600000).unref();
+setInterval(()=>void conversationPrefetch.tick().catch(()=>{}),30000).unref();
 setInterval(()=>{try{sweep(db);scanKnowledgeIfDue(db,reiVersion);void sendPendingHuman(db,root).catch(e=>console.error('REI Chatwork送信:',e.message));void pollChatwork(db,root).catch(e=>console.error('REI Chatwork取得:',e.message));}catch(e){console.error('REI background:',e.message);}},30000).unref();

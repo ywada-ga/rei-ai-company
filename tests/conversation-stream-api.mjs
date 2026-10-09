@@ -24,6 +24,9 @@ try{
  const post=async(route,value,authenticated=true)=>fetch(base+'/api?route='+encodeURIComponent(route),{method:'POST',headers:{'content-type':'application/json',...(authenticated?{cookie}:{} )},body:JSON.stringify(value)});
  const registered=await post('setup/complete',{token:setup,username:'owner',password:'stream-fixture-password'},false);assert.equal(registered.status,201);const login=await post('auth/login',{username:'owner',password:'stream-fixture-password'},false);assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];
  assert.equal((await post('conversation/stream',{question:'こんにちは'},false)).status,401);
+ assert.equal((await fetch(base+'/api?route=conversation%2Fprefetch')).status,401);
+ const prefetchStatus=await (await fetch(base+'/api?route=conversation%2Fprefetch',{headers:{cookie}})).json();
+ assert.equal(prefetchStatus.state,'unconfigured');assert.equal(prefetchStatus.usable,false);assert.equal(prefetchStatus.records,undefined,'status must not expose cached company bodies');
  assert.equal((await fetch(base+'/conversation-stream.js')).status,200);assert.equal((await fetch(base+'/conversation-progress.js')).status,200);
  const response=await post('conversation/stream',{question:'こんにちは'});assert.match(response.headers.get('content-type'),/ndjson/);const result=await readConversationStream(response);assert.equal(result.answer,'こんにちは。試験の返答です。');
  const history=await (await fetch(base+'/api?route=conversation%2Fhistory',{headers:{cookie}})).json();assert.equal(history.turns.length,1);assert.equal(history.turns[0].answer,result.answer);

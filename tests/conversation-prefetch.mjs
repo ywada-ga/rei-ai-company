@@ -38,6 +38,21 @@ const blocking={...io,call:async(tool,args,signal)=>{if(tool==='get_episode'){re
 now+=501;const pending=cache.activate(scope,blocking);await new Promise(setImmediate);const duplicate=cache.activate(scope,blocking);assert.equal(reads,1);cache.invalidate(scope);release();await Promise.all([pending,duplicate]);assert.equal(cache.status(scope).usable,false);
 // Cap bodies while retaining truthful ledger coverage and refresh old bodies.
 const limited=new ConversationPrefetch(db,{now:()=>now,maxRecords:0});await limited.activate(other,{...io,currentScope:()=>other});assert.equal(limited.status(other).bodyCoverage,'limited');assert.equal(limited.status(other).recordCount,0);
+// Explicit invalid state anywhere in the response must erase a prior usable snapshot.
+for(const flag of [{deleted:true},{is_latest_revision:false},{invalid_at:'2026-10-10T00:00:00Z'}]){
+  for(const placement of ['root','episode']){
+    now+=501;await cache.activate(scope,io);assert.equal(cache.status(scope).usable,true);
+    now+=501;
+    const invalid={...io,call:async(tool,args,signal)=>{
+      const result=await io.call(tool,args,signal);
+      if(tool==='get_episode')Object.assign(placement==='root'?result.structuredContent:result.structuredContent.episode,flag);
+      return result;
+    }};
+    await cache.activate(scope,invalid);
+    assert.equal(cache.snapshot(scope,catalog()),null,placement+' explicit invalid body cannot leave a provisional snapshot');
+    assert.equal(db.prepare('SELECT count(*) AS n FROM settings WHERE key=?').get(cache.storageKey(scope)).n,0,'invalid source clears copied body');
+  }
+}
 cache.close();reload.close();limited.close();db.close();
 console.log('PASS scoped persistent prefetch, fresh permission gates, expiry, revision/deletion failure, single-flight and cancellation');
 

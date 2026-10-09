@@ -277,3 +277,7 @@ Hubの質問ごとの配列evidenceModelChecksへ、evidence_answer生成の入�
 ### 取得本文の状態確認（2026-10-10 07:13）
 
 検索後の本文取得でもinvalid_at、deleted=true、is_latest_revision=falseが明示された場合は根拠として採用しない。get_fact_sourceのルート・各source・get_episodeのepisodeとルートを確認し、無効な兄弟本文はモデル入力へ渡さない。有効な兄弟本文だけは保持する。状態項目が無い場合に最新版を証明するものではなく、外部原本の照合やサーバが返さない削除状態は未保証。
+
+### 先読み本文の応答全体の状態確認（2026-10-10 07:43）
+
+get_episodeのepisode内だけでなく、応答ルートのdeleted=true、is_latest_revision=false、invalid_atも拒否する。同期失敗扱いとして旧コピーを削除し暫定経路を無効にする。状態項目の欠落から最新版を証明するものではない。

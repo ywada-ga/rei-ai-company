@@ -147,7 +147,7 @@ await measured(privateInput,{phase:'evidence_answer'});assert.equal(modelChecks[
 const failedChecks=[];await assert.rejects(measureEvidenceModel(async()=>{throw Error('provider unavailable');},failedChecks)(privateInput,{phase:'evidence_answer'}),/provider unavailable/);assert.equal(failedChecks.length,0);
 console.log('PASS latest evidence model diagnostics preserve stream and omit private data/invalid timing');
 
-for(const question of ['Synapse Connectについて教えて','もっと詳しく','その会社について教えて']){
+for(const question of ['Synapse Connectについて教えて','もっと詳しく','その会社について教えて','会社について教えて','私の会社について教えて']){
  let sawModel=false;
  const old='OLD-UNVERIFIED-AI-CLAIM'.repeat(80),userPreference='要点を先に説明して';
  const response=await converse({question,groups,context:[{question:userPreference,answer:old,synapseRead:true}],call:async tool=>{

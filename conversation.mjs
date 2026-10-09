@@ -175,7 +175,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
 {"action":"work","instruction":"ユーザーが求めた作業"}`;
 
   const explicitOverview=directCompanyOverviewSubject(question);
-  const omitPriorAnswers=readingSkill&&groups.length&&explicitOverview&&!/^(?:それ|その|この|あの|同社|弊社|当社|うち|私たち)/u.test(explicitOverview);
+  const omitPriorAnswers=readingSkill&&groups.length&&explicitOverview&&!/^(?:それ|その|この|あの|同社|弊社|当社|うち|私たち|私の|自社|我が社)/u.test(explicitOverview)&&! /^(?:会社|グループ)$/u.test(explicitOverview);
   // Keep user context, but do not repeat old AI claims for a named overview.
   // Follow-ups still need their full history to resolve the requested subject.
   const messages=[{role:'system',content:system},...context.slice(-6).flatMap(t=>[{role:'user',content:t.question},...(!omitPriorAnswers?[{role:'assistant',content:t.answer}]:[])]),{role:'user',content:question}];

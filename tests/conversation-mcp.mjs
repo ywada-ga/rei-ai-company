@@ -41,4 +41,8 @@ let separateCalls=0;runtime.callTool=async()=>({call:++separateCalls});
 await Promise.all([catalogs.catalog(integration),catalogs.catalog({...integration,name:'rei_abcdef012345'})]);assert.equal(separateCalls,2,'integrations never share permission catalogs');
 const replaced={callTool:async()=>({runtime:'new'})};catalogs.connect=async()=>replaced;
 assert.equal((await catalogs.catalog(integration)).runtime,'new','replacement authenticated runtime has a separate flight');
+let finishOld;runtime.callTool=async()=>new Promise(r=>finishOld=r);catalogs.connect=async()=>runtime;
+const oldFlight=catalogs.catalog(integration);await new Promise(setImmediate);catalogs.connect=async()=>replaced;
+assert.equal((await catalogs.catalog(integration)).runtime,'new','a new authentication runtime cannot join an unfinished old request');
+finishOld({runtime:'old'});assert.equal((await oldFlight).runtime,'old');
 console.log('PASS only simultaneous catalogs coalesce; completion, failure, integration and runtime remain fresh and isolated');

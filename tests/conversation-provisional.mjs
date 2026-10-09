@@ -144,3 +144,37 @@ console.log('PASS permission completion cannot revive rejected provisional text'
  assert.ok(Object.values(t.provisionalTransport).every(Number.isFinite),'Only numeric provider timing leaves server');
 }
 console.log('PASS sentence, permission and model completion clocks are distinct and numeric-only');
+
+// Supplemental speech may start before its model completes, but only after a
+// new permission check. Invalid completions must correct the early fragment.
+for(const invalid of [false,true]){
+ const model=defer(),gate=defer();let stream,calls=0;
+ const s=await scenario({authorize:()=>++calls===3?gate.promise:Promise.resolve(true),generate:async(_messages,opts)=>{
+   if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};
+   stream=opts.onDelta;return model.promise;
+ }});
+ const full='開発室で対応しており、担当は青山です。窓口は佐藤です。';
+ s.latest.resolve({...result(),answer:full,spokenAnswer:full});await settle();
+ const supplement={...decision,text:'開発室で対応します。窓口は佐藤です。'};
+ stream(JSON.stringify(supplement).slice(0,JSON.stringify(supplement).indexOf('窓口')));await settle();
+ assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Permission blocks supplemental first sentence');
+ gate.resolve(true);await settle();
+ assert.equal(s.events.at(-1).speechText,'補足です。開発室で対応します。');
+ model.resolve({text:invalid?'broken completion':JSON.stringify(supplement)});
+ const out=await s.pending;
+ if(invalid){assert.equal(s.events.at(-2).type,'correction');assert.equal(s.events.at(-2).replacementAnswer,full);assert.match(s.events.at(-2).speechText,/最新の確認結果/);}
+ else {assert.equal(s.events.at(-2).speechText,'窓口は佐藤です。');assert.equal(out.streamedSpokenAnswer.split('開発室で対応します。').length,2);}
+ assert.equal(out.answer,full,'Authoritative history remains the fresh full answer');
+ assert.ok(out.provisionalTiming.supplementFirstMs>=out.provisionalTiming.supplementFirstSentenceMs);
+}
+{
+ const model=defer(),gate=defer();let stream,calls=0;
+ const s=await scenario({authorize:()=>++calls===3?gate.promise:Promise.resolve(true),generate:async(_messages,opts)=>{
+  if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};stream=opts.onDelta;return model.promise;
+ }});
+ s.latest.resolve({...result(),spokenAnswer:'開発室が窓口です。'});await settle();
+ stream(JSON.stringify({...decision,text:'開発室が窓口です。'}));await settle();
+ model.resolve({text:'broken completion'});await s.pending;gate.resolve(true);await settle();
+ assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Late permission cannot revive invalid or finished supplement');
+}
+console.log('PASS supplemental sentence before completion, permission gate, correction and late callback isolation');

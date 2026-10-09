@@ -39,6 +39,7 @@ try{
   assert.equal(provisional.anyOf,undefined);assert.deepEqual(provisional.properties.action.enum,['respond']);
   assert.deepEqual(provisional.properties.reason.enum,['']);assert.deepEqual(provisional.properties.query.enum,['']);
   assert.deepEqual(Object.keys(provisional.properties),['action','status','sourceIds','reason','query','text'],'Evidence header precedes speech text');
+  await account.generate([{role:'user',content:'fixture supplement'}],{phase:'verification_supplement',effort:'low'});assert.equal(requestBody.text.format.name,'rei_provisional');assert.deepEqual(requestBody.text.format.schema.properties.decision.properties.query.enum,['']);
   await account.generate([{role:'user',content:'fixture normal'}],{phase:'evidence_answer'});assert.equal(requestBody.text.format.schema.properties.decision.anyOf.length,7,'Dedicated format does not mutate ordinary questions');
   account.account().expiresAt=0;await Promise.all([account.token(),account.token()]);assert.equal(refreshes,1);assert.equal(account.account().refreshToken,'rotated');
   const returning=new URL((await account.begin({accountId:'oaiapp_fixture'})).url);assert.equal(returning.searchParams.get('client_id'),'oaiapp_fixture');assert.equal(returning.searchParams.get('agent_name_hint'),null);assert.equal(returning.searchParams.get('ext_agent_host_id'),authorization.searchParams.get('ext_agent_host_id'));assert.ok(returning.searchParams.get('id_token_hint'));account.stop();

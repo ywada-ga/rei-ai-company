@@ -14,13 +14,14 @@ Synapse Connectの会社情報を、自然な日本語の継続会話で答え�
 - 認証・既存データ・利用者の変更を守る。会社本文、個人棚ID、トークン、画面の実データをGitHubへ載せない。
 - 「1秒」は体験の目安。相槌や待機案内の開始を、有意味な回答の開始として計測しない。
 
-## 開発場所と稼働構成
+## 別の端末から参加するための入口
 
 - GitHub: https://github.com/ywada-ga/rei-ai-company
-- 作業場所: `/Users/tsuigekilumina2/Documents/Codex/2026-09-24/op/outputs/rei-local`
-- 現在のローカル画面: `http://127.0.0.1:4178/`
-- 開発用アプリ: `dist/REI-0.5.39-arm64.app`。配布署名・公証済みとは扱わない。
-- データ: アプリ外の `~/Library/Application Support/REI`。認証ファイルやSQLiteの中身を引き継ぎ資料へ添付しない。
+- リポジトリは公開。別端末からコードとこの資料を閲覧・取得できる。利用者のPC内のファイルやローカル画面へアクセスする必要はない。
+- 自分の端末へリポジトリを取得し、Node.js 24以降で `node --run test` を実行する。これは開発者の作業環境であり、製品利用者に追加ツールを要求する仕様ではない。
+- 実際のSynapse・ChatGPT接続試験には、その担当者の権限で別途ログインが必要。リポジトリだけで所有者の会社データ・認証へアクセスできるとは扱わない。
+- 現在の開発用アプリは0.5.39 arm64。ローカルの生成物は配布物として共有していない。配布署名・公証済みとは扱わない。
+- データはアプリ外で保管する。認証ファイルやSQLiteの中身を引き継ぎ資料へ添付しない。
 - コードの更新と稼働アプリの更新は別。ソースだけ変更して画面へ反映済みと報告しない。
 
 ## 現在の会話経路
@@ -114,6 +115,11 @@ Chatworkへは節目の要点とこの資料を共有する。利用者指定の
 
 ## 検証資料
 
-- 公開可: `README.md`、`ARCHITECTURE.md`、`IMPLEMENTATION_STATUS.md`、Git履歴とCI。
-- ローカル限定・Git対象外: `dist/refill-ui-proof.json`、`dist/refill-benchmark.json`、`dist/refill-tests.log`。
-- 実データの画面画像はローカル限定。共有には別途内容を確認し、認証・会社データの公開を避ける。
+- [導入・起動手順](https://github.com/ywada-ga/rei-ai-company/blob/main/README.md)
+- [設計](https://github.com/ywada-ga/rei-ai-company/blob/main/ARCHITECTURE.md)
+- [実装状況と日付付き実測](https://github.com/ywada-ga/rei-ai-company/blob/main/IMPLEMENTATION_STATUS.md)
+- [本文取得の並行化と回帰テストの変更](https://github.com/ywada-ga/rei-ai-company/commit/3e9206b7430d6a36d9a04b779c5f69fc638966a9)
+- [コード変更の成功CI](https://github.com/ywada-ga/rei-ai-company/actions/runs/37899894945)
+- [実測記録の成功CI](https://github.com/ywada-ga/rei-ai-company/actions/runs/37900025003)
+
+上のリンクは別端末から閲覧できる。数値と条件はこの資料にも記載済み。元の診断ファイルや実データの画面画像は公開していないため、他の担当者が読める証拠として案内しない。再現には各担当者の環境で同じ条件の試験を実施し、対象件数・権限・質問・モデル設定の差を記録する。

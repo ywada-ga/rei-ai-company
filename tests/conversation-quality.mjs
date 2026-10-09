@@ -146,3 +146,22 @@ await measured(privateInput,{phase:'provisional_answer'});assert.equal(modelChec
 await measured(privateInput,{phase:'evidence_answer'});assert.equal(modelChecks[1].firstDeltaMs,null);
 const failedChecks=[];await assert.rejects(measureEvidenceModel(async()=>{throw Error('provider unavailable');},failedChecks)(privateInput,{phase:'evidence_answer'}),/provider unavailable/);assert.equal(failedChecks.length,0);
 console.log('PASS latest evidence model diagnostics preserve stream and omit private data/invalid timing');
+
+for(const question of ['Synapse Connectについて教えて','もっと詳しく','その会社について教えて']){
+ let sawModel=false;
+ const old='OLD-UNVERIFIED-AI-CLAIM'.repeat(80),userPreference='要点を先に説明して';
+ const response=await converse({question,groups,context:[{question:userPreference,answer:old,synapseRead:true}],call:async tool=>{
+  if(tool==='survey_space')return {structuredContent:{coverage:{complete:true}}};
+  if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'fresh-overview',group_id:'fixture'}]}};
+  if(tool==='get_fact_source')return {structuredContent:{sources:[{traceable:true,group_id:'fixture',body:'FRESH-BODY'}]}};
+  throw Error('unexpected tool');
+ },generate:async(messages,o)=>{
+  sawModel=true;assert.ok(messages.some(m=>m.role==='user'&&m.content===userPreference));
+  assert.equal(messages.some(m=>m.role==='assistant'&&m.content===old),question!=='Synapse Connectについて教えて');
+  if(o.phase!=='evidence_answer')return {text:JSON.stringify({action:'search',query:'会社'})};
+  assert.ok(messages.some(m=>m.content.includes('FRESH-BODY')));
+  return {text:JSON.stringify(assess('supported',['fresh-overview'],'','','今回取得した本文に基づく概要です。'))};
+ }});
+ assert.ok(sawModel);assert.equal(response.synapseRead,true);assert.equal(response.evidenceStatus,'supported');
+}
+console.log('PASS named overview omits old AI claims; user preferences and follow-up history remain with fresh source review');

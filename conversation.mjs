@@ -174,7 +174,11 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
 {"action":"episode","uuid":"取得済みuuid"}
 {"action":"work","instruction":"ユーザーが求めた作業"}`;
 
-  const messages=[{role:'system',content:system},...context.slice(-6).flatMap(t=>[{role:'user',content:t.question},{role:'assistant',content:t.answer}]),{role:'user',content:question}];
+  const explicitOverview=directCompanyOverviewSubject(question);
+  const omitPriorAnswers=readingSkill&&groups.length&&explicitOverview&&!/^(?:それ|その|この|あの|同社|弊社|当社|うち|私たち)/u.test(explicitOverview);
+  // Keep user context, but do not repeat old AI claims for a named overview.
+  // Follow-ups still need their full history to resolve the requested subject.
+  const messages=[{role:'system',content:system},...context.slice(-6).flatMap(t=>[{role:'user',content:t.question},...(!omitPriorAnswers?[{role:'assistant',content:t.answer}]:[])]),{role:'user',content:question}];
   let surveyed=false;const recentEvidence=needsRecentEvidence(question,context);
   const workLogEvidence=!!personWorkSubject(question)||/work[._ -]?log|作業ログ|業務ログ/iu.test(question);
   if(recentEvidence)messages.push({role:'system',content:'現在・指定日の質問。以前の返答に引きずられず、今回取得した本文の対象人物・案件・実際の作業日を確認する。保存日・同期日が新しいだけでは作業日が新しい証拠にならない。検索の順位は関連性や新しさを保証しない。確認した本文の中に答えが無ければ、同じ対象の短い固有名詞で残りの検索を行う。以前の回答の主張を今回の別の本文で裏付けたと扱わない。各主張の出どころを対応づける。'});

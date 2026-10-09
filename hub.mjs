@@ -292,7 +292,7 @@ async function api(req,res,route) {
         const authorize=async()=>{if(!currentScope())return false;const catalog=await conversationMcp.catalog(prefetched.integration);return currentScope()&&prefetchAuthorized(catalog,prefetched.scope);};
         const result=eligible?await runProvisionalConversation({question,scope:prefetched.scope,signal:controller.signal,
           getSnapshot:async()=>{if(!currentScope())return null;const catalog=await conversationMcp.catalog(prefetched.integration);return currentScope()?conversationPrefetch.snapshot(prefetched.scope,catalog):null;},authorize,
-          generate:conversationOptions.generate,verify:({signal,onDelta})=>converse({...conversationOptions,signal,onDelta}),
+          generate:conversationOptions.generate,verify:({signal,onDelta,getProvisionalAnswer})=>converse({...conversationOptions,signal,onDelta,getProvisionalAnswer}),
           onEvent:event=>{if(event.type!=='done')emit(event);}
         }):await converse(conversationOptions);
         if(!controller.signal.aborted){

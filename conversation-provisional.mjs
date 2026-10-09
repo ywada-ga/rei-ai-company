@@ -51,7 +51,7 @@ export async function runProvisionalConversation({question,scope,getSnapshot,aut
   const emit=event=>{if(alive()){const spoken=event.type==='delta'?event.text:event.speechText??(['provisional','answer','correction','supplement'].includes(event.type)?event.text:'');if(spoken)streamedSpeech+=spoken;onEvent({...event,...(event.type!=='delta'&&event.type!=='done'?{speechText:spoken}: {})});}};
   const timing={provisionalMs:null,verifiedMs:null,snapshotMs:null,provisionalModelMs:null,supplementModelMs:null,supplementFirstSentenceMs:null,supplementFirstMs:null,firstSentenceMs:null,permissionStartedMs:null,permissionMs:null,modelCompletedMs:null,provisionalTransport:null};
   // Attach rejection handlers immediately, including when snapshot is slow.
-  const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,onDelta:text=>{freshText+=text;if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
+  const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,getProvisionalAnswer:()=>alive()&&initial?.valid===true?{text:initial.text,sourceIds:initial.sources.map(s=>s.uuid)}:null,onDelta:text=>{freshText+=text;if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
   let removeAbortWait=()=>{};
   const cancelled=new Promise(resolve=>{
     if(controller.signal.aborted)resolve({cancelled:true});

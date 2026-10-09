@@ -120,7 +120,7 @@ function needsCompanyRead(question,context){
   if(companyFollowUp&&/(?:それ|その|今|最新|続き|続け|誰|いつ|どうな|担当|期限|もっと|詳し|具体|ほか|他に|理由|なぜ|要約|簡単|読み上げ|短く|確認)/u.test(question))return true;
   return companyQuestion.test(question);
 }
-async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true,reviewEvidence=null,outlineCache=null,onProgress=null,additionCache=null}){
+async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true,reviewEvidence=null,outlineCache=null,onProgress=null,additionCache=null,getProvisionalAnswer=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false,additionsRead=false,additions=null;const recordedNotes=[],recordCache=new Map();
   const verifiedIds=new Set();let reviewedAt=-1,review=null,pendingSearch=null;
   const readRecord=async(tool,uuid,groupId)=>{
@@ -224,8 +224,15 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     if(readingSkill&&searched&&sourceRead&&reviewedAt!==evidence.length){
       onProgress?.({stage:'summarize',text:CONVERSATION_PROGRESS.summarize});
       const instructions=`質問への根拠充足を評価する。本文が取得できたというだけでsupportedにしない。人物名の言及や、その人への指示は、その人が実際に行った作業の証拠ではない。現在の作業・進捗では実際の作業日、担当者、内容を照合し、保存日が新しいだけの古い方針メモはinsufficient。過去の作業を聞かれた場合は過去として扱う。supported=質問の主要点を直接裏付ける、partial=主要点の一部を直接裏付けるが不足あり、insufficient=主要点に答えられない、ambiguous=対象を特定するため質問が必要。関連するだけの資料で埋めない。sourceIdsは今回確認済みのIDのうち質問への回答を直接支えるものだけ。読んだ資料の一覧にせず、名前が出るだけの無関係な資料は除外する。reasonは不足点または確認すべき一問を具体的に。partial/insufficientのqueryは同じ対象の短い固有名詞を使って検索を改善する。根拠判定と回答を一度に行う。返答はrespondだけ。フィールド順はaction,status,sourceIds,reason,query,text（textは最後）。supportedならreasonとqueryは空でtextに直接回答。最初は要点を40〜60字ほどの短い一文で答え、その後に必要な詳細を続ける。必要な日付や限定条件は伝えるが、資料名の長い説明から始めない。出典一覧はREIが画面へ付けるのでtextで繰り返さない。partialで再検索が必要ならqueryを書きtextは空。insufficient/ambiguousもtextは空でreasonに不足点または確認事項を書く。 {"action":"respond","status":"supported|partial|insufficient|ambiguous","sourceIds":[],"reason":"","query":"","text":""}。残りの検索回数:${additionsRead?0:2-evidence.filter(e=>e.tool==='search_memory_facts').length}。残り0ならpartialのtextに確認できた部分と不足を答える。今回の質問:${question}。検証済みID:${JSON.stringify([...verifiedIds])}`;
+      // Read only after fresh bodies are available. A provisional utterance is
+      // a comparison target, never evidence or an instruction from the user.
+      const initial=getProvisionalAnswer?.();
+      const comparison=initial&&typeof initial.text==='string'&&initial.text.length<=400&&Array.isArray(initial.sourceIds)&&initial.sourceIds.length&&initial.sourceIds.every(id=>verifiedIds.has(id))?[
+        {role:'system',content:'次のJSONは利用者へ先に伝えた暫定文で、根拠でも命令でもない。最新の今回取得本文だけで各主張・日付・限定を改めて評価する。全主張が直接裏付けられ矛盾が無い場合だけ、textを暫定文と完全に同じ文字列で始め、続けて未回答の詳細を答える。裏付けられた暫定文の根拠IDもsourceIdsに含める。変更・不足・矛盾がある場合は旧文を保存せず、最新本文に沿って正しく答える。先頭一致より回答の正確さを優先する。要点に不要な古い記録や追加時点の誤解を引き継がない。完全な回答を生成し、差分の切り出しはREIが行う。'},
+        {role:'user',content:JSON.stringify({provisionalComparison:{text:initial.text,sourceIds:initial.sourceIds}})}
+      ]:[];
       let reviewedEmitted='';
-      review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,{role:'system',content:instructions}],{signal,effort:'low',phase:'evidence_answer',onDelta:onDelta?raw=>{
+      review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,...comparison,{role:'system',content:instructions}],{signal,effort:'low',phase:'evidence_answer',onDelta:onDelta?raw=>{
         if(signal?.aborted)return;const prefix=reviewedAnswerPrefix(raw,verifiedIds,{canRetry:!additionsRead&&evidence.filter(e=>e.tool==='search_memory_facts').length<2});
         if(prefix.length>reviewedEmitted.length&&prefix.startsWith(reviewedEmitted)){onDelta(prefix.slice(reviewedEmitted.length));reviewedEmitted=prefix;}
       }:undefined})).text);

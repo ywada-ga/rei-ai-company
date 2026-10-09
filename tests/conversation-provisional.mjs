@@ -189,3 +189,11 @@ console.log('PASS supplemental sentence before completion, permission gate, corr
  assert.equal(s.events.length,count,'Abort-ignoring supplement cannot delay cancellation or emit later');
 }
 console.log('PASS supplement cancellation does not await an abort-ignoring model');
+{
+ let readInitial,calls=0;const sLatest=defer();
+ const s=await scenario({verify:({getProvisionalAnswer})=>{readInitial=getProvisionalAnswer;assert.equal(readInitial(),null);return sLatest.promise;},generate:async()=>{calls++;return {text:JSON.stringify(decision)};}});
+ assert.deepEqual(readInitial(),{text:decision.text,sourceIds:[episode.uuid]});
+ const copy=readInitial();copy.sourceIds.push('other');assert.deepEqual(readInitial().sourceIds,[episode.uuid]);
+ sLatest.resolve({...result(),answer:decision.text+'窓口は開発室です。',spokenAnswer:decision.text+'窓口は開発室です。'});
+ await s.pending;assert.equal(calls,1,'Exact fresh continuation avoids the second model');assert.equal(readInitial(),null,'Completed request cannot supply a stale provisional');
+}

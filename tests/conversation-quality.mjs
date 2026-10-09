@@ -43,6 +43,20 @@ await assert.rejects(converse({question:'杉山さんの作業内容教えて',g
  return {text:JSON.stringify({action:'search',query:'杉山'})};
 }}),/中断/);assert.equal(emittedAfterAbort,false);
 console.log('PASS cancellation during evidence review prevents final answer and streaming');
+// Provisional wording reaches only the fresh-body reviewer; it cannot replace
+// retrieval, expand citations, or prevent correction of outdated claims.
+for(const oldId of ['work','unread']){
+ f=fixture();let readAt=0,sawComparison=false;
+ const corrected=await converse({question:'杉山さんの作業内容教えて',groups,call:f.call,getProvisionalAnswer:()=>{readAt++;assert.ok(f.tools.some(t=>t.tool==='get_episode'));return {text:'杉山さんはまだ修正していません。',sourceIds:[oldId]};},generate:async(messages,options)=>{
+  if(options.phase!=='evidence_answer')return {text:JSON.stringify({action:'search',query:'杉山'})};
+  const comparison=messages.find(m=>m.content.includes('provisionalComparison'));
+  if(comparison){sawComparison=true;assert.equal(JSON.parse(comparison.content).provisionalComparison.text,'杉山さんはまだ修正していません。');assert.ok(messages.some(m=>m.content.includes('先頭一致より回答の正確さ')));}
+  return {text:JSON.stringify(f.searches===1?assess('insufficient',[],'実作業を調べる','杉山'):assess('supported',['work'],'','','10月8日に修正と公開確認を完了しています。'))};
+ }});
+ assert.ok(readAt>=2);assert.equal(sawComparison,oldId==='work');assert.match(corrected.answer,/完了しています/);assert.ok(!corrected.answer.includes('まだ修正'));
+ assert.equal(f.tools.filter(t=>t.tool==='get_episode').length,2,'Fresh bodies still read on each round');
+}
+console.log('PASS provisional comparison only after fresh retrieval, unknown IDs excluded, outdated claims corrected');
 
 const longLog='古い方針\n'+'x'.repeat(20000)+'\n2026-10-08 杉山さんが申込フォームの修正を完了。';
 const excerpt=evidenceBodyContext(longLog,'杉山さんの作業内容教えて',{recent:true});

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import {createLocalSpeechStream} from '../public/local-voice.js';
+import {createLocalSpeechStream,createConversationSpeech} from '../public/local-voice.js';
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 let sources=[];
-const context={currentTime:0,state:'running',destination:{},resume:async()=>{},decodeAudioData:async()=>({duration:.5}),createBufferSource(){const source={connect(){},disconnect(){},start(at){this.at=at;sources.push(this);},stop(){this.onended?.();}};return source;}};
+const context={currentTime:0,state:'running',destination:{},resume:async()=>{},decodeAudioData:async()=>({duration:.5}),createBufferSource(){const source={connect(){},disconnect(){},start(at){this.at=at;sources.push(this);},stop(){this.stopped=true;this.onended?.();}};return source;}};
 const wav=btoa('RIFF');let streamControl;
 const streamRequest=async()=>new Response(new ReadableStream({start(c){streamControl=c;c.enqueue(new TextEncoder().encode(JSON.stringify({type:'chunk',index:0,wav})+'\n'));}}));
 let controller=new AbortController();
@@ -29,3 +29,21 @@ prefetched.push('本回答です。');await tick();assert.equal(requests,0,'avoi
 releaseGeneration();await tick();await tick();assert.equal(requests,1,'answer synthesis starts during receipt playback');assert.equal(sources.length,0,'never overlap receipt and answer playback');
 releasePlayback();await tick();await tick();assert.equal(sources.length,1);const prefetchedDone=prefetched.finish('本回答です。');sources[0].onended();await prefetchedDone;
 console.log('PASS answer preparation overlaps receipt playback without overlapping audio or Qwen generation');
+
+// A long notice must stop playing at the first answer delta without aborting Qwen.
+sources=[];controller=new AbortController();let noticeController,noticeSignal,answerRequests=0,noticePrepared=0;
+const prioritySpeech=createConversationSpeech(controller.signal,options=>createLocalSpeechStream(controller.signal,()=>{}, {...options,context,streamRequest:async(text,signal)=>{
+ if(text==='資料の本文を確認しています。'){
+  noticeSignal=signal;
+  return new Response(new ReadableStream({start(c){noticeController=c;c.enqueue(new TextEncoder().encode(JSON.stringify({type:'chunk',index:0,wav})+'\n'));}}));
+ }
+ answerRequests++;assert.equal(noticePrepared,1,'Qwen notice generation must drain before answer synthesis');
+ return new Response([JSON.stringify({type:'chunk',index:0,wav}),JSON.stringify({type:'done',chunkCount:1})].join('\n')+'\n');
+},onPrepared:()=>{if(!answerRequests)noticePrepared++;options.onPrepared?.();}}));
+prioritySpeech.progress('資料の本文を確認しています。');await tick();await tick();assert.equal(sources.length,1);
+prioritySpeech.push('本回答です。');await tick();assert.equal(noticeSignal.aborted,false,'stopping a notice must not restart the Qwen worker');assert.equal(answerRequests,0,'no overlapping Qwen requests');
+assert.equal(sources[0].stopped,true,'first answer delta immediately stops the scheduled notice');
+noticeController.enqueue(new TextEncoder().encode(JSON.stringify({type:'chunk',index:1,wav})+'\n'+JSON.stringify({type:'done',chunkCount:2})+'\n'));noticeController.close();
+await tick();await tick();assert.equal(sources.length,2,'late notice chunks remain silent; only answer audio is scheduled');assert.equal(answerRequests,1);
+const priorityDone=prioritySpeech.finish('本回答です。');sources[1].onended();await priorityDone;
+console.log('PASS first answer delta silences notices, drains synthesis and preserves serial Qwen requests');

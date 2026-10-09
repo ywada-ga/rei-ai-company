@@ -38,20 +38,23 @@ export async function playLocalReply(text,signal,request,options={}) {
 // Serialize synthesis, but let the next phrase prepare while the current one plays.
 export function createLocalSpeechStream(signal,request,options={}){
   const controller=new AbortController();let text='',pending='',synthesis=Promise.resolve(),playback=Promise.resolve(),failure=null;
-  const abort=()=>controller.abort();signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
-  const chunkPlayer=options.streamRequest?createChunkPlayer(controller.signal,options):null;options={...options,chunkPlayer};
+  const playbackController=new AbortController();
+  const abort=()=>{controller.abort();playbackController.abort();};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+  const chunkPlayer=options.streamRequest?createChunkPlayer(playbackController.signal,options):null;options={...options,chunkPlayer,playbackSignal:playbackController.signal};
   const enqueue=phrase=>{
     if(!phrase.trim()||controller.signal.aborted)return;
     const audio=synthesis.then(async()=>{await options.synthesisReady;if(controller.signal.aborted)throw new Error('音声を中断しました');return options.streamRequest?playChunkedVoice(phrase,controller.signal,options):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{options.onPrepared?.({characters:Array.from(phrase).length,preparationMs:result.preparationMs,firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
-    playback=playback.then(async()=>{const result=await audio;if(!options.streamRequest){await options.playbackReady;await playVoiceAudio(result,controller.signal,options);}});
+    playback=playback.then(async()=>{const result=await audio;if(!options.streamRequest&&!playbackController.signal.aborted){await options.playbackReady;if(!playbackController.signal.aborted)try{await playVoiceAudio(result,playbackController.signal,options);}catch(error){if(!playbackController.signal.aborted)throw error;}}});
     audio.catch(error=>{failure=error;controller.abort();});playback.catch(error=>{failure=error;controller.abort();});
   };
   const flush=final=>{let match;while((match=pending.match(/^([\s\S]*?[。！？\n])([\s\S]*)$/))){for(const chunk of speechChunks(match[1],120))enqueue(chunk);pending=match[2];}while(Array.from(pending).length>=120){const chars=Array.from(pending);enqueue(chars.slice(0,120).join(''));pending=chars.slice(120).join('');}if(final){for(const chunk of speechChunks(pending,120))enqueue(chunk);pending='';}};
   return {
     push(delta){if(failure)throw failure;if(controller.signal.aborted)throw new Error('音声を中断しました');text+=delta;pending+=delta;flush(false);},
-    async finish(answer){if(!answer.startsWith(text))throw new Error('途中の返答と完了した返答が一致しません');this.push(answer.slice(text.length));flush(true);try{await playback;if(chunkPlayer)await chunkPlayer.finish();if(failure)throw failure;}finally{chunkPlayer?.cancel();signal.removeEventListener('abort',abort);}},
-    cancel(){controller.abort();chunkPlayer?.cancel();signal.removeEventListener('abort',abort);}
+    async finish(answer){if(!answer.startsWith(text))throw new Error('途中の返答と完了した返答が一致しません');this.push(answer.slice(text.length));flush(true);try{await playback;if(chunkPlayer&&!playbackController.signal.aborted)await chunkPlayer.finish();if(failure)throw failure;}finally{chunkPlayer?.cancel();signal.removeEventListener('abort',abort);}},
+    // Drain the active synthesis response; aborting it would restart the Qwen worker.
+    stopPlayback(){playbackController.abort();chunkPlayer?.cancel();},
+    cancel(){abort();chunkPlayer?.cancel();signal.removeEventListener('abort',abort);}
   };
 }
 
@@ -60,6 +63,7 @@ export function createConversationSpeech(signal,create,options={}){
   let receipt=null,answer=null,received=false,answerStarted=false,canceled=false,spoken='',discarded='';
   let receiptDone=Promise.resolve(),receiptGenerated=Promise.resolve();
   let progressSpeech=null,progressBusy=false,progressGenerated=Promise.resolve();
+  const stopNotices=()=>{receipt?.stopPlayback?.();progressSpeech?.stopPlayback?.();};
   const main=()=>answer||(answer=create({onPlaying:()=>{progressSpeech?.cancel();options.onPlaying?.();},onPrepared:options.onPrepared,synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone}));
   const cancel=()=>{canceled=true;receipt?.cancel();progressSpeech?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
   signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
@@ -78,8 +82,8 @@ export function createConversationSpeech(signal,create,options={}){
       notice.finish(text).catch(()=>notice.cancel()).finally(()=>{prepared();progressBusy=false;});
     },
     restart(){if(canceled)throw new Error('音声を中断しました');answer?.cancel();answer=null;discarded=spoken;},
-    push(delta){if(canceled)throw new Error('音声を中断しました');spoken+=delta;answerStarted=true;main().push(delta);},
-    async finish(text){try{await receiptDone;if(canceled)throw new Error('音声を中断しました');if(!text.startsWith(discarded))throw new Error('訂正音声の順序が不正です');await main().finish(text.slice(discarded.length));}finally{signal.removeEventListener('abort',cancel);}},
+    push(delta){if(canceled)throw new Error('音声を中断しました');if(!delta)return;stopNotices();spoken+=delta;answerStarted=true;main().push(delta);},
+    async finish(text){try{if(text.slice(discarded.length)){stopNotices();answerStarted=true;}await receiptDone;if(canceled)throw new Error('音声を中断しました');if(!text.startsWith(discarded))throw new Error('訂正音声の順序が不正です');await main().finish(text.slice(discarded.length));}finally{signal.removeEventListener('abort',cancel);}},
     cancel
   };
 }
@@ -127,7 +131,7 @@ async function playChunkedVoice(text,signal,options){
     if(done)throw new Error('音声配信の順序が不正です');
     if(item.type==='chunk'){
       if(item.index!==index++||typeof item.wav!=='string'||item.wav.length>2000000)throw new Error('音声片が不正です');
-      await player.push(item.wav);
+      try{await player.push(item.wav);}catch(error){if(!options.playbackSignal?.aborted)throw error;}
     }else if(item.type==='done'){
       if(!index||item.chunkCount!==index)throw new Error('音声片が不足しています');done=item;
     }else throw new Error('音声の配信を完了できませんでした');

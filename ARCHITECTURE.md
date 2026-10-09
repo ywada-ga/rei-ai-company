@@ -281,3 +281,7 @@ Hubの質問ごとの配列evidenceModelChecksへ、evidence_answer生成の入�
 ### 先読み本文の応答全体の状態確認（2026-10-10 07:43）
 
 get_episodeのepisode内だけでなく、応答ルートのdeleted=true、is_latest_revision=false、invalid_atも拒否する。同期失敗扱いとして旧コピーを削除し暫定経路を無効にする。状態項目の欠落から最新版を証明するものではない。
+
+### 訂正後の音声通知（2026-10-10 08:13）
+
+createConversationSpeechは本回答の世代を管理し、訂正restartと全取消で世代を進めてから古い音声を取消する。旧世代のonPlaying/onPrepared通知は同期でも遅着でも現在回答の計測に渡さない。現世代の通知は維持する。

@@ -402,3 +402,17 @@ REI自身の開発状況・接続・機能をSynapseの社内記録検索へ誤�
 - Actual MCP comparison on the same 24 stored bodies: six workers 12,521 ms, twelve workers 11,533 ms. This single sequential comparison is not a controlled end-to-end benchmark; the modest difference does not justify doubling load, so production remains at six.
 - No claim of completed speed target, full-duplex conversation, or physical audio evaluation. Numeric comparison is in ignored dist/refill-benchmark.json; company content and IDs were not saved to the diagnostic artifact.
 - Actual UI on updated bundled app: 42 bodies, first meaningful text 50,573 ms, first scheduled answer audio 51,578 ms, complete text 59,382 ms. Scope survey 18,502 ms overlapped ledger scans; body reads finished by 39,459 ms. The previous 38-body run was 54,893/56,516 ms, so this is observational progress with different counts, not a controlled latency guarantee. All-body completion remains a barrier; incremental factual answers are still pending. Numeric evidence: ignored dist/refill-ui-proof.json; physical audio unverified.
+
+
+## 2026-10-09: 調査中の音声会話を中断して次の発話へ
+
+担当: Codex（音声・会話体験）。共有ルームの17:29以降を確認し、同じルームが「【REI】旧：Codex pulse & Claude Force開発」へ改名されたことを確認。表示範囲に新しい担当表明・質問はなし。境界ファイルpublic/app.jsのボタン有効条件の変更を着手前に通知した。
+
+- public/voice.js: thinking/speakingの両状態で中断を許可。旧処理の世代を無効化してから要求・音声を取消し、旧進捗・回答期限・再開タイマーを解除して次の聞き取りを開始。
+- public/app.js: 調査中にも「回答を止めて話す」を有効にする。聞き取り中や停止中は無効。
+- tests/voice.mjs: Abortを無視する旧要求でも、旧タイマーが次の会話を停止しないこと、遅れて届く旧デルタ・進捗・最終回答・音声開始を無視し、次の要求の期限を消さないことを確認。
+- 検証: voice、conversation-timing、local-voice-stream、conversation-streamのテストとpublic/app.js構文検査が成功。合成Recognitionと遅延Promiseを使う回帰試験で、実際の声や聴感の合格ではない。
+- 速度: 今回は回答遅延を再測定していない。従来の42件50.573秒表示／51.578秒音声開始予定は異なる試験であり、この中断修正による改善値ではない。
+- 残件: 自動の同時聞き取り、実マイク・Qwenの中断後の聴感、確認済み本文からの事実の段階回答。本修正は利用者がボタンで調査を中止して発話する経路。次回は取得と回答生成の全件待ちを減らす設計・評価へ戻る。
+
+追加確認: node --run test が終了コード0で完了。稼働中の0.5.39開発アプリのフロント2ファイルを退避後に反映し、バイト一致を確認。Hubを再起動せず、実ブラウザで再読み込み・Qwen準備完了・音声操作表示・停止中の中断ボタン無効を確認。実発話によるthinking状態のボタン操作と聴感は未検証。

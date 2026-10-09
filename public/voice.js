@@ -32,6 +32,7 @@ export class VoiceConversation {
     this.active=false;this.phase='idle';this.epoch=0;this.history=[];this.transcript='';this.answer='';this.emptyTurns=0;
   }
   get supported(){return !!(this.Recognition&&(this.localSpeak||(this.synthesis&&this.Utterance)));}
+  get canInterrupt(){return this.active&&['thinking','speaking'].includes(this.phase);}
   emit(phase,message=''){this.phase=phase;this.onChange({active:this.active,phase,message,transcript:this.transcript,answer:this.answer,latency:this.latency?.snapshot()??null});}
   start() {
     if(!this.supported)throw new Error('このブラウザは音声会話に対応していません。ChromeでREIを開いてください。');
@@ -107,5 +108,10 @@ export class VoiceConversation {
     };
     next();
   }
-  interrupt(){if(this.active&&this.phase==='speaking'){this.epoch++;this.controller?.abort();this.synthesis?.cancel();this.listen();}}
+  interrupt(){
+    if(!this.canInterrupt)return;
+    // Invalidate callbacks before aborting: cancellation can synchronously finish audio.
+    this.epoch++;clearTimeout(this.restartTimer);clearTimeout(this.answerTimer);clearTimeout(this.progressTimer);
+    this.controller?.abort();this.synthesis?.cancel();this.listen();
+  }
 }

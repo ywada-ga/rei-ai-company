@@ -37,4 +37,29 @@ const spokenAtTimeout=spoken.length;
 previousLate('期限後の回答');await new Promise(resolve=>setTimeout(resolve,0));assert.equal(spoken.length,spokenAtTimeout);
 await new Promise(resolve=>setTimeout(resolve,25));assert.equal(bounded.phase,'error','an old answer must not clear the next turn deadline');
 late('次の期限後の回答');await new Promise(resolve=>setTimeout(resolve,0));assert.equal(spoken.length,spokenAtTimeout);
-console.log('PASS voice turn-taking, interruption, context, permission failure, and late-response suppression');
+// Interrupt an unresolved streamed request, then deliver stale events after a new turn.
+const requests=[],streams=[];
+const interrupted=new VoiceConversation({Recognition,Utterance,synthesis,answerTimeoutMs:30,
+  ask:(question,context,signal,delta,receipt)=>new Promise(resolve=>requests.push({signal,delta,receipt,resolve})),
+});
+interrupted.streamReply=(signal,onPlaying)=>{
+  const stream={chunks:[],cancelled:false,push(text){this.chunks.push(text);},receipt(){},progress(){},finish:async()=>{},cancel(){this.cancelled=true;},onPlaying};
+  signal.addEventListener('abort',()=>stream.cancel(),{once:true});streams.push(stream);return stream;
+};
+interrupted.start();assert.equal(interrupted.canInterrupt,false);
+let input=recordings.at(-1);input.onresult({results:[result]});input.onend();
+assert.equal(interrupted.canInterrupt,true);const oldRequest=requests[0];
+interrupted.interrupt();assert.equal(oldRequest.signal.aborted,true);assert.equal(streams[0].cancelled,true);
+assert.equal(interrupted.phase,'listening');assert.equal(interrupted.canInterrupt,false);
+await new Promise(resolve=>setTimeout(resolve,40));
+assert.equal(interrupted.active,true,'interrupted request deadline must be cleared even if ask ignores abort');
+input=recordings.at(-1);input.onresult({results:[result]});input.onend();
+oldRequest.delta('旧回答');oldRequest.receipt('旧進捗');streams[0].onPlaying();oldRequest.resolve('旧最終回答');
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(interrupted.phase,'thinking');assert.equal(interrupted.answer,'');assert.equal(interrupted.history.length,0);
+assert.deepEqual(streams[0].chunks,[],'stale deltas must not feed audio');
+await new Promise(resolve=>setTimeout(resolve,40));
+assert.equal(interrupted.phase,'error','old finally must not clear new request deadline');
+assert.equal(requests[1].signal.aborted,true);requests[1].resolve('期限後');
+await new Promise(resolve=>setTimeout(resolve,0));assert.equal(interrupted.history.length,0);
+console.log('PASS voice turn-taking, thinking/speaking interruption, context, permission failure, and late-response suppression');

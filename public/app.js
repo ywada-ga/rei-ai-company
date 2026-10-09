@@ -573,7 +573,7 @@ function updateVoiceDisplay(data) {
   voiceDisplay=data;renderVoiceChannel();
   $('voice-conversation-start').disabled=data.active;
   $('voice-conversation-stop').disabled=!data.active;
-  $('voice-conversation-interrupt').disabled=data.phase!=='speaking';}
+  $('voice-conversation-interrupt').disabled=!data.active||!['thinking','speaking'].includes(data.phase);}
 const voiceConversation=new VoiceConversation({ask:askCompany,onChange:updateVoiceDisplay});
 voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
 voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);

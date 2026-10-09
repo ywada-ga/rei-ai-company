@@ -33,7 +33,7 @@ function asOfText(at){return new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tok
 export async function runProvisionalConversation({question,scope,getSnapshot,authorize,generate,verify,onEvent=()=>{},signal,now=Date.now,maxAgeMs=600000}){
   scope=structuredClone(scope);
   const started=now(),controller=new AbortController(),provisionalController=new AbortController();
-  let closed=false,latestSettled=false,initial=null;
+  let closed=false,latestSettled=false,initial=null,terminalNotice=false;
   const abort=()=>{controller.abort();provisionalController.abort();};
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   const alive=()=>!closed&&!controller.signal.aborted;
@@ -73,13 +73,12 @@ export async function runProvisionalConversation({question,scope,getSnapshot,aut
     if(!alive())throw new Error('会話を中断しました');
     // A slow or abort-ignoring provisional call cannot delay the fresh answer.
     if(outcome.error){
-      if(initial)emit({type:'verification_failed',text:'最新情報を確認できませんでした。先ほどの回答は暫定情報のままです。',verification:'failed',checkedAt:initial.checkedAt});
       throw outcome.error;
     }
     const result=outcome.result;
     if(typeof result?.answer!=='string')throw new Error('最新回答の形式が不正です');
     if(!await Promise.race([authorize({signal:controller.signal}),cancelled.then(()=>false)])||!alive()){
-      if(initial)emit({type:'correction',text:'情報の利用権限を確認できないため、先ほどの暫定回答を撤回します。',replacementAnswer:'情報の利用権限を確認できませんでした。',sourceIds:[],verification:'failed'});
+      if(initial){terminalNotice=true;emit({type:'correction',text:'情報の利用権限を確認できないため、先ほどの暫定回答を撤回します。',replacementAnswer:'情報の利用権限を確認できませんでした。',sourceIds:[],verification:'failed'});}
       throw new Error('情報の利用権限を確認できませんでした');
     }
     timing.verifiedMs=now()-started;
@@ -98,6 +97,9 @@ export async function runProvisionalConversation({question,scope,getSnapshot,aut
     }else emit({type:'answer',text:result.spokenAnswer||result.answer,replacementAnswer:result.answer,sourceIds:result.sources?.map(s=>s.uuid)||[],verification:supported?'verified':'insufficient'});
     const output={...result,provisionalUsed:!!initial,provisionalCheckedAt:initial?.checkedAt||null,provisionalTiming:timing};
     emit({type:'done',result:output});return output;
+  }catch(error){
+    if(initial&&!terminalNotice&&alive())emit({type:'verification_failed',text:'最新情報を確認できませんでした。先ほどの回答は暫定情報のままです。',verification:'failed',checkedAt:initial.checkedAt});
+    throw error;
   }finally{
     closed=true;removeAbortWait();abort();signal?.removeEventListener('abort',abort);
     // Already handled promise; leave abort-ignoring work isolated from events.

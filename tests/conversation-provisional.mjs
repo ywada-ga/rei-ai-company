@@ -62,6 +62,10 @@ assert.equal(selectPrefetchedRecords(snapshot,'架空会社について教えて
  assert.deepEqual(s.events.map(e=>e.type),['provisional','correction']);assert.equal(s.events[1].verification,'failed');assert.deepEqual(s.events[1].sourceIds,[]);
 }
 {
+ let calls=0;const s=await scenario({authorize:async()=>{if(++calls===2)throw new Error('Permission transport failed');return true;}});s.latest.resolve(result());await assert.rejects(s.pending,/transport/);
+ assert.deepEqual(s.events.map(e=>e.type),['provisional','verification_failed']);
+}
+{
  const s=await scenario({verify:async()=>{await settle();await settle();throw new Error('Fixture retrieval failed');}});await assert.rejects(s.pending,/retrieval failed/);assert.deepEqual(s.events.map(e=>e.type),['provisional','verification_failed']);assert.equal(s.events[1].verification,'failed');
 }
 console.log('Provisional conversation: scoped evidence, expiry, correction, fallback, cancellation and races passed');

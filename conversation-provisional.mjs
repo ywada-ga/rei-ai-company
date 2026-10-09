@@ -68,7 +68,7 @@ export async function runProvisionalConversation({question,scope,getSnapshot,aut
       const selected=records.filter(r=>answer.sourceIds.includes(r.episode.uuid));
       initial={text:answer.text,sources:selected.map(r=>({uuid:r.episode.uuid,groupId:r.episode.group_id,hash:fingerprint(r.episode.content)})),checkedAt:snapshot.checkedAt};
       timing.provisionalMs=now()-started;
-      emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${answer.text} 最新情報を確認しています。`,checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
+      emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${answer.text} 最新情報を確認しています。`,speechText:`暫定ですが、${answer.text} ${asOfText(snapshot.checkedAt)}取得時点の一部の記録です。最新情報を確認しています。`,checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
     }catch{provisionalOutcome=latestSettled?'latest_won':'provisional_failed';}
     finally{provisionalFinished=true;if(!initial&&!latestSettled&&freshText){releasedFresh=freshText;emit({type:'delta',text:freshText});}}
   })();

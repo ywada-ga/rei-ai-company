@@ -2,6 +2,20 @@ import {additionWindow,readAdditions,readConcurrent} from './conversation-update
 import {CONVERSATION_PROGRESS,additionsProgress} from './public/conversation-progress.js';
 import {loadSynapseSkill,unavailableGroups,episodeLookups,needsRecentEvidence,evidenceBodyContext} from './load-synapse.mjs';
 // The model proposes operations. This controller owns the permitted operations.
+// Numeric diagnostics only. The first delta may be JSON assessment, not an answer.
+export function measureEvidenceModel(generate,checks,now=()=>performance.now()){
+  return async(messages,options)=>{
+    if(options?.phase!=='evidence_answer')return generate(messages,options);
+    const started=now(),inputBytes=Buffer.byteLength(JSON.stringify(messages));let firstDeltaMs=null;
+    const response=await generate(messages,{...options,onDelta:options.onDelta?raw=>{
+      if(raw&&firstDeltaMs===null)firstDeltaMs=Math.max(0,Math.round(now()-started));
+      options.onDelta(raw);
+    }:undefined});
+    const transport=Object.fromEntries(['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs'].filter(key=>Number.isFinite(response.timing?.[key])&&response.timing[key]>=0).map(key=>[key,response.timing[key]]));
+    checks.push({inputBytes,modelMs:Math.max(0,Math.round(now()-started)),firstDeltaMs,transport});
+    return response;
+  };
+}
 export function parseDecision(text){
   const raw=String(text).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
   let value;try{value=JSON.parse(raw);}catch{throw Object.assign(new Error('会話AIの返答形式を確認できませんでした'),{status:502});}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {converse,reviewedAnswerPrefix,directCompanyOverviewSubject} from '../conversation.mjs';
+import {converse,reviewedAnswerPrefix,directCompanyOverviewSubject,measureEvidenceModel} from '../conversation.mjs';
 import {needsRecentEvidence,evidenceBodyContext} from '../load-synapse.mjs';
 assert.equal(needsRecentEvidence('杉山さんの作業内容教えて'),true);
 assert.equal(needsRecentEvidence('その人は？',[{question:'杉山さんの作業内容教えて'}]),true);
@@ -134,3 +134,15 @@ console.log('PASS explicit company overview skips only query planning, preservin
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','未確定の部分回答')),ids),'');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','確認できた部分回答')),ids,{canRetry:false}),'確認できた部分回答');
 console.log('PASS a partial draft cannot leak before a possible retry');
+
+// Preserve provider results and streaming; expose no prompt, IDs or unknown timing fields.
+const modelChecks=[],seenDeltas=[],privateInput=[{role:'user',content:'PRIVATE-BODY 秘密'}];let clock=100;
+const providerResult={text:'PRIVATE-RESULT',timing:{tokenMs:0,headersMs:12,streamFirstDeltaMs:4,streamCompleteMs:NaN,totalMs:-1,credential:'PRIVATE-TOKEN'}};
+const measured=measureEvidenceModel(async(messages,o)=>{assert.equal(messages,privateInput);clock=112;o.onDelta?.('{');clock=120;return providerResult;},modelChecks,()=>clock);
+assert.equal(await measured(privateInput,{phase:'evidence_answer',onDelta:d=>seenDeltas.push(d)}),providerResult);
+assert.deepEqual(seenDeltas,['{']);assert.deepEqual(modelChecks,[{inputBytes:Buffer.byteLength(JSON.stringify(privateInput)),modelMs:20,firstDeltaMs:12,transport:{tokenMs:0,headersMs:12,streamFirstDeltaMs:4}}]);
+assert.ok(!JSON.stringify(modelChecks).includes('PRIVATE'));
+await measured(privateInput,{phase:'provisional_answer'});assert.equal(modelChecks.length,1);
+await measured(privateInput,{phase:'evidence_answer'});assert.equal(modelChecks[1].firstDeltaMs,null);
+const failedChecks=[];await assert.rejects(measureEvidenceModel(async()=>{throw Error('provider unavailable');},failedChecks)(privateInput,{phase:'evidence_answer'}),/provider unavailable/);assert.equal(failedChecks.length,0);
+console.log('PASS latest evidence model diagnostics preserve stream and omit private data/invalid timing');

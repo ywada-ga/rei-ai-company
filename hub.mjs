@@ -20,7 +20,7 @@ import {LocalVoice} from './local-voice.mjs';
 import {LocalChat} from './local-chat.mjs';
 import {ChatGPTPlan} from './chatgpt-plan.mjs';
 import {ConversationMcp} from './conversation-mcp.mjs';
-import {converse,conversationReceipt} from './conversation.mjs';
+import {converse,conversationReceipt,measureEvidenceModel} from './conversation.mjs';
 import {ConversationPrefetch} from './conversation-prefetch.mjs';
 import {approveCowork,coworkStatus} from './cowork.mjs';
 import {prepareCoworkPlugin} from './cowork-plugin.mjs';
@@ -288,6 +288,8 @@ async function api(req,res,route) {
           generate:(messages,options)=>{if(streaming&&options.phase==='evidence_answer'&&localVoice.status().configured)void localVoice.start().catch(()=>{});return (chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options);},
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,settings.groups.some(g=>g.personal)?question:instruction,'operations',user.id,true,null,null,settings.groups.some(g=>g.personal)?[]:context));}};
+        const evidenceModelChecks=[];
+        conversationOptions.generate=measureEvidenceModel(conversationOptions.generate,evidenceModelChecks);
         const prefetched=prefetchContext(user.id);
         const eligible=streaming&&chatProvider(user)==='chatgpt'&&prefetched&&conversationPrefetch.status(prefetched.scope).usable&&!/(実行|送って|送信|作成|変更して|削除|登録して)/u.test(question)&&(additionWindow(question)||prefetchTopicQuestion(question,context));
         const currentScope=()=>{const current=prefetchContext(user.id);return current&&prefetchScopeKey(current.scope)===prefetchScopeKey(prefetched.scope);};
@@ -300,6 +302,7 @@ async function api(req,res,route) {
           onEvent:event=>{if(event.type!=='done')emit(event);}
         }):await converse(conversationOptions);
         if(eligible)result.timing={...result.timing,catalogChecks};
+        if(evidenceModelChecks.length)result.timing={...result.timing,evidenceModelChecks};
         if(!controller.signal.aborted){
           if(JSON.stringify(conversationSettings(user).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
           const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true,verification:result.synapseRead?'verified':'not_required',provisionalUsed:result.provisionalUsed===true,provisionalCheckedAt:result.provisionalCheckedAt||null}].slice(-6);

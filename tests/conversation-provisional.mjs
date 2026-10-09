@@ -197,3 +197,18 @@ console.log('PASS supplement cancellation does not await an abort-ignoring model
  sLatest.resolve({...result(),answer:decision.text+'窓口は開発室です。',spokenAnswer:decision.text+'窓口は開発室です。'});
  await s.pending;assert.equal(calls,1,'Exact fresh continuation avoids the second model');assert.equal(readInitial(),null,'Completed request cannot supply a stale provisional');
 }
+{
+ const before=Date.parse('2026-10-09T23:59:59+09:00'),after=before+2000;
+ const dailySnapshot={...structuredClone(snapshot),checkedAt:before,records:[
+  {episode:{...episode,uuid:'oct8'},addedAt:'2026-10-08T12:00:00+09:00',fetchedAt:before},
+  {episode:{...episode,uuid:'oct9'},addedAt:'2026-10-09T12:00:00+09:00',fetchedAt:before}
+ ]};
+ assert.deepEqual(selectPrefetchedRecords(dailySnapshot,'昨日の追加情報を教えて',{at:before}).map(r=>r.episode.uuid),['oct8']);
+ assert.deepEqual(selectPrefetchedRecords(dailySnapshot,'昨日の追加情報を教えて',{at:after}).map(r=>r.episode.uuid),['oct9']);
+ let tick=before,payload;
+ const s=await scenario({question:'昨日の追加情報を教えて',now:()=>tick,getSnapshot:async()=>{tick=after;return dailySnapshot;},generate:async messages=>{payload=JSON.parse(messages[1].content);return {text:JSON.stringify({...decision,sourceIds:['oct8']})};}});
+ assert.equal(payload.additionDate,'2026-10-08');assert.equal(payload.now,new Date(before).toISOString());
+ assert.deepEqual(payload.records.map(r=>r.episode.uuid),['oct8'],'snapshot delay across midnight cannot change the requested day');
+ assert.equal(s.events[0].type,'provisional');s.latest.resolve(result());await s.pending;
+}
+console.log('PASS request date remains fixed across Japan midnight while freshness uses the live clock');

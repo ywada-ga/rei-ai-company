@@ -19,7 +19,9 @@ const child=spawn(process.execPath,[path.join(tmp,'hub.mjs')],{cwd:tmp,env:{...p
 let log='';child.stdout.on('data',c=>log+=c);child.stderr.on('data',c=>log+=c);
 const base=`http://127.0.0.1:${port}`;let cookie='';
 try{
- for(let i=0;i<100&&!log.includes('REI Hub:');i++)await new Promise(r=>setTimeout(r,20));assert.ok(log.includes('REI Hub:'),log.replace(/\?setup=[^\s]+/g,'?setup=redacted'));
+ const startupDeadline=performance.now()+10000;
+ while(!log.includes('REI Hub:')&&child.exitCode===null&&performance.now()<startupDeadline)await new Promise(r=>setTimeout(r,20));
+ assert.ok(log.includes('REI Hub:'),`Fixture Hub failed to start (exit ${child.exitCode}): ${log.replace(/\?setup=[^\s]+/g,'?setup=redacted')}`);
  const setup=log.match(/\?setup=([^\s]+)/)[1];
  const post=async(route,value,authenticated=true)=>fetch(base+'/api?route='+encodeURIComponent(route),{method:'POST',headers:{'content-type':'application/json',...(authenticated?{cookie}:{} )},body:JSON.stringify(value)});
  const registered=await post('setup/complete',{token:setup,username:'owner',password:'stream-fixture-password'},false);assert.equal(registered.status,201);const login=await post('auth/login',{username:'owner',password:'stream-fixture-password'},false);assert.equal(login.status,200);cookie=login.headers.get('set-cookie').split(';')[0];

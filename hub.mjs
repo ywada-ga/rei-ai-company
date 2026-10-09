@@ -1,5 +1,5 @@
 import {unavailableGroups,mcpData} from './load-synapse.mjs';
-import {runProvisionalConversation} from './conversation-provisional.mjs';
+import {runProvisionalConversation,prefetchTopicQuestion} from './conversation-provisional.mjs';
 import {prefetchScopeKey,prefetchAuthorized} from './conversation-prefetch.mjs';
 import {additionWindow} from './conversation-updates.mjs';
 import http from 'node:http';
@@ -287,12 +287,12 @@ async function api(req,res,route) {
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,settings.groups.some(g=>g.personal)?question:instruction,'operations',user.id,true,null,null,settings.groups.some(g=>g.personal)?[]:context));}};
         const prefetched=prefetchContext(user.id);
-        const eligible=streaming&&chatProvider(user)==='chatgpt'&&prefetched&&conversationPrefetch.status(prefetched.scope).usable&&!/(実行|送って|送信|作成|変更して|削除|登録して)/u.test(question)&&(additionWindow(question)||/について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u.test(question));
+        const eligible=streaming&&chatProvider(user)==='chatgpt'&&prefetched&&conversationPrefetch.status(prefetched.scope).usable&&!/(実行|送って|送信|作成|変更して|削除|登録して)/u.test(question)&&(additionWindow(question)||prefetchTopicQuestion(question,context));
         const currentScope=()=>{const current=prefetchContext(user.id);return current&&prefetchScopeKey(current.scope)===prefetchScopeKey(prefetched.scope);};
         const catalogChecks=[];
         const timedCatalog=async phase=>{const catalog=await conversationMcp.catalog(prefetched.integration);catalogChecks.push({phase,...catalog.reiMcpTiming});return catalog;};
         const authorize=async()=>{if(!currentScope())return false;const catalog=await timedCatalog('permission');return currentScope()&&prefetchAuthorized(catalog,prefetched.scope);};
-        const result=eligible?await runProvisionalConversation({question,scope:prefetched.scope,signal:controller.signal,
+        const result=eligible?await runProvisionalConversation({question,context,scope:prefetched.scope,signal:controller.signal,
           getSnapshot:async()=>{if(!currentScope())return null;const catalog=await timedCatalog('snapshot');return currentScope()?conversationPrefetch.snapshot(prefetched.scope,catalog):null;},authorize,
           generate:conversationOptions.generate,verify:({signal,onDelta,getProvisionalAnswer})=>converse({...conversationOptions,signal,onDelta,getProvisionalAnswer}),
           onEvent:event=>{if(event.type!=='done')emit(event);}

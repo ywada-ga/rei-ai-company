@@ -247,3 +247,16 @@ console.log('Provisional detail follow-ups: user topic only, fresh verification,
  s.latest.resolve(result());await s.pending;
 }
 console.log('Prefetch spelling variants select candidates without rewriting evidence passed');
+
+// Long bodies use explicit excerpt objects; count actual transmitted text only.
+{
+ const longSnapshot=structuredClone(snapshot);longSnapshot.records[0].episode.content='架空会社の担当は青山。'.repeat(800);
+ let sent;const s=await scenario({getSnapshot:async()=>longSnapshot,generate:async messages=>{sent=JSON.parse(messages[1].content);return {text:JSON.stringify(decision)};}});
+ s.latest.resolve(result(longSnapshot.records[0].episode.content));const out=await s.pending;
+ const body=sent.records[0].episode.content;assert.equal(body.representation,'selected_excerpts');
+ assert.equal(out.provisionalTiming.provisionalBodyChars,body.excerpts.reduce((n,e)=>n+e.text.length,0));
+ assert.ok(out.provisionalTiming.provisionalBodyChars>0&&out.provisionalTiming.provisionalBodyChars<body.originalChars);
+ assert.equal(out.provisionalTiming.modelFirstDeltaMs,null,'No provider callback is unmeasured, not zero');
+ assert.ok(!JSON.stringify(out.provisionalTiming).includes('架空会社'));
+}
+console.log('PASS excerpt object character count, absent first delta and source-free diagnostics');

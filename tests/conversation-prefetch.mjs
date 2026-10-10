@@ -71,8 +71,27 @@ let timingNow=2000000,failBody=false;
 const timingCache=new ConversationPrefetch(timingDb,{now:()=>timingNow,intervalMs:1});
 const timingIo={...io,catalog:async()=>{timingNow+=10;return catalog();},call:async(tool,args)=>{timingNow+=tool==='get_updates'?20:30;if(failBody&&tool==='get_episode')throw Error('SYNTHETIC_BODY_SECRET');return io.call(tool,args);}};
 await timingCache.activate(scope,timingIo);
-assert.deepEqual(timingCache.status(scope).syncDiagnostics,{phase:'complete',totalMs:70,catalogMs:10,ledgerMs:20,bodiesMs:30,permissionMs:10});
+assert.deepEqual(timingCache.status(scope).syncDiagnostics,{phase:'complete',totalMs:70,catalogMs:10,ledgerMs:20,bodiesMs:30,permissionMs:10,bodyReadCount:1,bodyReadPeak:1,bodyReadTotalMs:30,bodyReadMaxMs:30,bodyTransportCount:0,bodyConnectMs:0,bodyRequestMs:0});
 failBody=true;timingNow+=2;await timingCache.activate(scope,timingIo);
-assert.deepEqual(timingCache.status(scope).syncDiagnostics,{phase:'failed',totalMs:60,catalogMs:10,ledgerMs:20,bodiesMs:30});
+assert.deepEqual(timingCache.status(scope).syncDiagnostics,{phase:'failed',totalMs:60,catalogMs:10,ledgerMs:20,bodiesMs:30,bodyReadCount:1,bodyReadPeak:1,bodyReadTotalMs:30,bodyReadMaxMs:30,bodyTransportCount:0,bodyConnectMs:0,bodyRequestMs:0});
 assert.equal(timingCache.status(scope).usable,false);assert.ok(!JSON.stringify(timingCache.status(scope)).includes('SECRET'));
 timingCache.close();timingDb.close();console.log('PASS source-free numeric preparation phases, final permission and failure timing');
+
+// Actual overlap must be observable without publishing record identifiers or bodies.
+const overlapDb=new DatabaseSync(':memory:');overlapDb.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+const overlapCache=new ConversationPrefetch(overlapDb);let releases=[],startedReads=0;
+const overlapIo={currentScope:()=>scope,catalog:async()=>catalog(),call:async(tool,args)=>{
+  if(tool==='get_updates')return reply({episodes:Array.from({length:7},(_,i)=>({episode_uuid:'overlap-'+i,group_id:'fixture-private',created_at:new Date().toISOString()})),coverage:{complete:true},truncated:false});
+  startedReads++;await new Promise(resolve=>releases.push(resolve));
+  return {...reply({episode:{uuid:args.uuid,group_id:'fixture-private',content:'SYNTHETIC_PRIVATE_BODY',origin:'manual',source_ref:'fixture',recorded_at:new Date().toISOString()},coverage:{complete:true},truncated:false}),reiMcpTiming:{connectMs:2,requestMs:3}};
+}};
+const overlapPending=overlapCache.activate(scope,overlapIo);await new Promise(setImmediate);
+assert.equal(startedReads,6);assert.equal(overlapCache.status(scope).syncDiagnostics.bodyReadPeak,6);
+releases.shift()();await new Promise(setImmediate);assert.equal(startedReads,7);
+for(const resolve of releases)resolve();await overlapPending;
+const diagnostic=overlapCache.status(scope).syncDiagnostics;
+assert.equal(diagnostic.bodyReadCount,7);assert.equal(diagnostic.bodyReadPeak,6);
+assert.equal(diagnostic.bodyTransportCount,7);assert.equal(diagnostic.bodyConnectMs,14);assert.equal(diagnostic.bodyRequestMs,21);
+assert.ok(diagnostic.bodyReadTotalMs>=diagnostic.bodyReadMaxMs);
+assert.ok(!JSON.stringify(diagnostic).includes('PRIVATE'));assert.ok(!JSON.stringify(diagnostic).includes('overlap-'));
+overlapCache.close();overlapDb.close();console.log('PASS six overlapping reads, slot refill and source-free transport aggregates');

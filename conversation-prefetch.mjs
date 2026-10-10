@@ -97,7 +97,24 @@ export class ConversationPrefetch {
         // Too much cursor metadata disables prefetch instead of growing indefinitely.
         if(update.rows.length>10000)throw new Error('Ledger too large');
         const at=this.now(),candidates=prefetchCandidates(update.rows,at,this.maxRecords);
-        const records=await timed('bodies',()=>readConcurrent(candidates,async row=>checkedRecord(await entry.io.call('get_episode',{uuid:row.uuid,group_ids:scope.groups.map(g=>g.id)},signal),row,scope,at),{concurrency:6,signal}));
+        // Counts observe caller overlap, not server execution. Summed durations overlap.
+        let activeReads=0;
+        Object.assign(entry.timing,{bodyReadCount:0,bodyReadPeak:0,bodyReadTotalMs:0,bodyReadMaxMs:0,bodyTransportCount:0,bodyConnectMs:0,bodyRequestMs:0});
+        const records=await timed('bodies',()=>readConcurrent(candidates,async row=>{
+          const readStarted=this.now();entry.timing.bodyReadCount++;activeReads++;
+          entry.timing.bodyReadPeak=Math.max(entry.timing.bodyReadPeak,activeReads);
+          try{
+            const result=await entry.io.call('get_episode',{uuid:row.uuid,group_ids:scope.groups.map(g=>g.id)},signal);
+            const timing=result?.reiMcpTiming;
+            if(Number.isSafeInteger(timing?.connectMs)&&timing.connectMs>=0&&Number.isSafeInteger(timing?.requestMs)&&timing.requestMs>=0){
+              entry.timing.bodyTransportCount++;entry.timing.bodyConnectMs+=timing.connectMs;entry.timing.bodyRequestMs+=timing.requestMs;
+            }
+            return checkedRecord(result,row,scope,at);
+          }finally{
+            activeReads--;const elapsed=Math.max(0,this.now()-readStarted);
+            entry.timing.bodyReadTotalMs+=elapsed;entry.timing.bodyReadMaxMs=Math.max(entry.timing.bodyReadMaxMs,elapsed);
+          }
+        },{concurrency:6,signal}));
         // Recheck remote permission after the reads, before persisting any source.
         if(!current()||!prefetchAuthorized(await timed('permission',()=>entry.io.catalog(signal)),scope)||!current())throw new Error('Scope changed');
         const value={version:1,scopeKey:key,checkedAt:at,records,ledgerCount:update.rows.length,bodyCoverage:records.length===update.rows.length?'complete':'limited'};

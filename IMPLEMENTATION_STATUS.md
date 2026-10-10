@@ -875,3 +875,15 @@ public/app.jsでbootstrap更新後、音声ONの場合だけQwen状態を非同�
 変更conversation-prefetch.mjs/public/app.js/package.json/tests/voice-refresh-preparation.mjs/tests/prefetch-refresh-preparation.mjs。statusのactiveで現在Hubの周期同期登録を判定、音声ON+bootstrap成功時に30秒間隔上限で確認し、未登録なら既存prepare/追跡開始。保存済みreadyも再登録、未設定/稼働済み/OFF/認証変更は抑制、重複なし。最新MCP/権限/本文/鮮度確認を維持。復帰・保存済み/空状態・抑制/レース試験、prefetch/provisional/実Hubストリームfixture、構文/diff成功。稼働2ファイルだけ反映・既存Hubのみ再起動、ONを保った更新で「利用不可」から背景本文取得へ自動復帰を確認。
 
 実機復帰後64件/14:48時点・部分範囲表示。同期全体51145ms、catalog6046/ledger12137/bodies31399/permission1544ms、最大6並列・本文64件。準備完了後に同じ会社質問を送信：表示6791ms/音声開始推定7551ms/全文20398ms、暫定used6754ms/最新確定20384ms。暫定snapshot1514/model5260/permission1573ms、6本文11284chars/入力28130bytes。最新backend18390ms、検索6224/source約2093/body約2098/model7967ms。surveyは準備済み再利用、token0ms。Qwen42文字・先頭生成0.440秒/全体4.195秒、準備0、案内終了待ち274ms。変更前は準備なし・token1571ms/survey8858msで、単発異条件のため純粋な速度改善率を主張しない。準備51秒は質問前で今回の応答遅延に含まない。先読み復帰で暫定回答が再開したことを検証した。質問直前のHub再起動では復帰確認最大30秒+同期待ちが残り、先読みなし質問は最新取得へフォールバック。実マイク/物理出音/聴感/全主張原文監査/負荷未検証。製品未完成、次は暫定生成約5秒と最新MCP取得、準備中の体験を改善する。
+
+## 2026-10-10 15:13 — 暫定評価ヘッダー受信から権限確認を開始
+
+担当Codex。開始HEAD49d2b07・差分なし、CI38028850667は3OS成功。README/ARCHITECTURE/AGENTS/実装状況/引継ぎ/最新実測、Synapse3bc2481e全文・台帳/グラフ、Chatwork14:53以降新着なしを確認。Hub30587/Connector35386、単一Qwen worker。許可8棚complete、週残量開始/途中33%、5時間枠取得不能。有料API・追加課金禁止は本人指示のまま。
+
+変更前の同じ会社質問：表示7761ms/回答音声開始推定8562ms/全文26109ms。暫定snapshot1988/model4712/権限2013ms、7本文13555chars/入力32624bytes、firstDelta5178/評価5734/最初の一文6174/暫定7749ms。最新24523ms、survey5647/検索6813/source約2099/body約2096/model7864ms。
+
+conversation-provisional.mjsの権限開始条件を、評価済みrespond/status/sourceIds/reason/queryとtext開始ヘッダーまで受信した段階へ前倒し。本文空の段階で既存の源ID/許可status/query空/重複なしを検証し照合開始。発話条件は従来の本文評価・完全一文・直近1秒の権限・scope/鮮度/取消・最終JSON一致のまま。無効な評価から照合せず、許可だけでも発話しない。本文の量や最新MCPを減らしていない。tests/conversation-provisional.mjsに空本文ヘッダーで照合開始→許可だけでは無出力→一文完成で発話という段階試験追加。既存遅延権限再確認/失効/不正評価/最終不一致/取消/訂正/補足、prefetch、実Hub配信fixture、構文/diff成功。
+
+稼働1ファイル反映・既存Hubのみ再起動、ON画面更新と64件/15:13時点の先読み復帰後同文：表示7293ms/音声開始推定7905ms/全文18801ms、暫定7255/最新確定18787ms。snapshot2016/model4710/権限1573ms、7本文13555chars/32624bytesで前試行と同量。firstDelta5157/評価ヘッダー5681/最初の一文5776ms。権限開始が一文より95ms早い。最新backend16781ms、検索6209/source約2087/body約2095/model6382ms、survey再利用/token0ms。Qwen39文字、起動準備0ms/先頭0.469秒/全体3.779秒、案内終了待ち96ms。
+
+各1回、request_start基準。実機の表示差468msは権限通信2013→1573ms等が重なり、修正の因果として扱わない。最新確認の差もsurvey再利用/モデル通信の条件が異なる。模擬では空評価後の800msの一文生成と権限400msを並行化でき、権限単独は無発話。実機では生成受信の塊と文長次第で重なりが小さく、秒単位の改善未確認。本文/入力量・effort・モデル・承認8棚・毎問最新確認は維持。ONLINE/端末1/保留2保持。実マイク/物理出音/聴感/全主張監査/負荷未検証。製品未完成、次はモデル応答/取得待ちと準備中の体験改善。

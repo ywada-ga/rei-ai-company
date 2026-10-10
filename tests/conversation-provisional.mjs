@@ -147,6 +147,17 @@ console.log('PASS early provisional sentence, delayed permission, invalid header
  assert.equal(out.provisionalTiming.permissionStartedMs,0);assert.equal(out.provisionalTiming.firstSentenceMs,500);
  assert.equal(out.provisionalTiming.permissionChecks,1);
 }
+// A valid source header overlaps permission with first-sentence generation.
+{
+ const model=defer(),gate=defer();let stream,calls=0,tick=0;
+ const s=await scenario({now:()=>at+tick,authorize:()=>{calls++;return gate.promise;},generate:(_m,o)=>{stream=o.onDelta;return model.promise;}});
+ const raw=JSON.stringify(decision),empty=raw.slice(0,raw.indexOf('担当'));
+ stream(empty);await settle();assert.equal(calls,1,'Valid header starts permission before answer text');assert.equal(s.events.length,0);
+ tick=400;gate.resolve(true);await settle();assert.equal(s.events.length,0,'Permission alone cannot speak');
+ tick=800;stream(raw);await settle();assert.equal(s.events[0].type,'provisional');assert.equal(calls,1);
+ model.resolve({text:raw});await settle();s.latest.resolve(result());const out=await s.pending;
+ assert.equal(out.provisionalTiming.permissionStartedMs,0);assert.equal(out.provisionalTiming.firstSentenceMs,800);
+}
 // A slow sentence cannot reuse an early authorization after it becomes old.
 {
  const model=defer(),renew=defer();let stream,calls=0,tick=0;

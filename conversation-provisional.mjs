@@ -47,13 +47,13 @@ function validSnapshot(snapshot,scope,now,maxAgeMs){
 }
 // Only an assessment header followed by a complete Japanese sentence can
 // start provisional speech. The final JSON must still agree with this prefix.
-function provisionalAssessment(raw,ids,{supportedOnly=false}={}){
+function provisionalAssessment(raw,ids,{supportedOnly=false,allowEmpty=false}={}){
   const text=reviewedAnswerPrefix(raw,ids,{canRetry:false});
-  if(!text||text.length>400)return null;
+  if((!text&&!allowEmpty)||text.length>400)return null;
   const match=String(raw).match(/^\s*\{\s*(?:"decision"\s*:\s*\{\s*)?("action"\s*:\s*"respond"[\s\S]*?),\s*"text"\s*:\s*"/);
   if(!match)return null;
   let header;try{header=parseDecision('{'+match[1]+',"text":""}');}catch{return null;}
-  if(header.query||new Set(header.sourceIds).size!==header.sourceIds.length||supportedOnly&&header.status!=='supported')return null;
+  if(!['supported','partial'].includes(header.status)||!header.sourceIds.length||header.sourceIds.some(id=>!ids.has(id))||header.query||new Set(header.sourceIds).size!==header.sourceIds.length||supportedOnly&&header.status!=='supported')return null;
   return {text,sourceIds:header.sourceIds};
 }
 function provisionalPrefix(raw,ids,options){
@@ -90,7 +90,8 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       const records=selectPrefetchedRecords(snapshot,question,{at:started,context});if(!records.length){provisionalOutcome='no_candidates';return;}
       const ids=new Set(records.map(r=>r.episode.uuid));
       let permissionReady=false,pendingPrefix=null,permission=null,permissionCompletedAt=null;
-      // Overlap with text generation only after a validated assessment and text.
+      // Start the permission read once the source assessment header is valid.
+      // Release still requires a complete factual sentence and fresh permission.
       // A completed permission check older than one second must be renewed.
       const permissionFresh=()=>permissionReady&&now()-permissionCompletedAt<=1000;
       const releasePrefix=()=>{
@@ -119,7 +120,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       timing.provisionalInputBytes=Buffer.byteLength(JSON.stringify(messages));
       timing.provisionalRecordCount=input.records.length;
       timing.provisionalBodyChars=input.records.reduce((sum,r)=>sum+(typeof r.episode.content==='string'?r.episode.content.length:r.episode.content.excerpts.reduce((n,e)=>n+e.text.length,0)),0);
-      const response=await generate(messages,{signal:provisionalController.signal,effort:'low',phase:'provisional_answer',onDelta:raw=>{if(initial||!alive()||latestSettled)return;if(raw)timing.modelFirstDeltaMs??=now()-started;const assessed=provisionalAssessment(raw,ids);pendingPrefix=provisionalPrefix(raw,ids);if(pendingPrefix)timing.firstSentenceMs??=now()-started;if(assessed){timing.assessmentReadyMs??=now()-started;void requestPermission();}releasePrefix();}});
+      const response=await generate(messages,{signal:provisionalController.signal,effort:'low',phase:'provisional_answer',onDelta:raw=>{if(initial||!alive()||latestSettled)return;if(raw)timing.modelFirstDeltaMs??=now()-started;const assessed=provisionalAssessment(raw,ids,{allowEmpty:true});pendingPrefix=provisionalPrefix(raw,ids);if(pendingPrefix)timing.firstSentenceMs??=now()-started;if(assessed){timing.assessmentReadyMs??=now()-started;void requestPermission();}releasePrefix();}});
       timing.provisionalModelMs=now()-modelStarted;timing.modelCompletedMs=now()-started;
       timing.provisionalTransport=Object.fromEntries(['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs'].filter(key=>Number.isFinite(response.timing?.[key])&&response.timing[key]>=0).map(key=>[key,response.timing[key]]));
       if(!alive()||latestSettled)return;

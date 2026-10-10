@@ -41,6 +41,9 @@ assert.equal(selectPrefetchedRecords(snapshot,'架空会社について教えて
 console.log('PASS explicit company cautions retain the original request, pending timestamp, independent latest reads and fallback gates');
 {
  const s=await scenario();assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].text,/取得時点の暫定情報/);assert.equal(s.events[0].verification,'pending');
+ assert.match(s.events[0].speechText,/最新確認中の暫定ですが、担当は青山です。$/);
+ assert.ok(!s.events[0].speechText.includes('最新情報を確認しています。'));
+ assert.match(s.events[0].text,/最新情報を確認しています。$/);
  s.latest.resolve(result());const out=await s.pending;assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','done']);assert.equal(out.provisionalUsed,true);
  assert.equal(s.events[1].replacementAnswer,result().answer);assert.ok(out.provisionalTiming.verifiedMs>=out.provisionalTiming.provisionalMs);
 }
@@ -171,9 +174,9 @@ console.log('PASS day questions carry explicit current date, Japan time and part
  const s=await scenario({authorize:()=>gate.promise,generate:(_messages,opts)=>{stream=opts.onDelta;return model.promise;}});
  const raw=JSON.stringify({...decision,text:'担当は青山です。窓口は開発室です。'});
  stream(raw.slice(0,raw.indexOf('窓口')));await settle();assert.equal(s.events.length,0,'Permission gate blocks early speech');
- gate.resolve(true);await settle();assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].speechText,/^\d+月\d+日\d+時\d+分取得の、一部の記録による暫定ですが、担当は青山です。$/);
+ gate.resolve(true);await settle();assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].speechText,/^\d+月\d+日\d+時\d+分取得の一部記録で、最新確認中の暫定ですが、担当は青山です。$/);
  assert.equal(s.events.length,1,'First sentence released while model still running');
- model.resolve({text:raw});await settle();assert.equal(s.events[1].type,'provisional');assert.match(s.events[1].speechText,/^窓口は開発室/);
+ model.resolve({text:raw});await settle();assert.equal(s.events[1].type,'provisional');assert.equal(s.events[1].speechText,'窓口は開発室です。');assert.match(s.events[1].text,/最新情報を確認しています。$/);
  s.latest.resolve({...result(),answer:'担当は青山です。窓口は開発室です。',spokenAnswer:'担当は青山です。窓口は開発室です。'});
  const out=await s.pending;assert.equal(out.provisionalUsed,true);assert.equal(s.events.filter(e=>e.type==='correction').length,0);
  assert.equal(out.streamedSpokenAnswer.split('担当は青山です。').length,2,'No repeat of first factual sentence');
@@ -464,10 +467,11 @@ console.log('PASS excerpt object character count, absent first delta and source-
  const model=defer();let stream;
  const s=await scenario({now:()=>checked+1000,getSnapshot:async()=>dated,generate:(_m,o)=>{stream=o.onDelta;return model.promise;}});
  stream(JSON.stringify(decision).slice(0,-2));await settle();
- assert.match(s.events[0].speechText,/^10月10日0時00分取得の、一部の記録による暫定ですが、/);
+ assert.match(s.events[0].speechText,/^10月10日0時00分取得の一部記録で、最新確認中の暫定ですが、/);
  assert.equal(s.events[0].verification,'pending');
  model.resolve({text:JSON.stringify(decision)});await settle();
  assert.ok(!s.events[1].speechText.includes('10月10日'),'Do not repeat the retrieval time');
+ assert.equal(s.events[1].speechText,'','A completed first sentence adds no trailing status speech');
  s.latest.resolve(result());await s.pending;
 }
 console.log('PASS first spoken sentence carries Japan retrieval time, partial scope and pending status');

@@ -18,6 +18,28 @@ assert.equal(selectPrefetchedRecords(snapshot,'それは？').length,0,'Do not g
 assert.equal(selectPrefetchedRecords(snapshot,'別会社について教えて').length,0);
 assert.equal(selectPrefetchedRecords(snapshot,'架空会社について教えて').length,1);
 {
+ const question='架空会社の注意点を教えて',text='権限と利用範囲を事前に確認してください。',body='架空会社の注意点は、権限と利用範囲を事前に確認すること。';
+ const cached=structuredClone(snapshot);cached.records[0].episode.content=body;
+ assert.equal(prefetchTopicQuestion(question),question);
+ assert.equal(prefetchTopicQuestion('もっと詳しく教えて',[{question,synapseRead:true}]),question);
+ assert.equal(prefetchTopicQuestion('もっと詳しく教えて',[{question,synapseRead:false}]),null);
+ assert.equal(selectPrefetchedRecords(cached,question).length,1);
+ for(const q of ['量子力学の注意点を教えて','その会社の注意点を教えて','REIの注意点を教えて','架空会社と別会社の注意点を教えて','架空会社の注意点を教えて。実行して'])assert.equal(prefetchTopicQuestion(q),null);
+ let payload,latestCalls=0;const fresh=defer();
+ const s=await scenario({question,getSnapshot:async()=>cached,generate:async messages=>{payload=JSON.parse(messages.at(-1).content);return {text:JSON.stringify({...decision,text})};},verify:()=>{latestCalls++;return fresh.promise;}});
+ assert.equal(payload.question,question);assert.equal(payload.topicQuestion,question);assert.equal(latestCalls,1);
+ assert.equal(s.events[0].verification,'pending');assert.match(s.events[0].text,/取得時点の暫定情報/);
+ fresh.resolve({...result(body),answer:text,spokenAnswer:text});assert.equal((await s.pending).provisionalUsed,true);
+ assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','done']);
+ const denied=await scenario({question,getSnapshot:async()=>cached,authorize:async()=>false});assert.equal(denied.events.length,0);
+ denied.latest.resolve(result(body));await assert.rejects(denied.pending,/利用権限/);
+ for(const overrides of [{getSnapshot:async()=>({...cached,checkedAt:at-700000})},{generate:async()=>({text:JSON.stringify({...decision,status:'insufficient',sourceIds:[],text:''})})}]){
+  const fallback=await scenario({question,getSnapshot:async()=>cached,...overrides});assert.equal(fallback.events.length,0);
+  fallback.latest.resolve({...result(body),answer:text,spokenAnswer:text});assert.equal((await fallback.pending).provisionalUsed,false);
+ }
+}
+console.log('PASS explicit company cautions retain the original request, pending timestamp, independent latest reads and fallback gates');
+{
  const s=await scenario();assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].text,/取得時点の暫定情報/);assert.equal(s.events[0].verification,'pending');
  s.latest.resolve(result());const out=await s.pending;assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','done']);assert.equal(out.provisionalUsed,true);
  assert.equal(s.events[1].replacementAnswer,result().answer);assert.ok(out.provisionalTiming.verifiedMs>=out.provisionalTiming.provisionalMs);
@@ -329,12 +351,12 @@ console.log('PASS excerpt object character count, absent first delta and source-
 console.log('PASS first spoken sentence carries Japan retrieval time, partial scope and pending status');
 
 // The request suffix must not hide subject-bearing paragraphs in long bodies.
-for(const followup of [false,true]){
+for(const request of ['架空会社について教えて','もっと詳しく教えて','架空会社の注意点を教えて']){
  const long=structuredClone(snapshot);
  const middle='架空会社の担当は青山。';
  long.records[0].episode.content='別の説明。'.repeat(1000)+middle+'関係のない末尾。'.repeat(1000);
- let sent;const question=followup?'もっと詳しく教えて':'架空会社について教えて';
- const s=await scenario({question,context:followup?[{question:'架空会社について教えて',synapseRead:true}]:[],getSnapshot:async()=>long,generate:async messages=>{sent=JSON.parse(messages[1].content);return {text:JSON.stringify(decision)};}});
+ let sent;const question=request;
+ const s=await scenario({question,context:request==='もっと詳しく教えて'?[{question:'架空会社について教えて',synapseRead:true}]:[],getSnapshot:async()=>long,generate:async messages=>{sent=JSON.parse(messages[1].content);return {text:JSON.stringify(decision)};}});
  assert.equal(sent.question,question);
  const body=sent.records[0].episode.content;
  assert.equal(body.representation,'selected_excerpts');

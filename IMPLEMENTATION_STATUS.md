@@ -771,3 +771,15 @@ cb903a5で「暫定ですが、回答の要点」から話し、取得時点と�
 - tests/conversation-provisional.mjsでroot.deleted=trueかつ同じ本文を返す模擬検証器を用意し、修正前verifiedになる失敗を再現。修正後root/episode×削除・失効・旧版の6ケースでcorrection、verified/supplementなしを確認。正常な同一本文、変更本文、権限取消、鮮度・配信・中断の既存回帰も成功。暫定会話・会話品質・実Hubストリームfixture・差分検査成功。会社本文を試験に転記していない。
 - 稼働conversation-provisional.mjsのHEAD一致確認・退避後1ファイル反映、既存Hubだけ再起動。画面更新でONLINE・端末1/1・保留2。DB/認証保持・重複起動なし。
 - 今回速度再測定・実データ削除競合・実マイク・聴感は未検証。通常応答の高速化の証明ではない。状態項目が欠落する応答の最新版保証は未解決で、Synapse本文応答の版/削除/失効契約の一貫性が必要。最新速度実測は08:43の表示7,290ms/音声開始予約7,939ms/最新22,480ms。次は原文照合と取得/生成待ちの改善、製品完成未達。既存Pro・女性ローカルQwen・有料API禁止を維持。
+
+## 2026-10-10 10:13 — 暫定概要の思考量を下げる実験は速度改善未確認、撤回
+
+- Codex担当。開始時差分なし、AGENTS/README/ARCHITECTURE/引継ぎ/直近実測・既存Hub/Connector・前回CI成功確認。Synapse38a43443全文/台帳/グラフ・許可8棚complete、Chatwork445923519見出し照合、09:47以降新着なし。週残量開始37%/途中36%、5時間枠取得不能。
+- gpt-6-sol接続を維持し、単独概要の暫定生成だけeffort:lowの強制を外して既存モデル既定noneを使う候補を試した。日付付き一覧・追加質問・最新確認・補足はlowを維持。OpenAI公式guides/latest-modelとguides/reasoningを取得しSolのnone対応と速度/品質のトレードオフを確認。APIキー・有料API・モデル変更・課金なし。取得/権限/本文/配信検証は維持。
+- 最初の2実機文字質問は先読み未準備で暫定経路に入らず比較対象外。表示26139ms/音声予約27693ms/全文29207ms、次は25034ms/26234ms/28709ms。準備OFF/ONで既存準備開始、同期64記録limited確認後に有効な比較へ進んだ。音声停止でworker世代2/client_abort。準備完了前は20〜30秒待ちへ戻る課題も確認した。
+- 同じ「Synapse Connectについて教えて」、承認8棚、先読みused、音声ON、request_start。変更前low：表示6687ms/音声予約7241ms/最新22893ms/全文22909ms。暫定snapshot1927ms/model4175ms/token0ms/headers1552ms/stream2620ms、権限1574ms、入力24187bytes/5本文/9496字。Qwen first0.508秒・準備0ms・世代2。最新model7345ms/survey4538ms/search5244ms。
+- 候補1ファイル旧HEAD一致・退避後反映して既存Hub再起動。直後画面更新で旧streamのnetwork errorを表示、音声OFF/ONで準備、同じ質問。none：表示8278ms/音声予約8842ms/最新19783ms/全文19806ms。暫定snapshot1961ms/model5757ms/token0ms/headers3134ms/stream2620ms、権限1574ms、入力24187bytes/5本文/9496字で同量。Qwen first0.518秒・準備0ms・世代1。最新model7859ms/search6145ms、事前survey再利用あり。
+- 表示1591ms遅く、暫定model1582ms遅く、headersも1582ms遅い。最新確認3110ms短縮はsurvey再利用など条件が異なり、思考量変更の効果ではない。連続単発・Hub再起動・Qwen世代違い・通信変動のため因果A/Bではない。改善確認できず候補コード/候補試験を撤回し既存lowへ戻す。暫定/モデル接続/実Hubストリーム/会話品質fixture検証は成功していたが、none品質の全主張原文監査は未実施。
+- 実マイク・聴感・負荷未検証、音声は再生開始予約で実聴感ではない。次は準備完了の可視化と安定化、モデルheaders待ちとMCP取得変動を切り分ける。回答高速化・製品完成未達、既存Proと女性ローカルQwen・追加課金禁止を維持。
+
+- 実機候補の撤回完了：稼働conversation-provisional.mjsは復元したGit HEADとバイト一致、既存Hubだけ再起動。画面更新後ONLINE・端末1/1・保留2件を確認。

@@ -202,3 +202,9 @@ conversation.mjsの共有検索準備pending待機が会話取消を無視して
 ## 2026-10-10 09:43の引継ぎ
 
 暫定本文の同一確認sourceFingerprintsにもget_episode応答ルートの削除/失効/旧版を適用。修正前root.deleted=trueでverifiedになる模擬失敗、修正後root/episode6ケースでcorrection/verified・supplementなしを確認。通常converseには既に拒否があるためコントローラーの防御追加で、実会社の誤回答再現ではない。暫定・品質・実Hubストリームfixture成功、稼働1ファイル反映・Hub再起動、ONLINE/端末1/1/保留2保持。速度・実削除競合・実マイク/聴感未検証、状態欠落時の最新版保証は取得契約上の課題。
+
+## 2026-10-10 10:13の引継ぎ
+
+単独概要の暫定生成low強制を外しgpt-6-sol既定noneを試したが、同量5本文24187bytesで表示6.687秒→8.278秒、暫定model4.175秒→5.757秒。headers1.552秒→3.134秒、stream2.620秒は同じで通信/サーバ待ちの変動が大きい。最新22.893秒→19.783秒はsurvey再利用等条件が異なり因果ではない。改善未確認につき候補と候補試験を撤回、既存low維持。先読み準備前の2試行は25〜26秒表示で暫定なし、比較外。準備完了の可視化/安定化も次の課題。実マイク/聴感/全主張原文監査未検証。詳細はIMPLEMENTATION_STATUS 10:13。
+
+- 実機候補の撤回完了：稼働conversation-provisional.mjsは復元したGit HEADとバイト一致、既存Hubだけ再起動。画面更新後ONLINE・端末1/1・保留2件を確認。

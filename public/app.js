@@ -579,10 +579,34 @@ voiceConversation.localSpeak=(text,signal)=>playLocalVoice(text,signal,request);
 voiceConversation.localReply=(text,signal)=>playLocalReply(text,signal,request);
 voiceConversation.streamReply=(signal,onPlaying,onReceiptPlaying)=>createConversationSpeech(signal,options=>createLocalSpeechStream(signal,request,{streamRequest:streamVoiceRequest,...options}),{onPlaying,onReceiptPlaying});
 const currentVoice=()=>voiceConversation;
+let conversationPreparationGeneration=0;
+const conversationPreparation=document.createElement('p');
+conversationPreparation.id='conversation-preparation';conversationPreparation.className='setting-guide';conversationPreparation.setAttribute('role','status');
+$('command-form').after(conversationPreparation);
+function stopConversationPreparation(){conversationPreparationGeneration++;conversationPreparation.textContent='';}
+async function trackConversationPreparation({prepare=true}={}){
+ const generation=++conversationPreparationGeneration;
+ conversationPreparation.textContent='会社の情報を先読みしています。準備中でも質問でき、最新情報を確認して回答します。';
+ try{
+  if(prepare)await request('/api/conversation/prepare',{method:'POST'});
+  for(let attempt=0;attempt<60;attempt++){
+   if(generation!==conversationPreparationGeneration)return;
+   const status=await request('/api/conversation/prefetch');
+   if(generation!==conversationPreparationGeneration)return;
+   if(status.usable){conversationPreparation.textContent=`会社の情報を${status.recordCount}件先読みしました（${formatTime(status.checkedAt)}時点${status.bodyCoverage==='limited'?'・一部の記録':''}）。質問ごとに最新情報を確認します。`;return;}
+   if(status.state!=='syncing'){conversationPreparation.textContent='先読みは利用できません。質問ごとに最新情報を取得して回答します。';return;}
+   await new Promise(resolve=>setTimeout(resolve,2000));
+  }
+  if(generation===conversationPreparationGeneration)conversationPreparation.textContent='先読みの準備に時間がかかっています。質問ごとに最新情報を確認して回答します。';
+ }catch{
+  if(generation===conversationPreparationGeneration)conversationPreparation.textContent='先読みの準備状態を確認できません。回答時に最新情報の取得結果を確認します。';
+ }
+}
 let localVoiceAvailable=false;
 async function loadLocalVoiceStatus() {
  $('voice-conversation-status').textContent='会話AIとQwenの声を準備しています…';
  await request('/api/conversation/prepare',{method:'POST'});
+ void trackConversationPreparation({prepare:false});
  const local=await request('/api/voice/local/status');localVoiceAvailable=local.configured;
  $('voice-local-status').textContent=local.configured?'Qwen · このPCで声を作成します。音声合成のAPI料金はかかりません。':'Qwenの準備ができていません。REIの音声モデルを確認してください。';
  $('voice-preview').disabled=!local.configured;
@@ -609,7 +633,7 @@ $('voice-conversation-knowledge').onclick=async()=>{
 $('conversation-scope-close').onclick=()=>$('conversation-scope-modal').close();
 $('conversation-scope-form').onsubmit=async event=>{
  event.preventDefault();const groups=[...document.querySelectorAll('[data-conversation-group]:checked')].map(input=>conversationCatalog.find(g=>g.id===input.dataset.conversationGroup)).filter(Boolean).map(g=>({id:g.id,name:g.name}));
- try{const result=await request('/api/conversation/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({groups})});conversationTurns=[];voiceConversation.history=[];renderConversation();$('conversation-scope-feedback').textContent=`この会話の検索範囲を${result.groups.length}棚に保存しました。`;}
+ try{const result=await request('/api/conversation/scope',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({groups})});conversationTurns=[];voiceConversation.history=[];renderConversation();void trackConversationPreparation();$('conversation-scope-feedback').textContent=`この会話の検索範囲を${result.groups.length}棚に保存しました。`;}
  catch(error){$('conversation-scope-feedback').textContent=error.message;}
 };
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('voice-conversation-screen').classList.contains('hidden'))closeVoiceConversation();});
@@ -633,11 +657,11 @@ $('voice-output').onclick = () => {
   state.voiceOn = !state.voiceOn;
   $('voice-output').textContent = `音声応答 ${state.voiceOn ? 'ON' : 'OFF'}`;
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
-  if (!state.voiceOn) {replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;}
+  if (!state.voiceOn) {stopConversationPreparation();replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
   if(state.voiceOn)void unlockLocalVoice().catch(error=>feedback(error.message,true));
   if(state.voiceOn)void request('/api/voice/local/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`Qwenの準備: ${error.message}`,true);});
-  if(state.voiceOn)void request('/api/conversation/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`会話の準備: ${error.message}`,true);});
+  if(state.voiceOn)void trackConversationPreparation();
 };
 $('voice-button').onclick = () => $('voice-conversation-open').click();
 $('voice-preview').onclick=()=>{void speak('こんにちは、レイです。この画面のまま、続けて話せます。');};

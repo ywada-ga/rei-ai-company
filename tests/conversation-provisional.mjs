@@ -26,6 +26,16 @@ assert.equal(selectPrefetchedRecords(snapshot,'架空会社について教えて
  const s=await scenario();s.latest.resolve({...result('担当は赤井に変更。'),answer:'担当は赤井です。',spokenAnswer:'担当は赤井です。'});await s.pending;
  assert.equal(s.events[1].type,'correction');assert.match(s.events[1].text,/^先ほどの点、訂正です。担当は赤井/);
 }
+for(const state of [{deleted:true},{invalid_at:'2026-10-10T00:00:00Z'},{is_latest_revision:false}]){
+ for(const location of ['root','episode']){
+  const s=await scenario(),fresh=result(),data=fresh.evidence[0].result.structuredContent;
+  Object.assign(location==='root'?data:data.episode,state);
+  s.latest.resolve(fresh);await s.pending;
+  assert.equal(s.events[1].type,'correction',`${location} state cannot confirm cached evidence: ${JSON.stringify(state)}`);
+  assert.equal(s.events.filter(e=>e.type==='verified'||e.type==='supplement').length,0);
+ }
+}
+console.log('PASS root and episode deletion, expiry and old revision cannot confirm provisional body equality');
 {
  const s=await scenario();s.latest.resolve({...result(),answer:decision.text+'窓口は開発室です。',spokenAnswer:decision.text+'窓口は開発室です。'});await s.pending;
  assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','supplement','done']);assert.equal(s.events[2].text,'補足です。窓口は開発室です。');

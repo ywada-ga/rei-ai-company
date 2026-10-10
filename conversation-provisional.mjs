@@ -38,7 +38,7 @@ function sourceFingerprints(result){
   const found=new Map();
   for(const item of result.evidence||[]){
     const data=mcpData(item.result||{}),e=data?.episode;
-    if(item.tool==='get_episode'&&!item.result?.isError&&data?.coverage?.complete===true&&!data.truncated&&e?.uuid===item.uuid&&typeof e.content==='string'&&!e.content_truncated&&e.content_representation!=='bounded_prefix'&&!e.deleted&&!e.invalid_at&&e.is_latest_revision!==false)found.set(e.uuid,{groupId:e.group_id,hash:fingerprint(e.content)});
+    if(item.tool==='get_episode'&&!item.result?.isError&&data?.coverage?.complete===true&&!data.truncated&&!data.deleted&&!data.invalid_at&&data.is_latest_revision!==false&&e?.uuid===item.uuid&&typeof e.content==='string'&&!e.content_truncated&&e.content_representation!=='bounded_prefix'&&!e.deleted&&!e.invalid_at&&e.is_latest_revision!==false)found.set(e.uuid,{groupId:e.group_id,hash:fingerprint(e.content)});
   }
   return found;
 }

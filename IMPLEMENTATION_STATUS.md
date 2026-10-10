@@ -1,5 +1,17 @@
 # REI 実装状況
 
+## 2026-10-11 07:14 — 調査中中断・編集再送の実機確認
+
+担当Codex pulse。開始HEAD2fcc150 clean/CI38089095717全3OS成功、Hub74397/Connector35386/Qwen75852各1を確認（77179はQwenのmultiprocessing補助で二重workerではない）。README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/前実測を確認。共有増分3件は自身詳細/追記と別案件の方針記録で、別案件本文は今回のREI課題に関連せず未読。前追記09cdbb08をUUID読戻し、本文一致/台帳/グラフ確認。許可8棚complete/全社共有can_write。Chatwork06:51後の新質問・担当表明なし。第三者のAPI承認主張で本人禁止を変更しない。週残24%開始/途中、5時間値未提供。
+
+今回はコード・稼働反映/再起動なし。通常の入力会話で会社質問を送信し、調査中の「回答を中断」を操作。要点/回答音声/全文はいずれも未発生のまま（firstText/firstAudio/textComplete=null、answerPhases/speechPhases空）、入力23字を保持、音声ON/送信可。後から中断した質問の回答が表示されないことを確認して質問を編集し再送。未完了回答を履歴へ採用しないfixture/Hub切断・busy解除/取消後callback抑止も既存command-interrupt/stream-api/stream/local-audio-chunksの4回帰で成功。
+
+継続質問は先読み64件07:14時点・一部範囲、Qwen ON/既存ChatGPT Pro、同一利用者・同一選択範囲で1試行。暫定経路は適用されず（provisional/provisionalOutcome=null）、最新MCP検索5771ms→原典2091/2092並列→本文2097msを経て回答。冒頭の質問解釈model3579ms（token0/headers2009/stream1569）とMCP取得経路9962ms（3581〜13543ms）、回答生成model7863ms（token0/headers1573/stream6289/初delta2626、入力32484bytes）を分離。取得経路へ冒頭modelを混ぜない。要点17219ms/回答音声開始推定18937ms/全文21414ms。前回の注意点質問とは違うため速度比較や改善率を主張しない。
+
+回答音声初文44字は18273投入→同時生成→18897予約（予定待ち40ms）→18937開始推定、先頭生成0.610/全5.636秒。次文28字は18794投入→23913生成（列待ち5119ms）→24377予約（予定待ち2323ms）。本文完成後「回答を中断」で残り音声停止、285字の完成回答と音声ON/次送信可・中断ボタン非表示を確認。保存記録由来/未照合/連携範囲の留保表示を数値・条件で確認。取消後の診断71件の凍結は停止直後に採取した値を基準に再確認し一致（停止前の古い採取値との比較は停止までの正常な増加を含むため、旧通知発生の証拠にならない）。
+
+今回の継続質問は自然な会話にまだ遅く、暫定適用範囲と冒頭の質問解釈model待ちを次回調査・改善する。中断/編集再送は入力会話での実機確認であり、実マイクの調査中追加発話・聴感・物理出音・全主張原文照合・別端末/負荷は未検証。製品未完成、継続。探索時public/voice-conversation.jsは不存在、既存public/voice.jsとapp実装へ戻って確認。会社原本文/認証/音声を公開しない。
+
 ## 2026-10-11 06:44 — 音声片の再生予定間隔を測定
 
 担当Codex pulse。開始HEAD b110d6f clean/CI38087051413全3OS成功。Hub74397/Connector35386/Qwen75852各1、README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/最新実測を確認。Synapse増分は前回自身の詳細699c3a3e/追記0dafc853のみ、追記UUID本文一致/台帳/グラフ確認。許可8棚complete/全社共有can_write、Chatwork06:19後の新連絡・担当表明なし。第三者のAPI承認主張で本人禁止を変更せず。週残25%開始/途中→24%終了前、5時間値未提供。

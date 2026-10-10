@@ -57,7 +57,8 @@ export function conversationReceipt(question){
 // Mixed questions still take the normal evidence path.
 export function immediateConversationReply(question){
   const value=String(question).trim().replace(/[。！!\s]+$/u,'');
-  if(/^(こんにちは|こんばんは|おはよう(?:ございます)?)$/u.test(value))return value+'。何から進めましょうか。';
+  const greeting=value.match(/^(こんにちは|こんばんは|おはよう(?:ございます)?)(?:[。！!、,\s]+(短く(?:返事|回答|答え)(?:して|してください)|一言で(?:返事|回答|答え)(?:して|してください)))?$/u);
+  if(greeting)return greeting[1]+(greeting[2]?'。':'。何から進めましょうか。');
   if(/^ありがとう(?:ございます)?$/u.test(value))return 'どういたしまして。続きもお手伝いします。';
   return null;
 }

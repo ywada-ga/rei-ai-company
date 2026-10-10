@@ -12,6 +12,12 @@ const unverified=await converse({...basic,generate:make([{action:'search',query:
 const unavailable=await converse({...basic,call:async()=>({structuredContent:{uuid:'record-1',sources:[{traceable:false}]}}),generate:make([{action:'search',query:'予定'},{action:'source',uuid:'record-1'},{action:'answer',text:'断定します'}])});assert.match(unavailable.answer,/まだ確定/);
 calls=[];
 const hello=await converse({...basic,question:'こんにちは',groups:[],generate:()=>{throw Error('social turn must not call model');}});assert.equal(hello.answer,'こんにちは。何から進めましょうか。');assert.equal(hello.fastPath,'social');assert.equal(calls.length,0);
+// A self-contained greeting with only a brevity instruction is not a company follow-up.
+for(const question of ['こんにちは。短く返事して。','こんばんは、一言で回答してください。']){
+ const result=await converse({...basic,question,context:[{question:'会社の予定を教えて',synapseRead:true}],generate:()=>{throw Error('qualified social turn must not call model');},call:()=>{throw Error('qualified social turn must not read company data');}});
+ assert.equal(result.fastPath,'social');assert.equal(result.synapseRead,false);assert.equal(result.evidence.length,0);assert.ok(result.answer.length<12);
+}
+
 const thanks=await converse({...basic,question:'ありがとうございます！',groups,generate:()=>{throw Error('social turn must not call model');},onDelta:text=>assert.equal(text,'どういたしまして。続きもお手伝いします。')});assert.equal(thanks.synapseRead,false);assert.equal(thanks.timing.stages.length,0);
 const draft=await converse({...basic,question:'資料作成を作業依頼にして',generate:make([{action:'work',instruction:'資料作成'}])});assert.equal(draft.task.status,'approval_pending');assert.deepEqual(submitted,['資料作成を作業依頼にして']);
 const controller=new AbortController();controller.abort();await assert.rejects(converse({...basic,signal:controller.signal,generate:make([])}),/中断/);
@@ -63,7 +69,7 @@ const parallel=await converse({...basic,generate:make([{action:'search',query:'�
 console.log('parallel MCP body reads retain verified answer gate');
 
 // Mixed greetings/read-aloud and terse company follow-ups cannot bypass fresh reads.
-for(const question of ['こんにちは、会社の売上を教えて','会社の予定を読み上げて','ありがとう、会社の決定事項は？','もっと詳しく','具体的には？','簡単に説明して','短くして','読み上げて']){
+for(const question of ['こんにちは。短く返事して。会社の売上は？','こんにちは、会社の売上を教えて','会社の予定を読み上げて','ありがとう、会社の決定事項は？','もっと詳しく','具体的には？','簡単に説明して','短くして','読み上げて']){
  let searches=0,round=0,deltas=[];
  const response=await converse({...basic,question,context:[{question:'会社の予定は？',answer:'古い予定',synapseRead:true}],onDelta:delta=>deltas.push(delta),generate:async(messages,options)=>{
   round++;const decision=round===1?{action:'answer',text:'古い未確認の回答'}:round===2?{action:'search',query:'予定'}:{action:'answer',text:'今回確認した回答'};

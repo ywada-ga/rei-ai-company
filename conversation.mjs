@@ -1,6 +1,19 @@
 import {additionWindow,readAdditions,readConcurrent} from './conversation-updates.mjs';
 import {CONVERSATION_PROGRESS,additionsProgress} from './public/conversation-progress.js';
 import {loadSynapseSkill,unavailableGroups,episodeLookups,needsRecentEvidence,evidenceBodyContext} from './load-synapse.mjs';
+// Stop only this caller's wait; the shared preparation can still serve others.
+async function awaitSharedPreparation(pending,signal){
+  if(!signal)return pending;
+  if(signal.aborted)throw new Error('会話を中断しました');
+  let onAbort;
+  try{
+    return await Promise.race([pending,new Promise((_,reject)=>{
+      onAbort=()=>reject(new Error('会話を中断しました'));
+      signal.addEventListener('abort',onAbort,{once:true});
+      if(signal.aborted)onAbort();
+    })]);
+  }finally{signal.removeEventListener('abort',onAbort);}
+}
 // The model proposes operations. This controller owns the permitted operations.
 // Numeric diagnostics only. The first delta may be JSON assessment, not an answer.
 export function measureEvidenceModel(generate,checks,now=()=>performance.now()){
@@ -193,7 +206,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     onProgress?.({stage:'outline',text:CONVERSATION_PROGRESS.outline});
     const topic=overviewSubject(question)||personWorkSubject(question),scope=JSON.stringify(groups);
     const followup=!topic&&!/(さん|氏|会社|グループ)/u.test(question)&&/^(それ|その|もっと|詳し|続き|続け|ほか|他に|なぜ|理由)/u.test(question);
-    if(outlineCache?.pending)await outlineCache.pending;
+    if(outlineCache?.pending)await awaitSharedPreparation(outlineCache.pending,signal);
     if(signal?.aborted)throw new Error('会話を中断しました');
     const cached=outlineCache&&outlineCache.scope===scope&&Date.now()-outlineCache.at<90000&&(outlineCache.preflight||(context.at(-1)?.synapseRead===true&&((topic&&outlineCache.topic===topic)||followup)))?outlineCache.result:null;
     if(cached&&outlineCache.preflight)Object.assign(outlineCache,{preflight:false,topic});

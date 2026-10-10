@@ -100,9 +100,9 @@ await converse({...common,question:'もっと詳しく',context:[{question:'別�
 assert.equal(f.tools.filter(t=>t.tool==='survey_space').length,3);
 await converse({...common,groups:[{id:'other',name:'別範囲'}],question:'もっと詳しく',context:[{question:'別会社について教えて',synapseRead:true}],call:async(tool,args)=>{if(tool==='survey_space')return {structuredContent:{coverage:{reasons:['group_unavailable']}}};throw Error('must not read inaccessible group');}});
 console.log('PASS outline reuse keeps fresh body reads, changes topic/scope and expires after 90 seconds');
-f=fixture();const preflight={scope:JSON.stringify(groups),at:Date.now(),preflight:true,result:{structuredContent:{coverage:{complete:true}}}};
+f=fixture();const preflight={scope:JSON.stringify(groups),at:Date.now(),preflight:true,pending:Promise.resolve(),result:{structuredContent:{coverage:{complete:true}}}};
 let answerGenerations=0;
-const preflightAnswer=await converse({question:'テストグループについて教えて',groups,outlineCache:preflight,call:f.call,generate:async(messages,options)=>{
+const preflightAnswer=await converse({question:'テストグループについて教えて',groups,outlineCache:preflight,signal:new AbortController().signal,call:f.call,generate:async(messages,options)=>{
  assert.equal(options.phase,'evidence_answer');answerGenerations++;
  return {text:JSON.stringify(assess('supported',['mention'],'','','保存本文からの回答です。'))};
 }});
@@ -113,6 +113,25 @@ assert.equal(preflightAnswer.outlineReused,true);
 assert.equal(preflightAnswer.readingSkill.name,'load-synapse');
 assert.equal(preflight.preflight,false);
 console.log('PASS preflight consumes only structural metadata and answers in one model call after fresh body read');
+// A canceled caller must leave a shared preparation available to other callers.
+let releaseOutline;
+const pendingOutline=new Promise(resolve=>{releaseOutline=resolve;});
+const abortOutline=new AbortController();let canceledOutlineCalls=0;
+const pendingCache={scope:JSON.stringify(groups),pending:pendingOutline};
+const canceledConversation=converse({question:'テストグループについて教えて',groups,outlineCache:pendingCache,signal:abortOutline.signal,
+ call:async()=>{canceledOutlineCalls++;throw Error('Canceled conversation must not fetch');},
+ generate:async()=>{canceledOutlineCalls++;throw Error('Canceled conversation must not generate');}
+});
+abortOutline.abort();
+let abortDeadline;
+try{
+ await assert.rejects(Promise.race([canceledConversation,new Promise((_,reject)=>{abortDeadline=setTimeout(()=>reject(Error('Shared preparation blocked cancellation')),200);})]),/会話を中断しました/);
+ assert.equal(pendingCache.pending,pendingOutline);
+ assert.equal(canceledOutlineCalls,0);
+}finally{clearTimeout(abortDeadline);releaseOutline();}
+await assert.rejects(canceledConversation,/会話を中断しました/);
+assert.equal(canceledOutlineCalls,0);
+console.log('PASS interruption stops waiting for shared outline preparation without canceling it or starting late reads');
 for(const question of ['Synapse Connectについて教えて','社内制度について教えてください']){
  const calls=[];let generations=0;
  const answer=await converse({question,groups,call:async(tool,args)=>{

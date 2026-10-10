@@ -325,3 +325,6 @@ bootstrap成功後の非同期状態確認は音声ONのみ。未ready/未busy/�
 ### Hub起動時の保存scope復帰（2026-10-10 16:43）
 
 server.listen後、明示保存conversation-scopeを持つ有効owner/adminを最大16人調べ、prefetchContextの現在scopeに対応するローカルsnapshotがusableの場合だけ既存outline/prefetch準備を再開する。期限切れ・未設定は従来の画面準備/最新取得、保存破損は利用者単位で隔離。同期登録や接続準備は非同期で、質問ごとの新鮮catalog/本文/権限確認を省かない。速度効果は準備時間と質問後遅延を分けて測る。
+## 2026-10-10 17:13 補足発話の権限ゲート
+
+verification_supplementは有効なsupported/根拠ID/空queryヘッダーから権限照合を開始。発話には完全な一文と直近1秒の許可が必要。古い許可は再照合する。終了解析・不正最終形訂正・中断隔離を維持し、最新全文だけを正式履歴とする。診断に評価/権限開始/所要時間/回数の数値のみ追加。実機2回は暫定insufficientで補足経路未使用、実速度効果未検証。

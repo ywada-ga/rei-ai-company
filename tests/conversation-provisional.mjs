@@ -344,3 +344,27 @@ for(const followup of [false,true]){
  s.latest.resolve(result(long.records[0].episode.content));await s.pending;
 }
 console.log('PASS explicit and detail topics locate original middle paragraphs without request suffix');
+
+// Header permission overlaps generation; an old permission must be renewed.
+for(const mode of ['fresh','renewed','revoked']){
+ const renewed=mode!=='revoked';
+ const model=defer(),gate=defer();let stream,calls=0,tick=at;
+ const s=await scenario({now:()=>tick,authorize:()=>++calls===4?gate.promise:Promise.resolve(true),generate:async(_messages,opts)=>{
+  if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};stream=opts.onDelta;return model.promise;
+ }});
+ s.latest.resolve({...result(),spokenAnswer:'開発室が窓口です。'});await settle();
+ const supplement={...decision,text:'開発室が窓口です。'};
+ const raw=JSON.stringify(supplement),header=raw.slice(0,raw.indexOf(supplement.text));
+ stream(header);await settle();
+ assert.equal(calls,3,'Valid empty header starts supplemental authorization');
+ assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Empty text cannot speak');
+ tick+=mode==='fresh'?800:1001;stream(raw);await settle();
+ assert.equal(calls,mode==='fresh'?3:4,'Only expired permission requires renewal');
+ if(mode!=='fresh')assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Renewal blocks release');
+ gate.resolve(renewed);await settle();
+ assert.equal(s.events.filter(e=>e.type==='supplement').length,renewed?1:0,'Revoked permission cannot release sentence');
+ model.resolve({text:raw});const out=await s.pending;
+ assert.ok(out.provisionalTiming.supplementPermissionStartedMs<out.provisionalTiming.supplementFirstSentenceMs);
+ assert.equal(out.provisionalTiming.supplementPermissionChecks,mode==='fresh'?1:2);
+}
+console.log('PASS supplemental header overlap and expired permission renewal');

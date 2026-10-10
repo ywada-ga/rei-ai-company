@@ -260,3 +260,6 @@ Hub再起動後ON画面でQwenだけ復帰、本文先読み周期同期対象�
 ## 2026-10-10 16:43の引継ぎ
 
 Hub listen後、有効な明示保存scope+現在owner/admin+disabled=0+現在scopeのusable snapshotだけ既存outline/prefetch準備を非同期再開。最大16人、expired/missing/brokenは除外、現在権限・毎問最新確認維持。ブラウザhidden/30秒復帰待ちへの依存を軽減。起動配線/選択ガード/破損後継続、prefetch/MCP/実Hub配信fixture成功。稼働hubのみ・既存Hub再起動。各再起動後10秒・同文、8本文15327文字/34605bytes同量：表示7.695→6.765秒/音声8.258→7.320秒/最新20.268→20.385秒。暫定model5.233→4.195秒、双方connect6/5msで元から暖かく、自動UI準備介入も制御できていないため修正の速度効果未確認。詳細IMPLEMENTATION_STATUS16:43。cold/hidden/直後/複数人/聴感未検証、製品未完成。
+## 2026-10-10 17:13 引継ぎ
+
+補足の権限確認を有効な評価ヘッダーから開始、一文の直前に1秒鮮度を確認し必要なら再照合。空本文/失効/取消/遅延callback/最終不一致訂正の試験成功。provisional/prefetch/MCP/ChatGPT plan/ブラウザ/実Hub配信fixture成功、稼働1ファイル反映・既存Hubのみ再起動。実機前後とも8本文15777文字/35167bytes、暫定insufficientで補足経路未使用。表示17.682→14.025秒/音声19.283→15.161秒/全文22.406→19.796秒はsurvey再利用等の条件差、速度効果とは扱わない。詳細IMPLEMENTATION_STATUS17:13。次は暫定insufficientの原因と根拠選択の品質。実マイク/聴感/全主張監査未検証、製品未完成。

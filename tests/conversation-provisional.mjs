@@ -374,6 +374,10 @@ console.log('PASS supplemental header overlap and expired permission renewal');
  const candidates={...snapshot,records:[...mentions,preferred],preferredIds:[preferred.episode.uuid]};
  assert.equal(selectPrefetchedRecords(candidates,'架空会社について教えて')[0].episode.uuid,'verified-older');
  assert.equal(selectPrefetchedRecords(candidates,'別会社について教えて').length,0,'Preferred source still must match the topic');
- assert.equal(selectPrefetchedRecords(candidates,'架空会社について教えて').length,8);
+ assert.equal(selectPrefetchedRecords(candidates,'架空会社について教えて').length,1);
+ assert.equal(selectPrefetchedRecords(candidates,'もっと詳しく教えて',{context:[{question:'架空会社について教えて',synapseRead:true}]}).length,1);
+ const title={...preferred,episode:{...preferred.episode,uuid:'topic-title'}};
+ assert.equal(selectPrefetchedRecords({...candidates,records:[...mentions,title],preferredIds:[]},'架空会社について教えて')[0].episode.uuid,'topic-title');
+ assert.equal(selectPrefetchedRecords({...candidates,records:mentions,preferredIds:[]},'架空会社について教えて').length,8,'Body-only fallback remains bounded when no focused candidate exists');
 }
 console.log('PASS preferred full source wins candidate slots without bypassing topic matching');

@@ -33,7 +33,13 @@ export function selectPrefetchedRecords(snapshot,question,{limit=8,at=Date.now()
   const spelling=topicSpelling(topic);if(spelling.length<2)return [];
   const preferredIds=Array.isArray(snapshot.preferredIds)?snapshot.preferredIds.slice(0,8):[];
   const ordered=[...preferredIds.map(id=>snapshot.records.find(r=>r.episode.uuid===id)).filter(Boolean),...snapshot.records.filter(r=>!preferredIds.includes(r.episode.uuid))];
-  return ordered.filter(r=>[r.episode.name,r.episode.doc_name,r.episode.content].some(value=>typeof value==='string'&&topicSpelling(value).includes(spelling))).slice(0,limit);
+  const matches=value=>typeof value==='string'&&topicSpelling(value).includes(spelling);
+  const hits=ordered.filter(r=>[r.episode.name,r.episode.doc_name,r.episode.content].some(matches));
+  // A prior fully checked source or a subject in the title is a stronger
+  // candidate than an incidental body mention, never proof of an answer.
+  // Keep this partial set small; every question still obtains fresh evidence.
+  const focused=hits.filter(r=>preferredIds.includes(r.episode.uuid)||[r.episode.name,r.episode.doc_name].some(matches));
+  return (focused.length?focused:hits).slice(0,limit);
 }
 const fingerprint=body=>createHash('sha256').update(body).digest('hex');
 function sourceFingerprints(result){

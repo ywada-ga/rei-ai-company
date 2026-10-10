@@ -11,7 +11,7 @@ cpSync(path.join(root,'public'),path.join(tmp,'public'),{recursive:true});
 writeFileSync(path.join(tmp,'package.json'),JSON.stringify({version:'0.5.39',type:'commonjs'}));
 writeFileSync(path.join(tmp,'public/package.json'),JSON.stringify({type:'module'}));
 writeFileSync(path.join(tmp,'model.safetensors'),'fixture');
-writeFileSync(path.join(tmp,'local-chat-worker.py'),`const readline=require('node:readline');console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);console.log(JSON.stringify({id:r.id,text:JSON.stringify({action:'answer',text:'こんにちは。試験の返答です。'})}));});`);
+writeFileSync(path.join(tmp,'local-chat-worker.py'),`const readline=require('node:readline');console.log(JSON.stringify({type:'ready'}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);const reply=()=>console.log(JSON.stringify({id:r.id,text:JSON.stringify({action:'answer',text:'こんにちは。試験の返答です。'})}));if(JSON.stringify(r).includes('cancel-fixture'))setTimeout(reply,500);else reply();});`);
 writeFileSync(path.join(tmp,'local-tts-worker.py'),`const readline=require('node:readline');let pending;console.log(JSON.stringify({type:'ready',cancelSupported:true}));readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);const emit=value=>console.log(JSON.stringify({id:r.id,...value}));if(r.type==='cancel'){if(pending?.id!==r.id)throw Error('wrong cancellation');clearTimeout(pending.timer);pending=null;setTimeout(()=>emit({type:'cancelled'}),25);return;}if(pending)throw Error('overlap');emit({type:'chunk',index:0,wav:'UklGRg==',sampleRate:24000,audioSeconds:0.5});pending={id:r.id,timer:setTimeout(()=>{pending=null;emit({type:'done',chunkCount:1,audioSeconds:0.5,totalSeconds:0.05});},r.text==='long notice'?1000:50)};});`);
 const reservation=createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r));const port=reservation.address().port;await new Promise(r=>reservation.close(r));
 // Spawn the real Hub with fixture-only data and a model worker that never calls external AI.
@@ -32,6 +32,17 @@ try{
  assert.equal((await fetch(base+'/conversation-stream.js')).status,200);assert.equal((await fetch(base+'/conversation-progress.js')).status,200);
  const response=await post('conversation/stream',{question:'REIについて教えて'});assert.match(response.headers.get('content-type'),/ndjson/);const result=await readConversationStream(response);assert.equal(result.answer,'こんにちは。試験の返答です。');
  const history=await (await fetch(base+'/api?route=conversation%2Fhistory',{headers:{cookie}})).json();assert.equal(history.turns.length,1);assert.equal(history.turns[0].answer,result.answer);
+ // Disconnect a pending answer: it must release the busy slot and never persist a late result.
+ const interrupted=await post('conversation/stream',{question:'cancel-fixture の試験について返答して'});
+ assert.equal(interrupted.status,200);await interrupted.body.cancel();
+ let resumed;const resumeDeadline=performance.now()+3000;
+ do{resumed=await post('conversation/stream',{question:'REIについて教えて'});if(resumed.status===409)await new Promise(r=>setTimeout(r,20));}while(resumed.status===409&&performance.now()<resumeDeadline);
+ assert.equal(resumed.status,200,'Disconnect releases conversation busy state');await readConversationStream(resumed);
+ await new Promise(r=>setTimeout(r,600));
+ const afterCancel=await (await fetch(base+'/api?route=conversation%2Fhistory',{headers:{cookie}})).json();
+ assert.equal(afterCancel.turns.length,2,'Only completed original and resumed turns are stored');
+ assert.ok(afterCancel.turns.every(turn=>!turn.question.includes('cancel-fixture')),'Disconnected answer cannot enter authoritative history');
+ console.log('PASS Hub disconnect releases busy slot, excludes cancelled history and accepts next question');
  assert.equal((await post('voice/local/stream',{text:'試験'},false)).status,401);
  assert.equal((await post('voice/local/stream',{text:''})).status,400);
  const audio=await post('voice/local/stream',{text:'試験'});assert.match(audio.headers.get('content-type'),/ndjson/);let events='';let firstAt=null,doneAt=null;for await(const bytes of audio.body){events+=new TextDecoder().decode(bytes);if(firstAt===null&&events.includes('"type":"chunk"'))firstAt=performance.now();if(events.includes('"type":"done"'))doneAt=performance.now();}assert.ok(firstAt!==null&&doneAt>firstAt,'audio chunk precedes completion');const audioEvents=events.trim().split('\n').map(JSON.parse);assert.deepEqual(audioEvents.map(e=>e.type),['chunk','done']);assert.equal(audioEvents[1].wav,undefined);assert.equal(audioEvents[1].chunkCount,1);

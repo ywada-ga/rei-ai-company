@@ -911,3 +911,17 @@ conversation-provisional.mjsの権限開始条件を、評価済みrespond/statu
 稼働1ファイルのみ反映・既存Hubのみ再起動後、ON更新して同文：表示10941ms/音声開始推定11708ms/全文29295ms、snapshot6200/model4709/権限1567ms、暫定10907/最新29263ms。最新backend27693ms、survey9329（connect1392/request7937）/検索5242/source約2097/body約2097/model8921ms。Qwen66文字/準備0/先頭0.458秒/全体9.317秒、案内終了待ち265ms。双方8本文14522文字/入力33403bytesで同量、今回の実資料には抜粋変更による入力量差は出ていない。暫定生成4698→4709ms、悪化の主な差は再起動後snapshot1758→6200msなどで、速度改善未確認。前回15:43の暫定生成8962msに対し今回変更前4698msと変動が大きく、単発差を改善効果にしない。
 
 実マイク/物理出音/聴感/要点までの聴覚時刻/全主張原文監査・負荷未検証。根拠を含む抜粋にする品質修正として保持。製品未完成。次は権限/初回接続の待ちとモデル変動を分けて改善し、抜粋の表記ゆれ対応を原文位置を保って検討する。
+
+## 2026-10-10 16:43 — 保存済み有効scopeをHub起動時に準備
+
+担当Codex。開始HEAD0e08a6a・差分なし、CI38033931732成功。README/ARCHITECTURE/AGENTS/実装状況/引継ぎ/実測、Synapse b48b966c全文・台帳/グラフ確認、Chatwork16:20以降新着なし。Hub34810/Connector35386、競合変更なし。許可8棚complete、週残量開始/途中32%、5時間枠取得不能。
+
+再起動後のMCP初回準備は従来ブラウザhistory/prepareに依存し、hidden画面は5秒bootstrap更新を停止、ON復帰確認は最大30秒間隔。hub.mjsのlisten後にresumeSavedConversationPreparationを呼び、明示conversation-scope保存済みかつ現在有効owner/admin（disabled=0）、現在連携/role/選択範囲が有効なローカルsnapshot usableの利用者だけ、既存outline/先読み準備を再開。最大16人。未設定・期限切れ・利用不可は起動時再開せず、従来の画面準備/質問最新取得へ戻る。保存内容の破損は他利用者やHub起動を止めない。新しい権限や棚・本文保存先は作らない。最新catalog・本文/改訂/削除・scope/鮮度ガード維持。準備は非同期で質問を待たせない。
+
+変更hub.mjs/package.json/tests/conversation-startup-preparation.mjs/資料3件。有効scopeのみ起動時準備、expired/missing/brokenスキップと次利用者継続、明示保存/有効role/disabled/人数上限/起動配線の試験成功。既存prefetch権限/取消/範囲/6並列、MCP同時初期化/新鮮catalog/別runtime、実Hub配信fixture、構文/diff成功。読み取り専用状態URLを別タブで確認しようとしたがブラウザがblocked_by_clientで拒否。迂回せず既存画面の診断だけを使用。
+
+旧稼働Hub再起動後10秒待ち、手動更新・準備操作をせず同じ会社質問「Synapse Connectについて教えて」。表示7695ms/音声開始推定8258ms/全文20268ms、snapshot1911/model5233/権限1570ms、暫定7674/最新20255ms。catalog connect6/wait1899ms、最新backend18681ms、検索6829/source約2090/body約2097/model6805ms、survey準備済み再利用。Qwen65文字/先頭0.512秒/全体7.994秒、準備/キュー/案内待ち0。
+
+稼働hub.mjsだけ反映・既存Hubのみ再起動、同じ10秒待ちと同文：表示6765ms/音声開始推定7320ms/全文20385ms、snapshot2028/model4195/権限1571ms、暫定6744/最新20372ms。catalog connect5/wait2016ms、最新backend18798ms、検索6752/source約2081/body約2102/model7857ms、survey再利用。Qwen67文字/先頭0.502秒/全体8.561秒、準備/キュー/案内待ち0。双方8本文15327文字/入力34605bytes同量、request_start基準各1回。
+
+表示差930ms/音声差938msは暫定モデル5233→4195ms等も変動し、変更前からconnect6msで接続が暖まっていた。ブラウザ自動準備の介入を完全には制御できず、純粋な起動時復帰の速度効果とは扱わない。前回の初回connect1396msを削減できた因果は未検証。目的は有効な保存済みscopeの復帰をブラウザの状態に依存させないこと。完全なcold・hidden条件、起動直後10秒未満の質問、期限切れ時、複数実利用者、実マイク/物理出音/聴感/全主張原文監査は未検証。製品未完成、次は最新MCP/モデル待ちと準備状態の実測を続ける。

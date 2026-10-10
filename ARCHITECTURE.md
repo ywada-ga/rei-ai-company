@@ -321,3 +321,7 @@ bootstrap成功後の非同期状態確認は音声ONのみ。未ready/未busy/�
 ### 暫定抜粋の話題語（2026-10-10 16:13）
 
 長文本文のevidenceBodyContextへ渡す検索語は、既存の明示話題/詳細追加質問から解決したtopicRequestの話題名だけを使う。モデルのquestion/topicQuestionは元のまま、日次は元質問を使う。候補選定・上限4000・抜粋原文位置/omitted・根拠ハッシュ/権限/最新確認は維持。候補の表記ゆれ一致は抜粋全文の正規化を意味しない。根拠を拾うことで送信文字数が増える場合があり、速度効果とは分けて扱う。
+
+### Hub起動時の保存scope復帰（2026-10-10 16:43）
+
+server.listen後、明示保存conversation-scopeを持つ有効owner/adminを最大16人調べ、prefetchContextの現在scopeに対応するローカルsnapshotがusableの場合だけ既存outline/prefetch準備を再開する。期限切れ・未設定は従来の画面準備/最新取得、保存破損は利用者単位で隔離。同期登録や接続準備は非同期で、質問ごとの新鮮catalog/本文/権限確認を省かない。速度効果は準備時間と質問後遅延を分けて測る。

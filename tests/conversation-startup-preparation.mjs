@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const source=readFileSync(new URL('../hub.mjs',import.meta.url),'utf8');
+const code=source.slice(source.indexOf('function resumeSavedConversationPreparation(){'),source.indexOf('function prepareConversationOutline(user)'));
+const prepared=[],queried=[];
+const users=[{id:'ready',role:'owner'},{id:'expired',role:'owner'},{id:'unconfigured',role:'admin'},{id:'broken',role:'owner'},{id:'next',role:'admin'}];
+const scopes={ready:{key:'ready'},expired:{key:'expired'},next:{key:'next'}};
+const context=vm.createContext({db:{},all:(_db,sql)=>{queried.push(sql);return users;},prefetchContext:id=>{if(id==='broken')throw Error('broken scope');return scopes[id]?{scope:scopes[id]}:null;},conversationPrefetch:{status:scope=>({usable:scope.key==='ready'||scope.key==='next'})},prepareConversationOutline:user=>prepared.push(['outline',user.id]),prepareConversationPrefetch:user=>prepared.push(['prefetch',user.id])});
+vm.runInContext(code,context);vm.runInContext('resumeSavedConversationPreparation()',context);
+assert.deepEqual(prepared,[['outline','ready'],['prefetch','ready'],['outline','next'],['prefetch','next']]);
+assert.match(queried[0],/conversation-scope:/);assert.match(queried[0],/u.disabled=0/);assert.match(queried[0],/owner.*admin/);assert.match(queried[0],/LIMIT 16/);
+assert.ok(source.includes('server.listen(port,host,()=>{resumeSavedConversationPreparation();'));
+console.log('PASS startup resumes only current configured usable explicit scopes; expired/missing/broken isolation and bounded owner/admin selection');

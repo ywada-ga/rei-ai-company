@@ -68,6 +68,19 @@ function prepareConversationPrefetch(user){
     call:(tool,args,signal)=>conversationMcp.call(current.integration,tool,args,signal)
   }).catch(()=>{});
 }
+function resumeSavedConversationPreparation(){
+  // Only previously selected scopes with still-usable local bodies are resumed.
+  // Current user/role/connection checks run again; permission is never cached.
+  const users=all(db,"SELECT u.id,u.role FROM users u JOIN settings s ON s.key='conversation-scope:'||u.id WHERE u.disabled=0 AND u.role IN ('owner','admin') ORDER BY u.id LIMIT 16");
+  for(const user of users){
+    try{
+      const current=prefetchContext(user.id);
+      if(!current||!conversationPrefetch.status(current.scope).usable)continue;
+      prepareConversationOutline(user);
+      prepareConversationPrefetch(user);
+    }catch{} // A damaged saved scope must not stop the Hub or resume another user.
+  }
+}
 function prepareConversationOutline(user){
   if(conversationBusy)return;
   const settings=conversationSettings(user),device=localConnectorStatus().deviceId;
@@ -644,7 +657,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'content-type':`${mime[path.extname(file)]}; charset=utf-8`,'cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});res.end(bytes);
   } catch(e) {console.error('REI:',e.message);return error(res,e.status||500,e.status?e.message:'処理に失敗しました');}
 });
-server.listen(port,host,()=>{console.log(`REI Hub: http://${host}:${port}`);if(existsSync(lanFlag))void enableLan().catch(e=>console.error('REI LAN:',e.message));});
+server.listen(port,host,()=>{resumeSavedConversationPreparation();console.log(`REI Hub: http://${host}:${port}`);if(existsSync(lanFlag))void enableLan().catch(e=>console.error('REI LAN:',e.message));});
 async function dailyBackup() {
   if(backupInProgress||!one(db,"SELECT id FROM users WHERE role='owner' LIMIT 1"))return;
   backupInProgress=true;

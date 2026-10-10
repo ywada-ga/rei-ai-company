@@ -132,7 +132,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
     timing.supplementFirstMs??=now()-started;
     // Pending until the complete answer and final permission check succeed.
     // Replacement shows the accumulated answer without repeating speech.
-    emit({type:'supplement',text:(first?'最新取得した記録での補足です。':'')+part,speechText:(first?'最新取得した記録での補足です。':'')+part,replacementAnswer:`${asOfText(initial.checkedAt)}取得時点の暫定の要点：${initial.text}\n最新取得した記録での補足（最終確認中）：${continuation}`,sourceIds:candidate.ids,verification:'pending',checkedAt:initial.checkedAt});
+    emit({type:'supplement',text:(first?'最新取得した記録での補足です。':'')+part,speechText:(first?'最新取得の補足ですが、':'')+part,replacementAnswer:`${asOfText(initial.checkedAt)}取得時点の暫定の要点：${initial.text}\n最新取得した記録での補足（最終確認中）：${continuation}`,sourceIds:candidate.ids,verification:'pending',checkedAt:initial.checkedAt});
   };
   // Attach rejection handlers immediately, including when snapshot is slow.
   const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,getProvisionalAnswer:()=>alive()&&initial?.valid===true?{text:initial.text,sourceIds:initial.sources.map(s=>s.uuid)}:null,onDelta:(text,assessment)=>{if(!alive()||latestSettled||typeof text!=='string'||!text)return;timing.latestDraftFirstMs??=now()-started;freshText+=text;if(assessment){continuationAssessment=assessment;timing.supplementAssessmentReadyMs??=now()-started;}if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}else releaseContinuation();}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
@@ -237,7 +237,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
         const supplement=full.slice(initial.text.length+continuation.length).trim();
         if(supplement){
           await requirePermission();
-          emit({type:'supplement',text:'補足です。'+supplement,replacementAnswer:result.answer,sourceIds:result.sources.map(s=>s.uuid),verification:'verified'});
+          emit({type:'supplement',text:'補足です。'+supplement,speechText:'補足として、'+supplement,replacementAnswer:result.answer,sourceIds:result.sources.map(s=>s.uuid),verification:'verified'});
         }
       }
     }else {const spoken=result.spokenAnswer||result.answer;emit({type:'answer',text:spoken,speechText:releasedFresh?(spoken.startsWith(releasedFresh)?spoken.slice(releasedFresh.length):''):spoken,replacementAnswer:result.answer,sourceIds:result.sources?.map(s=>s.uuid)||[],verification:supported?'verified':'insufficient'});}

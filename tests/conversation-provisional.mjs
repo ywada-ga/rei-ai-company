@@ -299,7 +299,8 @@ for(const mode of ['complete','text_changed','body_changed','source_removed','pe
  tick=300;stream('開発室です。',assessed);await settle();assert.equal(s.events.length,1,'Permission holds the latest continuation');
  gate.resolve(true);await settle();
  assert.equal(s.events[1].type,'supplement');assert.equal(s.events[1].verification,'pending');assert.match(s.events[1].replacementAnswer,/取得時点の暫定の要点/);assert.match(s.events[1].replacementAnswer,/補足（最終確認中）：窓口は開発室です。/);
- assert.equal(s.events[1].speechText,'最新取得した記録での補足です。窓口は開発室です。');
+ assert.equal(s.events[1].speechText,'最新取得の補足ですが、窓口は開発室です。');
+ assert.equal(s.events[1].text,'最新取得した記録での補足です。窓口は開発室です。');
  if(mode==='cancelled'){
   controller.abort();await assert.rejects(s.pending,/中断/);const count=s.events.length;stream('遅着です。',assessed);fresh.resolve({...result(),answer:full});await settle();assert.equal(s.events.length,count);continue;
  }
@@ -364,7 +365,7 @@ for(const mode of ['allowed','revoked','cancelled']){
  }else{
   gate.resolve(mode==='allowed');
   if(mode==='revoked'){await assert.rejects(s.pending,/権限/);assert.equal(s.events.filter(e=>e.type==='supplement').length,0);}
-  else{await s.pending;assert.equal(s.events.at(-2).speechText,'補足です。窓口は開発室です。');}
+  else{await s.pending;assert.equal(s.events.at(-2).speechText,'補足として、窓口は開発室です。');assert.equal(s.events.at(-2).text,'補足です。窓口は開発室です。');}
  }
 }
 console.log('PASS exact continuation permission, revocation, cancellation and late completion isolation');

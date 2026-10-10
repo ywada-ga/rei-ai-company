@@ -31,14 +31,19 @@ export function evidenceBodyContext(content,question,{recent=false,budget=6000,s
  const windows=[[0,Math.min(600,Math.floor(budget/3),content.length)]];
  const terms=[...new Set((String(question).match(/[\p{L}\p{N}_.-]+/gu)||[]).flatMap(t=>[t,t.replace(/(?:さん|氏)の.*$/u,'')]).filter(t=>t.length>=2&&t.length<=80))];
  const matches=[];
- for(const term of terms){let offset=0;while((offset=content.indexOf(term,offset))!==-1){matches.push(offset);offset+=term.length;if(matches.length>=100)break;}if(matches.length>=100)break;}
+ // A complete prefetch subject takes precedence over its generic words.
+ // Otherwise 100 unrelated "Company" hits can displace "Alpha Company".
+ const originalSubject=String(question);
+ if(spellingFallback&&originalSubject.length>=2&&originalSubject.length<=80){
+  let offset=0;while((offset=content.indexOf(originalSubject,offset))!==-1){matches.push(offset);offset+=originalSubject.length;if(matches.length>=100)break;}
+ }
  // Prefetch candidate matching already tolerates spelling variants. Locate a
  // missing subject with the same normalization, but slice only original text.
  // Grapheme offsets preserve combining marks and length-changing NFKC forms.
- if(spellingFallback&&matches.length<100){
+ if(spellingFallback&&!matches.length){
   const spelling=value=>value.normalize('NFKC').toLowerCase().replace(/\s+/gu,'');
   const subject=spelling(String(question));
-  if(subject.length>=2&&subject.length<=80&&!content.includes(String(question))){
+  if(subject.length>=2&&subject.length<=80){
    let normalized='';const offsets=[];
    for(const {segment,index} of new Intl.Segmenter('und',{granularity:'grapheme'}).segment(content)){
     const part=spelling(segment);normalized+=part;
@@ -50,6 +55,8 @@ export function evidenceBodyContext(content,question,{recent=false,budget=6000,s
    }
   }
  }
+ // If no full subject was found, preserve the existing word-level fallback.
+ if(!matches.length)for(const term of terms){let offset=0;while((offset=content.indexOf(term,offset))!==-1){matches.push(offset);offset+=term.length;if(matches.length>=100)break;}if(matches.length>=100)break;}
  matches.sort((a,b)=>recent?b-a:a-b);
  if(recent)windows.push([Math.max(0,content.length-Math.min(1600,Math.floor(budget*0.4))),content.length]);
  let remaining=budget-windows.reduce((n,[a,b])=>n+b-a,0);

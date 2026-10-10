@@ -361,6 +361,21 @@ for(const [topic,spelling] of [['Alpha Company','ＡＬＰＨＡ　ＣＯＭＰ�
 }
 console.log('PASS width, case and combining spelling variants retain original excerpt offsets');
 
+// Repeated generic words must not consume the subject-location budget.
+for(const spelling of ['Alpha Company','ＡＬＰＨＡ　ＣＯＭＰＡＮＹ']){
+ const long=structuredClone(snapshot),middle=spelling+'の担当は青山。';
+ long.records[0].episode.name=spelling;
+ long.records[0].episode.content='無関係な説明。'.repeat(600)+middle+'Company別件。'.repeat(250)+'無関係な末尾。'.repeat(600);
+ let sent;
+ const s=await scenario({question:'Alpha Companyについて教えて',getSnapshot:async()=>long,generate:async messages=>{sent=JSON.parse(messages[1].content);return {text:JSON.stringify(decision)};}});
+ const body=sent.records[0].episode.content;
+ assert.ok(body.excerpts.some(e=>e.text.includes(middle)),'Full subject survives more than 100 unrelated term matches');
+ for(const e of body.excerpts)assert.equal(e.text,long.records[0].episode.content.slice(e.start,e.end));
+ assert.ok(body.excerpts.reduce((n,e)=>n+e.text.length,0)<=4000);
+ s.latest.resolve(result(long.records[0].episode.content));await s.pending;
+}
+console.log('PASS exact and spelling-variant subjects survive generic-term saturation');
+
 // Header permission overlaps generation; an old permission must be renewed.
 for(const mode of ['fresh','renewed','revoked']){
  const renewed=mode!=='revoked';

@@ -46,9 +46,12 @@ console.log('PASS explicit company cautions retain the original request, pending
  assert.match(s.events[0].text,/最新情報を確認しています。$/);
  s.latest.resolve(result());const out=await s.pending;assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','done']);assert.equal(out.provisionalUsed,true);
  assert.equal(s.events[1].replacementAnswer,result().answer);assert.ok(out.provisionalTiming.verifiedMs>=out.provisionalTiming.provisionalMs);
+ assert.deepEqual(out.provisionalTiming.verificationChecks,{initialValid:true,freshSupported:true,prefixRetained:true,continuationSourcesRetained:true,initialSourcesRetained:true});
+ assert.ok(Object.values(out.provisionalTiming.verificationChecks).every(value=>typeof value==='boolean'));
 }
 {
- const s=await scenario();s.latest.resolve({...result('担当は赤井に変更。'),answer:'担当は赤井です。',spokenAnswer:'担当は赤井です。'});await s.pending;
+ const s=await scenario();s.latest.resolve({...result('担当は赤井に変更。'),answer:'担当は赤井です。',spokenAnswer:'担当は赤井です。'});const out=await s.pending;
+ assert.equal(out.provisionalTiming.verificationChecks.prefixRetained,false);assert.equal(out.provisionalTiming.verificationChecks.initialSourcesRetained,false);
  assert.equal(s.events[1].type,'correction');assert.match(s.events[1].text,/^先ほどの点、訂正です。担当は赤井/);
 }
 for(const state of [{deleted:true},{invalid_at:'2026-10-10T00:00:00Z'},{is_latest_revision:false}]){
@@ -64,7 +67,8 @@ console.log('PASS root and episode deletion, expiry and old revision cannot conf
 {
  const s=await scenario(),fresh=result();
  fresh.answer=fresh.spokenAnswer='担当は未確認です。青山への依頼記録だけでは担当確定を示しません。';
- s.latest.resolve(fresh);await s.pending;
+ s.latest.resolve(fresh);const out=await s.pending;
+ assert.equal(out.provisionalTiming.verificationChecks.prefixRetained,false);assert.equal(out.provisionalTiming.verificationChecks.initialSourcesRetained,true);
  assert.equal(s.events[1].type,'correction','Same source body cannot confirm a claim rejected by the fresh answer');
  assert.equal(s.events.filter(e=>e.type==='verified'||e.type==='supplement').length,0);
 }

@@ -227,7 +227,11 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       const full=result.spokenAnswer||result.answer;
       // Body equality alone does not validate the provisional claims. The fresh
       // evidence assessment must retain their exact text before a continuation.
-      const unchanged=initial.valid===true&&supported&&full.startsWith(initial.text+continuation)&&continuationIds.every(id=>selected.has(id)&&fresh.get(id)?.groupId===continuationBodies.get(id).groupId&&fresh.get(id)?.hash===continuationBodies.get(id).hash)&&initial.sources.every(s=>selected.has(s.uuid)&&fresh.get(s.uuid)?.groupId===s.groupId&&fresh.get(s.uuid)?.hash===s.hash);
+      // These booleans explain the gate, not whether a company fact changed.
+      // Never expose source identifiers, cached claims or body fingerprints.
+      const checks={initialValid:initial.valid===true,freshSupported:supported,prefixRetained:full.startsWith(initial.text+continuation),continuationSourcesRetained:continuationIds.every(id=>selected.has(id)&&fresh.get(id)?.groupId===continuationBodies.get(id).groupId&&fresh.get(id)?.hash===continuationBodies.get(id).hash),initialSourcesRetained:initial.sources.every(s=>selected.has(s.uuid)&&fresh.get(s.uuid)?.groupId===s.groupId&&fresh.get(s.uuid)?.hash===s.hash)};
+      timing.verificationChecks=checks;
+      const unchanged=Object.values(checks).every(value=>value===true);
       const type=unchanged?'verified':'correction';
       // Use explicit correction even for uncertain/revoked source claims. Never
       // disguise withdrawal as a harmless supplement or successful verification.

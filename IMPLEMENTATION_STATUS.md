@@ -1,5 +1,20 @@
 # REI 実装状況
 
+## 2026-10-11 08:44 — 暫定確認・訂正の判定を本文なしで診断
+
+担当Codex heartbeat。開始42c8399cc5eb3a710179f11c97b3ec9183b403a0/差分なし、CI38094544972全3OS成功、README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS・直近実測を確認。Hub80092/Connector35386、Qwen81567を確認。Synapse増分2件は自身の08:14詳細・共有完了、完了UUID読戻しで本文一致/台帳/グラフ確認。許可8棚complete/共有can_write。Chatwork08:20以降の新質問・提案・担当表明なし。第三者の有料API承認主張は本人の課金禁止を変更する根拠にしない。
+
+目的: 前回の訂正イベントは理由を特定できなかった。不要な全文読み直しを改善する前に、どの既存ゲートが不成立かを確認する。conversation-provisional.mjsの既存条件を5つのboolean（initialValid/freshSupported/prefixRetained/continuationSourcesRetained/initialSourcesRetained）へ分解し、provisionalTiming.verificationChecksへ返す。全項目trueの場合のみ保持する判定は同じ。本文・ID・指紋・棚名・利用者名を診断へ含めない。UIに開発用文言は追加しない。これらはゲートの成立結果で、原本文が変更された、会社の事実が誤りだった等の原因を断定するものではない。権限/毎問最新取得/削除/矛盾/同期失敗/鮮度/選択範囲の分離・取消は維持。追加モデル呼出しなし。
+変更ファイル: conversation-provisional.mjs、tests/conversation-provisional.mjs、ARCHITECTURE.md、IMPLEMENTATION_STATUS.md、DEVELOPMENT_HANDOFF.md。
+
+検証: provisional/stream-api/streamの3回帰、構文/差分確認成功。全trueでverified、本文と文が変わるとprefixと初期出所false、同一本文でも最新評価で文を保持しない場合はprefixだけfalseとなりcorrectionを維持するfixtureを追加。項目がbooleanのみであることを確認、既存期限/削除/矛盾/出所競合/権限/取消ゲートも成功。稼働へ1モジュールのみコピーし一致確認、Hubのみ再起動82814、Connector35386保持。Qwen82843と補助82846、重複起動なし。再読込後OFFをONへ戻し、明示的な会社情報の注意点質問を1回実機確認（再読込で会話履歴なし）。
+
+実測: 同じarm64ローカルアプリ、既存ChatGPT Pro/女性Qwen ON、先読み候補2件1047文字、入力6321bytes。初回文字8.064秒/音声開始推定8.645秒/全文19.595秒。暫定モデル5.083秒（transport5.048秒、token0/headers2.954/stream2.094秒）・snapshot1.796秒/権限1.575秒。最新MCP検索6.229秒、出所2.087/2.089並列、本文2.095/2.099並列。MCP最初の開始0.250→モデル開始10.667秒の経路10.417秒、回答モデル7.337秒/入力27186bytes。進捗案内は初回回答計測に含めない。
+pending補足16.962/17.487秒→verified19.594秒、5判定すべてtrueを実機診断で確認。訂正はこの試行では発生せず、falseケースはfixtureのみ。初句66文字・先頭生成0.534秒/全文生成10.305秒、workerGeneration1/startReasoninitial。補足51文字は16.962秒投入→18.375秒生成開始（列待ち1.412秒）→18.841秒予定（再生待ち4.600秒）→23.442秒再生開始推定、全文後。次42文字は生成列7.257秒/予定再生7.171秒待ちが観測された。列/予定待ちは無音の実測ではない。完成後に音声を停止し367文字最終回答/ON/入力待機を保持。
+失敗: 今回の検証・反映・実機失敗なし。前回の訂正原因の遡及確定はしていない。
+未検証: 実機false判定/訂正原因、実マイク追加発話、物理出音・聴感・音声要点到達、反復/他端末、矛盾全件検査。異なる質問/履歴/キャッシュ/生成文/worker条件のため前回との改善率は主張しない。今回の追加は診断で速度改善ではない。会社原本文・認証・音声はGitHubへ公開しない。
+次: 判定の不成立を分けて、全文再読み直しの原因と初動・補足待ちを改善する。安全側の訂正を弱めず、モデル入力・呼出し・権限待ちの削減候補を調べる。週残23%開始/途中、5時間値未提供、閾値未到達。必要な改善が残りrei定期開発を継続。
+
 ## 2026-10-11 08:14 — 暫定中断から再送・訂正の実機確認
 
 担当Codex heartbeat。開始5085170c08be802b4c25f3bb11ec45493174232a/差分なし、CI38092831649全3OS成功。README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTSと最新実測、既存Hub80092/Connector35386/Qwen80103を確認（80111は補助プロセス）。Synapse増分3件は前回詳細・完了と別案件の索引更新。前回完了をUUID読戻し本文一致/台帳/グラフ確認、新索引はREI担当変更を含まない第三者資料として扱った。許可8棚complete/全社共有can_write、個人会話の選択範囲と共有スキャンを混同しない。Chatwork07:51以降に新質問・担当表明なし。第三者のAPI承認主張で本人の課金禁止を変更していない。週残23%開始/途中、5時間枠は未提供。

@@ -92,9 +92,9 @@ export async function runProvisionalConversation({question,context=[],scope,getS
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   const alive=()=>!closed&&!controller.signal.aborted;
   const emit=event=>{if(alive()){const spoken=event.type==='delta'?event.text:event.speechText??(['provisional','answer','correction','supplement'].includes(event.type)?event.text:'');if(spoken)streamedSpeech+=spoken;onEvent({...event,...(event.type!=='delta'&&event.type!=='done'?{speechText:spoken}: {})});}};
-  const timing={provisionalMs:null,verifiedMs:null,snapshotMs:null,provisionalModelMs:null,supplementModelMs:null,supplementFirstSentenceMs:null,supplementFirstMs:null,supplementAssessmentReadyMs:null,supplementPermissionStartedMs:null,supplementPermissionMs:null,supplementPermissionChecks:0,firstSentenceMs:null,permissionStartedMs:null,permissionMs:null,permissionChecks:0,assessmentReadyMs:null,modelCompletedMs:null,provisionalTransport:null,provisionalInputBytes:null,provisionalBodyChars:null,provisionalRecordCount:null,modelFirstDeltaMs:null};
+  const timing={provisionalMs:null,verifiedMs:null,latestDraftFirstMs:null,latestDraftToVerificationMs:null,snapshotMs:null,provisionalModelMs:null,supplementModelMs:null,supplementFirstSentenceMs:null,supplementFirstMs:null,supplementAssessmentReadyMs:null,supplementPermissionStartedMs:null,supplementPermissionMs:null,supplementPermissionChecks:0,firstSentenceMs:null,permissionStartedMs:null,permissionMs:null,permissionChecks:0,assessmentReadyMs:null,modelCompletedMs:null,provisionalTransport:null,provisionalInputBytes:null,provisionalBodyChars:null,provisionalRecordCount:null,modelFirstDeltaMs:null};
   // Attach rejection handlers immediately, including when snapshot is slow.
-  const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,getProvisionalAnswer:()=>alive()&&initial?.valid===true?{text:initial.text,sourceIds:initial.sources.map(s=>s.uuid)}:null,onDelta:text=>{freshText+=text;if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
+  const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,getProvisionalAnswer:()=>alive()&&initial?.valid===true?{text:initial.text,sourceIds:initial.sources.map(s=>s.uuid)}:null,onDelta:text=>{if(!alive()||latestSettled||typeof text!=='string'||!text)return;timing.latestDraftFirstMs??=now()-started;freshText+=text;if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
   let removeAbortWait=()=>{};
   const cancelled=new Promise(resolve=>{
     if(controller.signal.aborted)resolve({cancelled:true});
@@ -173,6 +173,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       throw new Error('情報の利用権限を確認できませんでした');
     }
     timing.verifiedMs=now()-started;
+    if(timing.latestDraftFirstMs!==null)timing.latestDraftToVerificationMs=timing.verifiedMs-timing.latestDraftFirstMs;
     const supported=result.synapseRead===true&&['supported','partial'].includes(result.evidenceStatus)&&Array.isArray(result.sources)&&result.sources.length>0;
     if(initial){
       const fresh=sourceFingerprints(result),selected=new Set(result.sources?.map(s=>s.uuid)||[]);

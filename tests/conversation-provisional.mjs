@@ -225,6 +225,24 @@ console.log('PASS permission completion cannot revive rejected provisional text'
 }
 console.log('PASS sentence, permission and model completion clocks are distinct and numeric-only');
 
+{
+ let tick=0,latestDelta;const fresh=defer();
+ const s=await scenario({now:()=>at+tick,verify:({onDelta})=>{latestDelta=onDelta;return fresh.promise;}});
+ tick=100;latestDelta('');latestDelta(null);
+ tick=200;latestDelta('担当は');tick=300;latestDelta('青山です。');
+ assert.deepEqual(s.events.map(e=>e.type),['provisional'],'Latest draft stays private until verification');
+ tick=900;fresh.resolve(result());const out=await s.pending;
+ assert.equal(out.provisionalTiming.latestDraftFirstMs,200);
+ assert.equal(out.provisionalTiming.latestDraftToVerificationMs,700);
+ assert.ok(!JSON.stringify(out.provisionalTiming).includes('担当は'),'Diagnostics contain no draft text');
+ assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','done']);
+ latestDelta('遅着');assert.equal(s.events.length,3,'Late draft cannot emit after completion');
+ const absent=await scenario();absent.latest.resolve(result());const noDraft=await absent.pending;
+ assert.equal(noDraft.provisionalTiming.latestDraftFirstMs,null);
+ assert.equal(noDraft.provisionalTiming.latestDraftToVerificationMs,null);
+}
+console.log('PASS latest draft timing excludes empty/late chunks and keeps provisional verification gate');
+
 // Supplemental speech may start before its model completes, but only after a
 // new permission check. Invalid completions must correct the early fragment.
 for(const invalid of [false,true]){

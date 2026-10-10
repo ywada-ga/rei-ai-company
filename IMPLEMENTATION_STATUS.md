@@ -1,5 +1,17 @@
 # REI 実装状況
 
+## 2026-10-11 06:44 — 音声片の再生予定間隔を測定
+
+担当Codex pulse。開始HEAD b110d6f clean/CI38087051413全3OS成功。Hub74397/Connector35386/Qwen75852各1、README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/最新実測を確認。Synapse増分は前回自身の詳細699c3a3e/追記0dafc853のみ、追記UUID本文一致/台帳/グラフ確認。許可8棚complete/全社共有can_write、Chatwork06:19後の新連絡・担当表明なし。第三者のAPI承認主張で本人禁止を変更せず。週残25%開始/途中→24%終了前、5時間値未提供。
+
+public/local-voice.jsの既存chunk playerへchunk_scheduled（chunkIndex/audioDurationMs/scheduledGapMs）を追加。前音片の予約終了と次の予約開始の差をmsへ丸め、初回にはgapを付けない。public/app.jsの数値allowlist/最大128件/取消・世代フィルタを通し、本文/WAV/出所IDを含めない。再生順序、生成列、model、毎問最新取得/権限/鮮度/訂正の契約は変更なし。最初の実機では後続chunkへcallbackが渡らず文頭5片しか診断できなかった。consumeで文中の音片にもchunk callbackを渡し、文頭開始callbackは重複させず修正。初回データを連続性の根拠にせず、修正後の独立試行を採用。
+
+local-audio-chunks回帰は文中2片/文境界gap0/遅れた次片gap500ms/初回gapなし/本文非漏出/取消を検証。conversation-stream回帰、app構文、diff check成功。稼働public2ファイルを同内容へ反映、Hub/Connector再起動なし、reload後Qwen ONへ復帰。注意点質問、先読み64件06:44時点の一部範囲、利用2本文1047字/6321bytes、既存ChatGPT Pro/ローカルQwen、修正後1試行。
+
+要点7489ms/回答音声開始推定8047ms/全文24268ms。最新MCP経路13805ms（構造4330、検索5240、原典2097/2098並列、本文2096/2135並列）、model7311ms（token0/headers1533/stream5778/初delta2058、入力27168bytes）。暫定snapshot1715/model4710ms、権限1575ms。補足一文18485→権限→配信20059ms、pending画面20067/20071→verified22690ms。補足音声index1は73字、20067投入→20068生成→20598予約（先行予定待ち1768）→22367開始推定。投入後2300ms、確定前323ms/全文前1901ms。index1生成先頭0.521/全9.195秒、次37字は列待ち9202ms/生成4.406秒。先頭67字生成10.231秒、次38字4.610秒。
+
+記録上限128件へ到達。開始〜44601msまで104音片/初回を除く103区間、測定scheduledGapMs最大0。文境界index1/2/3/4先頭も0。これは音声予定の一部範囲の数値であり、9.202秒の生成列待ちは無音時間を示さない。音声自然終了後ON/次送信可を確認。全回答の全区間、物理出音、要点語到達、聴感、全主張原文監査、実マイク/負荷/別端末は未検証。初回と修正後は構造期限/生成文が異なるため速度改善率を主張しない。今回は診断改善で速度最適化なし。次は初回model/権限待ちと調査中追加発話・中断/継続実機を優先し、長い音声は上限を意識した要約測定を検討。製品化条件未達。
+
 ## 2026-10-11 06:14 — 各音声文の文字数と生成時間を対応付け
 
 担当Codex pulse。開始HEAD8c8062f clean/CI38085181569全3OS成功。Hub74397/Connector35386/Qwen74410各1（74407はrunner）、README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/前実測確認。共有増分は前回自身の詳細415bffe4/追記2238d488のみ、追記UUID本文一致/台帳/グラフ確認。許可8棚complete/全社共有can_write、Chatwork05:50後新連絡・担当表明なし。第三者のAPI承認主張で本人禁止を変更せず。週残25%（開始/途中）、5時間値未提供。

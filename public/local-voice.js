@@ -59,7 +59,8 @@ export function createLocalSpeechStream(signal,request,options={}){
     const clock=options.now||(()=>performance.now()),queuedAt=clock(),index=phraseIndex++;let waits;
     const trace=(stage,extra={})=>{if(!controller.signal.aborted&&!playbackController.signal.aborted)options.onSpeechTiming?.({stage,phraseIndex:index,...extra});};
     trace('queued',{characters:Array.from(phrase).length});
-    const phraseOptions={...options,onPhraseScheduled:waitMs=>trace('scheduled',{playbackWaitMs:waitMs}),onPhrasePlaying:()=>trace('playing_estimated')};
+    let chunkIndex=0;
+    const phraseOptions={...options,onChunkScheduled:timing=>trace('chunk_scheduled',{chunkIndex:chunkIndex++,...timing}),onPhraseScheduled:waitMs=>trace('scheduled',{playbackWaitMs:waitMs}),onPhrasePlaying:()=>trace('playing_estimated')};
     const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');if(noticeStopped)return {cancelled:true};trace('synthesis_started',waits);return options.streamRequest?playChunkedVoice(phrase,controller.signal,phraseOptions):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{const metrics={};for(const key of ['firstGeneratedSeconds','totalSeconds'])if(Number.isFinite(result[key])&&result[key]>=0)metrics[key]=result[key];trace('prepared',metrics);options.onPrepared?.({... (result.noticeGenerationCancelled?{noticeGenerationCancelled:true}:{}),characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
     playback=playback.then(async()=>{const result=await audio;if(!options.streamRequest&&!playbackController.signal.aborted){await options.playbackReady;if(!playbackController.signal.aborted)try{await playVoiceAudio(result,playbackController.signal,options);}catch(error){if(!playbackController.signal.aborted)throw error;}}});
@@ -132,9 +133,10 @@ export function createChunkPlayer(signal,{context=voiceContext,onPlaying=()=>{},
       if(closed)throw new Error('音声を中断しました');
       await context.resume();if(closed)throw new Error('音声を中断しました');
       const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);
-      const at=Math.max(context.currentTime+0.04,end);end=at+buffer.duration;sources.add(source);
+      const previousEnd=end,at=Math.max(context.currentTime+0.04,end);end=at+buffer.duration;sources.add(source);
       waits.push(new Promise(resolve=>{source.onended=()=>{sources.delete(source);source.disconnect();resolve();};}));
       source.start(at);
+      phrase.onChunkScheduled?.({audioDurationMs:Math.round(buffer.duration*1000),...(previousEnd>0?{scheduledGapMs:Math.max(0,Math.round((at-previousEnd)*1000))}:{})});
       if(phrase.onPhraseScheduled){const waitMs=Math.max(0,(at-context.currentTime)*1000);phrase.onPhraseScheduled(Math.round(waitMs));const phraseTimer=setTimeout(()=>{phraseTimers.delete(phraseTimer);if(!closed&&context.state==='running')phrase.onPhrasePlaying?.();},waitMs);phraseTimers.add(phraseTimer);}
       if(!started){started=true;timer=setTimeout(()=>{if(!closed&&context.state==='running')onPlaying();},Math.max(0,(at-context.currentTime)*1000));}
     },
@@ -154,7 +156,7 @@ async function playChunkedVoice(text,signal,options){
     if(done)throw new Error('音声配信の順序が不正です');
     if(item.type==='chunk'){
       if(item.index!==index++||typeof item.wav!=='string'||item.wav.length>2000000)throw new Error('音声片が不正です');
-      try{await player.push(item.wav,index===1?options:{});}catch(error){if(!options.playbackSignal?.aborted)throw error;}
+      try{await player.push(item.wav,index===1?options:{onChunkScheduled:options.onChunkScheduled});}catch(error){if(!options.playbackSignal?.aborted)throw error;}
     }else if(item.type==='cancelled'&&options.cancelSignal?.aborted){
       done={cancelled:true,noticeGenerationCancelled:true};
     }else if(item.type==='done'){

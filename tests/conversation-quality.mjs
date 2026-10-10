@@ -171,6 +171,27 @@ for(const question of ['ほかの会社についても教えて','もっと詳�
  assert.equal(calls.filter(c=>c.tool==='search_memory_facts').length,1);
 }
 console.log('PASS narrow same-scope detail skips query planning but still freshly searches and reviews evidence');
+for(const resolved of [true,false]){
+ const history=[{question:'Synapse Connectについて教えて',answer:'OLD-DETAIL-CLAIM'.repeat(300),synapseRead:true},{question:'要点を先に説明して',answer:'PREFERENCE-ANSWER',synapseRead:true},{question:resolved?'Synapse Connectについて教えて':'別の会社についても教えて',answer:'LATEST-CONTINUITY-ANSWER',synapseRead:true}];
+ let evaluated=false;
+ const result=await converse({question:'もっと詳しく教えて',context:history,groups,call:async tool=>{
+  if(tool==='survey_space')return {structuredContent:{coverage:{complete:true}}};
+  if(tool==='search_memory_facts')return {structuredContent:{facts:[{uuid:'detail-body',group_id:'fixture'}]}};
+  if(tool==='get_fact_source')return {structuredContent:{sources:[{traceable:true,group_id:'fixture',body:'FRESH-DETAIL-BODY'}]}};
+  throw Error('unexpected detail lookup');
+ },generate:async(messages,o)=>{
+  assert.ok(history.every(t=>messages.some(m=>m.role==='user'&&m.content===t.question)));
+  const prior=messages.filter(m=>m.role==='assistant'&&history.some(t=>t.answer===m.content));
+  assert.equal(prior.length,resolved?1:3);
+  assert.equal(prior.at(-1).content,'LATEST-CONTINUITY-ANSWER');
+  assert.equal(prior.some(m=>m.content.includes('OLD-DETAIL-CLAIM')),!resolved);
+  if(o.phase!=='evidence_answer')return {text:JSON.stringify({action:'search',query:'会社'})};
+  assert.ok(messages.some(m=>m.content.includes('FRESH-DETAIL-BODY')));evaluated=true;
+  return {text:JSON.stringify(assess('supported',['detail-body'],'','','今回の本文を確認した詳細です。'))};
+ }});
+ assert.ok(evaluated);assert.equal(result.evidenceStatus,'supported');
+}
+console.log('PASS resolved detail keeps user preferences and latest answer, omits older AI claims only after topic resolution');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','未確定の部分回答')),ids),'');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','確認できた部分回答')),ids,{canRetry:false}),'確認できた部分回答');
 console.log('PASS a partial draft cannot leak before a possible retry');

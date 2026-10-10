@@ -58,6 +58,37 @@ for(const state of [{deleted:true},{invalid_at:'2026-10-10T00:00:00Z'},{is_lates
  }
 }
 console.log('PASS root and episode deletion, expiry and old revision cannot confirm provisional body equality');
+// A retry can read the same ID twice. Neither order may hide a changed body
+// or a failed/deleted read when confirming the cached provisional source.
+for(const kind of ['changed','group','deleted','incomplete','error']){
+ for(const reverse of [false,true]){
+  const s=await scenario(),fresh=result(),other=structuredClone(fresh.evidence[0]);
+  if(kind==='changed')other.result.structuredContent.episode.content='架空会社の担当は赤井。';
+  if(kind==='group')other.result.structuredContent.episode.group_id='other-group';
+  if(kind==='deleted')other.result.structuredContent.deleted=true;
+  if(kind==='incomplete')other.result.structuredContent.coverage.complete=false;
+  if(kind==='error')other.result={isError:true};
+  fresh.evidence=reverse?[other,...fresh.evidence]:[...fresh.evidence,other];
+  s.latest.resolve(fresh);await s.pending;
+  assert.equal(s.events[1].type,'correction',`${kind}/${reverse}: conflicting reads cannot confirm cached evidence`);
+  assert.equal(s.events.filter(e=>e.type==='verified'||e.type==='supplement').length,0);
+ }
+}
+{
+ const s=await scenario(),fresh=result();fresh.evidence.push(structuredClone(fresh.evidence[0]));
+ s.latest.resolve(fresh);await s.pending;
+ assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','done'],'Identical complete rereads remain usable');
+}
+console.log('PASS conflicting duplicate reads cannot restore provisional verification in either order');
+{
+ const s=await scenario(),fresh=result(),conflict=result('変更後の本文').evidence[0];
+ fresh.evidence.push(conflict,structuredClone(fresh.evidence[0]));
+ s.latest.resolve(fresh);await s.pending;assert.equal(s.events[1].type,'correction','A third matching read cannot erase a conflict');
+}
+{
+ const s=await scenario(),fresh=result();fresh.evidence.push({tool:'get_episode',uuid:'unrelated-source',result:{isError:true}});
+ s.latest.resolve(fresh);await s.pending;assert.equal(s.events[1].type,'verified','An unrelated failed ID does not invalidate the selected source');
+}
 {
  const s=await scenario();s.latest.resolve({...result(),answer:decision.text+'窓口は開発室です。',spokenAnswer:decision.text+'窓口は開発室です。'});await s.pending;
  assert.deepEqual(s.events.map(e=>e.type),['provisional','verified','supplement','done']);assert.equal(s.events[2].text,'補足です。窓口は開発室です。');

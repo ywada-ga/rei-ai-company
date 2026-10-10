@@ -48,10 +48,18 @@ export function selectPrefetchedRecords(snapshot,question,{limit=8,at=Date.now()
 }
 const fingerprint=body=>createHash('sha256').update(body).digest('hex');
 function sourceFingerprints(result){
-  const found=new Map();
+  const found=new Map(),unusable=new Set();
   for(const item of result.evidence||[]){
+    if(item.tool!=='get_episode')continue;
+    const id=item.uuid;if(typeof id!=='string'||!id||unusable.has(id))continue;
     const data=mcpData(item.result||{}),e=data?.episode;
-    if(item.tool==='get_episode'&&!item.result?.isError&&data?.coverage?.complete===true&&!data.truncated&&!data.deleted&&!data.invalid_at&&data.is_latest_revision!==false&&e?.uuid===item.uuid&&typeof e.content==='string'&&!e.content_truncated&&e.content_representation!=='bounded_prefix'&&!e.deleted&&!e.invalid_at&&e.is_latest_revision!==false)found.set(e.uuid,{groupId:e.group_id,hash:fingerprint(e.content)});
+    const complete=!item.result?.isError&&data?.coverage?.complete===true&&!data.truncated&&!data.deleted&&!data.invalid_at&&data.is_latest_revision!==false&&e?.uuid===id&&typeof e.content==='string'&&!e.content_truncated&&e.content_representation!=='bounded_prefix'&&!e.deleted&&!e.invalid_at&&e.is_latest_revision!==false;
+    const current=complete?{groupId:e.group_id,hash:fingerprint(e.content)}:null,previous=found.get(id);
+    // Never let a later duplicate hide a failed, deleted or conflicting read.
+    // Identical complete rereads are safe; disagreement requires correction.
+    if(!current||previous&&(previous.groupId!==current.groupId||previous.hash!==current.hash)){
+      found.delete(id);unusable.add(id);
+    }else found.set(id,current);
   }
   return found;
 }

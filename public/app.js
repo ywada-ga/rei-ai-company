@@ -593,6 +593,7 @@ async function trackConversationPreparation({prepare=true}={}){
    if(generation!==conversationPreparationGeneration)return;
    const status=await request('/api/conversation/prefetch');
    if(generation!==conversationPreparationGeneration)return;
+   conversationPreparation.dataset.syncDiagnostics=JSON.stringify(status.syncDiagnostics||null);
    if(status.usable){conversationPreparation.textContent=`会社の情報を${status.recordCount}件先読みしました（${formatTime(status.checkedAt)}時点${status.bodyCoverage==='limited'?'・一部の記録':''}）。質問ごとに最新情報を確認します。`;return;}
    if(status.state!=='syncing'){conversationPreparation.textContent='先読みは利用できません。質問ごとに最新情報を取得して回答します。';return;}
    await new Promise(resolve=>setTimeout(resolve,2000));

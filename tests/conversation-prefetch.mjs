@@ -64,3 +64,15 @@ assert.equal(balanced.length,64);assert.equal(balanced.filter(r=>r.uuid.startsWi
 assert.equal(new Set(balanced.map(r=>r.uuid)).size,64);assert.equal(balanced[0].uuid,'today-0');
 assert.equal(prefetchCandidates(busyToday,current,64).length,64);assert.deepEqual(prefetchCandidates(previousDay,current,0),[]);
 console.log('PASS busy current day cannot evict all yesterday sources; body cap and ordering remain bounded');
+
+// Numeric phase timings include final permission and failed body reads without source data.
+const timingDb=new DatabaseSync(':memory:');timingDb.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+let timingNow=2000000,failBody=false;
+const timingCache=new ConversationPrefetch(timingDb,{now:()=>timingNow,intervalMs:1});
+const timingIo={...io,catalog:async()=>{timingNow+=10;return catalog();},call:async(tool,args)=>{timingNow+=tool==='get_updates'?20:30;if(failBody&&tool==='get_episode')throw Error('SYNTHETIC_BODY_SECRET');return io.call(tool,args);}};
+await timingCache.activate(scope,timingIo);
+assert.deepEqual(timingCache.status(scope).syncDiagnostics,{phase:'complete',totalMs:70,catalogMs:10,ledgerMs:20,bodiesMs:30,permissionMs:10});
+failBody=true;timingNow+=2;await timingCache.activate(scope,timingIo);
+assert.deepEqual(timingCache.status(scope).syncDiagnostics,{phase:'failed',totalMs:60,catalogMs:10,ledgerMs:20,bodiesMs:30});
+assert.equal(timingCache.status(scope).usable,false);assert.ok(!JSON.stringify(timingCache.status(scope)).includes('SECRET'));
+timingCache.close();timingDb.close();console.log('PASS source-free numeric preparation phases, final permission and failure timing');

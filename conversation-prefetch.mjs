@@ -52,7 +52,7 @@ export class ConversationPrefetch {
     try{value=JSON.parse(one(this.db,'SELECT value FROM settings WHERE key=?',key)?.value||'null');}catch{}
     const age=value?this.now()-value.checkedAt:null;
     const usable=!!value&&value.version===1&&value.scopeKey===key&&Number.isSafeInteger(value.checkedAt)&&Number.isSafeInteger(value.ledgerCount)&&value.ledgerCount>=0&&['complete','limited'].includes(value.bodyCoverage)&&Array.isArray(value.records)&&value.records.length<=this.maxRecords&&age>=0&&age<=this.maxAgeMs&&entry?.failed!==true;
-    return {state:entry?.pending?'syncing':entry?.failed?'unavailable':usable?'ready':value?'expired':'empty',usable,checkedAt:usable?value.checkedAt:null,ageMs:usable?age:null,recordCount:usable?value.records.length:0,ledgerCount:usable?value.ledgerCount:0,bodyCoverage:usable?value.bodyCoverage:null};
+    return {state:entry?.pending?'syncing':entry?.failed?'unavailable':usable?'ready':value?'expired':'empty',usable,checkedAt:usable?value.checkedAt:null,ageMs:usable?age:null,recordCount:usable?value.records.length:0,ledgerCount:usable?value.ledgerCount:0,bodyCoverage:usable?value.bodyCoverage:null,syncDiagnostics:entry?.timing?{...entry.timing}:null};
   }
   snapshot(scope,catalog){
     // Callers must supply a new authenticated catalog on each question.
@@ -85,30 +85,33 @@ export class ConversationPrefetch {
     const key=this.storageKey(scope),entry=this.active.get(key);if(!entry)throw new Error('Scope not activated');if(entry.pending)return entry.pending;
     entry.lastAttempt=this.now();entry.controller=new AbortController();const signal=entry.controller.signal,generation=entry.generation;
     const current=()=>!signal.aborted&&entry.generation===generation&&prefetchScopeKey(entry.io.currentScope())===prefetchScopeKey(scope);
+    const started=this.now();entry.timing={phase:'catalog',totalMs:null};
+    const timed=async(phase,operation)=>{entry.timing.phase=phase;const at=this.now();try{return await operation();}finally{entry.timing[phase+'Ms']=Math.max(0,this.now()-at);}};
     const pending=(async()=>{
       try{
         if(!current())throw new Error('Scope changed');
-        const catalog=await entry.io.catalog(signal);
+        const catalog=await timed('catalog',()=>entry.io.catalog(signal));
         if(!current()||!prefetchAuthorized(catalog,scope))throw new Error('Scope unavailable');
-        const update=await readAdditions({groups:scope.groups,window:{start:0,end:Number.MAX_SAFE_INTEGER},call:entry.io.call,signal,cache:entry.cursors});
+        const update=await timed('ledger',()=>readAdditions({groups:scope.groups,window:{start:0,end:Number.MAX_SAFE_INTEGER},call:entry.io.call,signal,cache:entry.cursors}));
         if(!current()||!update.complete)throw new Error('Incomplete ledger');
         // Too much cursor metadata disables prefetch instead of growing indefinitely.
         if(update.rows.length>10000)throw new Error('Ledger too large');
         const at=this.now(),candidates=prefetchCandidates(update.rows,at,this.maxRecords);
-        const records=await readConcurrent(candidates,async row=>checkedRecord(await entry.io.call('get_episode',{uuid:row.uuid,group_ids:scope.groups.map(g=>g.id)},signal),row,scope,at),{concurrency:6,signal});
+        const records=await timed('bodies',()=>readConcurrent(candidates,async row=>checkedRecord(await entry.io.call('get_episode',{uuid:row.uuid,group_ids:scope.groups.map(g=>g.id)},signal),row,scope,at),{concurrency:6,signal}));
         // Recheck remote permission after the reads, before persisting any source.
-        if(!current()||!prefetchAuthorized(await entry.io.catalog(signal),scope)||!current())throw new Error('Scope changed');
+        if(!current()||!prefetchAuthorized(await timed('permission',()=>entry.io.catalog(signal)),scope)||!current())throw new Error('Scope changed');
         const value={version:1,scopeKey:key,checkedAt:at,records,ledgerCount:update.rows.length,bodyCoverage:records.length===update.rows.length?'complete':'limited'};
         const encoded=JSON.stringify(value);if(Buffer.byteLength(encoded)>this.maxBytes)throw new Error('Index too large');
         transaction(this.db,()=>{
           run(this.db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,encoded);
           const keys=all(this.db,"SELECT key FROM settings WHERE key LIKE 'conversation-prefetch:%' ORDER BY rowid DESC");
           for(const row of keys.slice(this.maxScopes))run(this.db,'DELETE FROM settings WHERE key=?',row.key);
-        });entry.failed=false;
+        });entry.failed=false;entry.timing.phase='complete';
       }catch{
         // Never serve an older snapshot after failed sync, revoke or partial reads.
-        entry.failed=true;entry.cursors.clear();if(this.active.get(key)===entry&&entry.generation===generation)run(this.db,'DELETE FROM settings WHERE key=?',key);
+        entry.failed=true;entry.timing.phase='failed';entry.cursors.clear();if(this.active.get(key)===entry&&entry.generation===generation)run(this.db,'DELETE FROM settings WHERE key=?',key);
       }
+      entry.timing.totalMs=Math.max(0,this.now()-started);
       return this.status(scope);
     })();entry.pending=pending;
     try{return await pending;}finally{if(entry.pending===pending)entry.pending=null;}

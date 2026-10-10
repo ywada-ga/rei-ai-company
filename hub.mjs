@@ -59,14 +59,17 @@ function prefetchContext(userId){
   return {scope:{userId:user.id,role:user.role,integration:integration.name+'|'+integration.url,groups:settings.groups},integration};
 }
 function prepareConversationPrefetch(user){
+  if(conversationBusy)return;
   const current=prefetchContext(user.id);if(!current)return;
   void conversationPrefetch.activate(current.scope,{
     currentScope:()=>prefetchContext(user.id)?.scope,
+    isBusy:()=>conversationBusy,
     catalog:()=>conversationMcp.catalog(current.integration),
     call:(tool,args,signal)=>conversationMcp.call(current.integration,tool,args,signal)
   }).catch(()=>{});
 }
 function prepareConversationOutline(user){
+  if(conversationBusy)return;
   const settings=conversationSettings(user),device=localConnectorStatus().deviceId;
   const integration=device?one(db,"SELECT name,url FROM mcp_integrations WHERE device_id=? AND url='https://mcp.synapse-connect.ai/mcp'",device):null;
   if(!integration||!settings.groups.length)return;

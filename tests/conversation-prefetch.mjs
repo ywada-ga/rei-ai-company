@@ -108,3 +108,23 @@ await narrowCache.activate(narrowScope,{currentScope:()=>narrowScope,catalog:asy
 }});
 assert.equal(narrowCalls,2);assert.equal(narrowCache.snapshot(narrowScope,narrowCatalog()).records.length,2);
 narrowCache.close();narrowDb.close();console.log('PASS each body lookup targets its ledger shelf, retaining full-scope permission checks');
+
+// A turn beginning during sync lets current reads drain but stops slot refill.
+const yieldingDb=new DatabaseSync(':memory:');yieldingDb.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+const yieldingCache=new ConversationPrefetch(yieldingDb);let busy=false,yieldReads=0,yieldReleases=[];
+const yieldingIo={...overlapIo,isBusy:()=>busy,call:async(tool,args)=>{
+  if(tool==='get_updates')return overlapIo.call(tool,args);
+  yieldReads++;await new Promise(resolve=>yieldReleases.push(resolve));
+  return {...reply({episode:{uuid:args.uuid,group_id:'fixture-private',content:'SYNTHETIC',origin:'manual',source_ref:'fixture',recorded_at:new Date().toISOString()},coverage:{complete:true},truncated:false})};
+}};
+const yieldPending=yieldingCache.activate(scope,yieldingIo);await new Promise(setImmediate);assert.equal(yieldReads,6);
+busy=true;for(const resolve of yieldReleases.splice(0))resolve();await new Promise(resolve=>setTimeout(resolve,120));
+assert.equal(yieldReads,6,'a busy turn prevents seventh body read');
+busy=false;await new Promise(resolve=>setTimeout(resolve,120));assert.equal(yieldReads,7);
+yieldReleases.shift()();await yieldPending;assert.equal(yieldingCache.status(scope).usable,true);
+assert.ok(yieldingCache.status(scope).syncDiagnostics.yieldMs>=100);
+// Cancellation while idle-waiting must settle promptly and erase previous data.
+busy=true;const cancelPending=yieldingCache.sync(scope);await new Promise(setImmediate);
+yieldingCache.invalidate(scope);await cancelPending;assert.equal(yieldingCache.status(scope).usable,false);
+assert.equal(yieldReads,7);yieldingCache.close();yieldingDb.close();
+console.log('PASS busy turn suspends background refill, resumes full reads and aborts idle wait');

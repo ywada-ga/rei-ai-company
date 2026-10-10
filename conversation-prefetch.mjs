@@ -1,3 +1,4 @@
+import {setTimeout as delay} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
 import {one,run,all,transaction} from './storage.mjs';
 import {mcpData} from './load-synapse.mjs';
@@ -84,12 +85,19 @@ export class ConversationPrefetch {
   async sync(scope){
     const key=this.storageKey(scope),entry=this.active.get(key);if(!entry)throw new Error('Scope not activated');if(entry.pending)return entry.pending;
     entry.lastAttempt=this.now();entry.controller=new AbortController();const signal=entry.controller.signal,generation=entry.generation;
+    const idle=async()=>{
+      if(!entry.io.isBusy?.())return;
+      const waiting=this.now();
+      try{while(entry.io.isBusy?.()){if(signal.aborted)throw new Error('Scope changed');await delay(100,undefined,{signal});}}
+      finally{entry.timing.yieldMs=(entry.timing.yieldMs||0)+Math.max(0,this.now()-waiting);}
+    };
     const current=()=>!signal.aborted&&entry.generation===generation&&prefetchScopeKey(entry.io.currentScope())===prefetchScopeKey(scope);
     const started=this.now();entry.timing={phase:'catalog',totalMs:null};
     const timed=async(phase,operation)=>{entry.timing.phase=phase;const at=this.now();try{return await operation();}finally{entry.timing[phase+'Ms']=Math.max(0,this.now()-at);}};
     const pending=(async()=>{
       try{
         if(!current())throw new Error('Scope changed');
+        await idle();
         const catalog=await timed('catalog',()=>entry.io.catalog(signal));
         if(!current()||!prefetchAuthorized(catalog,scope))throw new Error('Scope unavailable');
         const update=await timed('ledger',()=>readAdditions({groups:scope.groups,window:{start:0,end:Number.MAX_SAFE_INTEGER},call:entry.io.call,signal,cache:entry.cursors}));
@@ -101,6 +109,7 @@ export class ConversationPrefetch {
         let activeReads=0;
         Object.assign(entry.timing,{bodyReadCount:0,bodyReadPeak:0,bodyReadTotalMs:0,bodyReadMaxMs:0,bodyTransportCount:0,bodyConnectMs:0,bodyRequestMs:0});
         const records=await timed('bodies',()=>readConcurrent(candidates,async row=>{
+          await idle();if(!current())throw new Error('Scope changed');
           const readStarted=this.now();entry.timing.bodyReadCount++;activeReads++;
           entry.timing.bodyReadPeak=Math.max(entry.timing.bodyReadPeak,activeReads);
           try{
@@ -115,6 +124,7 @@ export class ConversationPrefetch {
             entry.timing.bodyReadTotalMs+=elapsed;entry.timing.bodyReadMaxMs=Math.max(entry.timing.bodyReadMaxMs,elapsed);
           }
         },{concurrency:6,signal}));
+        await idle();
         // Recheck remote permission after the reads, before persisting any source.
         if(!current()||!prefetchAuthorized(await timed('permission',()=>entry.io.catalog(signal)),scope)||!current())throw new Error('Scope changed');
         const value={version:1,scopeKey:key,checkedAt:at,records,ledgerCount:update.rows.length,bodyCoverage:records.length===update.rows.length?'complete':'limited'};

@@ -63,6 +63,12 @@ function provisionalPrefix(raw,ids,options){
 }
 function asOfText(at){return new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at));}
 
+function provisionalSpeechIntro(at){
+  const parts=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',hour12:false}).formatToParts(at);
+  const part=type=>parts.find(p=>p.type===type).value;
+  return `${part('month')}月${part('day')}日${part('hour')}時${part('minute')}分取得の、一部の記録による暫定ですが、`;
+}
+
 // Replacement semantics keep provisional speech separate from final history.
 // getSnapshot must use a fresh remote catalog; authorize rechecks scope/permission.
 export async function runProvisionalConversation({question,context=[],scope,getSnapshot,authorize,generate,verify,onEvent=()=>{},signal,now=Date.now,maxAgeMs=600000}){
@@ -100,7 +106,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
         const prefix=pendingPrefix,selected=records.filter(r=>prefix.sourceIds.includes(r.episode.uuid));
         initial={text:prefix.text,sources:selected.map(r=>({uuid:r.episode.uuid,groupId:r.episode.group_id,hash:fingerprint(r.episode.content)})),checkedAt:snapshot.checkedAt,valid:false};
         timing.provisionalMs=now()-started;
-        emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${prefix.text}`,speechText:`暫定ですが、${prefix.text}`,checkedAt:snapshot.checkedAt,sourceIds:prefix.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
+        emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${prefix.text}`,speechText:`${provisionalSpeechIntro(snapshot.checkedAt)}${prefix.text}`,checkedAt:snapshot.checkedAt,sourceIds:prefix.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
       };
       const requestPermission=()=>{
         if(permission&&(!permissionReady||permissionFresh()))return permission;
@@ -129,11 +135,11 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       if(initial&&(!answer.text.startsWith(initial.text)||JSON.stringify([...answer.sourceIds].sort())!==JSON.stringify(initial.sources.map(s=>s.uuid).sort())))throw new Error('Provisional prefix changed');
       // Do not release a source after its snapshot expired or permission changed.
       if(!await requestPermission()||!alive()||latestSettled||!validSnapshot(snapshot,scope,now(),maxAgeMs)){provisionalOutcome='permission_or_freshness';return;}
-      if(initial){const rest=answer.text.slice(initial.text.length);initial.text=answer.text;initial.valid=true;emit({type:'provisional',text:rest+' 最新情報を確認しています。',speechText:rest+` ${asOfText(snapshot.checkedAt)}取得時点の一部の記録です。最新情報を確認しています。`,checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});return;}
+      if(initial){const rest=answer.text.slice(initial.text.length);initial.text=answer.text;initial.valid=true;emit({type:'provisional',text:rest+' 最新情報を確認しています。',speechText:rest+' 最新情報を確認しています。',checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});return;}
       const selected=records.filter(r=>answer.sourceIds.includes(r.episode.uuid));
       initial={text:answer.text,sources:selected.map(r=>({uuid:r.episode.uuid,groupId:r.episode.group_id,hash:fingerprint(r.episode.content)})),checkedAt:snapshot.checkedAt,valid:true};
       timing.provisionalMs=now()-started;
-      emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${answer.text} 最新情報を確認しています。`,speechText:`暫定ですが、${answer.text} ${asOfText(snapshot.checkedAt)}取得時点の一部の記録です。最新情報を確認しています。`,checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
+      emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${answer.text} 最新情報を確認しています。`,speechText:`${provisionalSpeechIntro(snapshot.checkedAt)}${answer.text} 最新情報を確認しています。`,checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
     }catch{provisionalOutcome=latestSettled?'latest_won':'provisional_failed';if(initial&&!latestSettled&&alive())emit({type:'correction',text:'暫定回答を完了できませんでした。最新の確認結果を待ちます。',replacementAnswer:'暫定回答を完了できませんでした。最新の確認結果を待ちます。',verification:'pending'});}
     finally{provisionalFinished=true;if(!initial&&!latestSettled&&freshText){releasedFresh=freshText;emit({type:'delta',text:freshText});}}
   })();

@@ -106,7 +106,7 @@ console.log('PASS day questions carry explicit current date, Japan time and part
  const s=await scenario({authorize:()=>gate.promise,generate:(_messages,opts)=>{stream=opts.onDelta;return model.promise;}});
  const raw=JSON.stringify({...decision,text:'担当は青山です。窓口は開発室です。'});
  stream(raw.slice(0,raw.indexOf('窓口')));await settle();assert.equal(s.events.length,0,'Permission gate blocks early speech');
- gate.resolve(true);await settle();assert.equal(s.events[0].type,'provisional');assert.equal(s.events[0].speechText,'暫定ですが、担当は青山です。');
+ gate.resolve(true);await settle();assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].speechText,/^\d+月\d+日\d+時\d+分取得の、一部の記録による暫定ですが、担当は青山です。$/);
  assert.equal(s.events.length,1,'First sentence released while model still running');
  model.resolve({text:raw});await settle();assert.equal(s.events[1].type,'provisional');assert.match(s.events[1].speechText,/^窓口は開発室/);
  s.latest.resolve({...result(),answer:'担当は青山です。窓口は開発室です。',spokenAnswer:'担当は青山です。窓口は開発室です。'});
@@ -312,3 +312,18 @@ console.log('Prefetch spelling variants select candidates without rewriting evid
  assert.ok(!JSON.stringify(out.provisionalTiming).includes('架空会社'));
 }
 console.log('PASS excerpt object character count, absent first delta and source-free diagnostics');
+
+// An interrupted first sentence still carries its retrieval time and partial scope.
+{
+ const checked=Date.parse('2026-10-09T15:00:00Z'),dated=structuredClone(snapshot);
+ dated.checkedAt=checked;dated.records.forEach(r=>r.fetchedAt=checked);
+ const model=defer();let stream;
+ const s=await scenario({now:()=>checked+1000,getSnapshot:async()=>dated,generate:(_m,o)=>{stream=o.onDelta;return model.promise;}});
+ stream(JSON.stringify(decision).slice(0,-2));await settle();
+ assert.match(s.events[0].speechText,/^10月10日0時00分取得の、一部の記録による暫定ですが、/);
+ assert.equal(s.events[0].verification,'pending');
+ model.resolve({text:JSON.stringify(decision)});await settle();
+ assert.ok(!s.events[1].speechText.includes('10月10日'),'Do not repeat the retrieval time');
+ s.latest.resolve(result());await s.pending;
+}
+console.log('PASS first spoken sentence carries Japan retrieval time, partial scope and pending status');

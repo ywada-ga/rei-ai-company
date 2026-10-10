@@ -161,10 +161,13 @@ console.log('PASS explicit company overview/caution skips only query planning, p
 const detailHistory=[{question:'Synapse Connectについて教えて',answer:'OLD-CLAIM',synapseRead:true},{question:'もっと詳しく教えて',answer:'OLD-CLAIM',synapseRead:true}];
 assert.equal(directCompanyDetailSubject('もう少し詳しく教えてください。',detailHistory),'Synapse Connect');
 for(const history of [[],[{question:'会社について教えて',synapseRead:true}],[{question:'その会社について教えて',synapseRead:true}],[...detailHistory,{question:'こんにちは',synapseRead:false}],[{question:'Synapse Connectについて教えて',synapseRead:false}],Array.from({length:6},()=>detailHistory[1])])assert.equal(directCompanyDetailSubject('もっと詳しく教えて',history),null);
-for(const question of ['ほかの会社についても教えて','もっと詳しく教えて。実行して','最新の売上を詳しく教えて','なぜ？'])assert.equal(directCompanyDetailSubject(question,detailHistory),null);
-{
+for(const question of ['ほかの会社についても教えて','もっと詳しく教えて。実行して','最新の売上を詳しく教えて','なぜ？','その注意点で、別会社の連携範囲はどう決める？','その注意点で、連携範囲はどう決める？実行して'])assert.equal(directCompanyDetailSubject(question,detailHistory),null);
+for(const question of ['もっと詳しく教えて','その注意点で、連携範囲はどう決める？']){
+ assert.equal(directCompanyDetailSubject(question,detailHistory),'Synapse Connect');
+ assert.equal(directCompanyDetailSubject(question,[...detailHistory,{question:'別の案件について話そう',synapseRead:true}]),null);
+ assert.equal(directCompanyDetailSubject(question,[{question:'Synapse Connectについて教えて',synapseRead:false}]),null);
  const calls=[];
- const result=await converse({question:'もっと詳しく教えて',context:detailHistory,groups,call:async(tool,args)=>{
+ const result=await converse({question,context:detailHistory,groups,call:async(tool,args)=>{
   calls.push({tool,args});assert.deepEqual(args.group_ids,['fixture']);
   if(tool==='survey_space')return {structuredContent:{coverage:{complete:true}}};
   if(tool==='search_memory_facts'){assert.equal(args.query,'Synapse Connect');return {structuredContent:{facts:[{uuid:'fresh-detail',group_id:'fixture'}]}};}
@@ -172,7 +175,7 @@ for(const question of ['ほかの会社についても教えて','もっと詳�
   throw Error('unexpected detail lookup');
  },generate:async(messages,o)=>{
   assert.equal(o.phase,'evidence_answer');assert.ok(calls.some(c=>c.tool==='get_fact_source'));
-  assert.ok(messages.some(m=>m.content==='もっと詳しく教えて'));
+  assert.ok(messages.some(m=>m.content===question));
   return {text:JSON.stringify(assess('supported',['fresh-detail'],'','','最新取得した本文による詳細です。'))};
  }});
  assert.equal(result.synapseRead,true);assert.equal(result.evidenceStatus,'supported');

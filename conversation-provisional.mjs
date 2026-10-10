@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {prefetchScopeKey} from './conversation-prefetch.mjs';
 import {additionWindow} from './conversation-updates.mjs';
-import {parseDecision,reviewedAnswerPrefix,directCompanyOverviewSubject} from './conversation.mjs';
+import {parseDecision,reviewedAnswerPrefix,directCompanyOverviewSubject,isCompanyDetailFollowup} from './conversation.mjs';
 import {mcpData,evidenceBodyContext} from './load-synapse.mjs';
 
 // Deliberately narrow candidate selection. A hit is not proof of relevance:
@@ -11,7 +11,6 @@ const topicRequest=/^([^\n。！？!?]{2,60})について(?:教えて(?:くだ�
 // only selects bodies; the full caution request still needs their assessment.
 const cautionRequest=/の注意点を教えて(?:ください)?[。！!？?]*$/u;
 const explicitPrefetchSubject=question=>question.match(topicRequest)?.[1]||(cautionRequest.test(question)?directCompanyOverviewSubject(question):null);
-const detailFollowup=/^(?:(?:それ|その(?:件|内容|情報))について)?(?:もっと|もう少し)?詳しく(?:教えて(?:ください)?)?[。！!？?]*$/u;
 // Candidate matching only. Keep original questions/bodies for model assessment;
 // normalized spelling is never proof that two entities are the same.
 const topicSpelling=value=>value.normalize('NFKC').toLowerCase().replace(/\s+/gu,'');
@@ -20,12 +19,12 @@ const topicSpelling=value=>value.normalize('NFKC').toLowerCase().replace(/\s+/gu
 export function prefetchTopicQuestion(question,context=[]){
   const current=String(question).trim();
   if(explicitPrefetchSubject(current))return current;
-  if(!detailFollowup.test(current))return null;
+  if(!isCompanyDetailFollowup(current))return null;
   for(const turn of context.slice(-6).reverse()){
     if(turn?.synapseRead!==true)return null;
     const previous=String(turn.question||'').trim();
     if(explicitPrefetchSubject(previous))return previous;
-    if(!detailFollowup.test(previous))return null;
+    if(!isCompanyDetailFollowup(previous))return null;
   }
   return null;
 }

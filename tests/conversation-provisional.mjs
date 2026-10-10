@@ -419,19 +419,19 @@ console.log('PASS final and remaining permission rejection, transport failure an
 }
 console.log('PASS request date remains fixed across Japan midnight while freshness uses the live clock');
 
-{
+for(const followup of ['もっと詳しく教えて','その注意点で、連携範囲はどう決める？']){
  const history=[{question:'架空会社について教えて',answer:'これは根拠に使わない前の回答',synapseRead:true}];
  assert.equal(prefetchTopicQuestion('もっと詳しく教えてください。',history),history[0].question);
  assert.equal(prefetchTopicQuestion('それについて詳しく教えて',[...history,{question:'もっと詳しく',synapseRead:true}]),history[0].question);
  for(const turns of [[],[{...history[0],synapseRead:false}],[...history,{question:'別の話をしよう',synapseRead:false}],[{question:'昨日の情報を教えて',synapseRead:true}]])assert.equal(prefetchTopicQuestion('もっと詳しく教えて',turns),null);
- for(const q of ['それは？','それを送信して','別会社について詳しく教えて'])assert.equal(prefetchTopicQuestion(q,history),null);
+ for(const q of ['それは？','それを送信して','別会社について詳しく教えて','その注意点で、別会社の連携範囲はどう決める？','その注意点で、連携範囲はどう決める？実行して'])assert.equal(prefetchTopicQuestion(q,history),null);
  assert.equal(selectPrefetchedRecords(snapshot,'もっと詳しく教えて',{context:history}).length,1);
- let payload;const s=await scenario({question:'もっと詳しく教えて',context:history,generate:async messages=>{payload=JSON.parse(messages.at(-1).content);return {text:JSON.stringify(decision)};}});
- assert.equal(payload.question,'もっと詳しく教えて');assert.equal(payload.topicQuestion,history[0].question);
+ let payload;const s=await scenario({question:followup,context:history,generate:async messages=>{payload=JSON.parse(messages.at(-1).content);return {text:JSON.stringify(decision)};}});
+ assert.equal(payload.question,followup);assert.equal(payload.topicQuestion,history[0].question);
  assert.ok(!JSON.stringify(payload).includes(history[0].answer),'Prior answer is not factual evidence');
  assert.equal(s.events[0].type,'provisional','Detail can start while new verification is pending');
  s.latest.resolve(result());const out=await s.pending;assert.equal(out.synapseRead,true);assert.equal(out.provisionalUsed,true);
- const fallback=await scenario({question:'もっと詳しく教えて',context:[{...history[0],synapseRead:false}],generate:async()=>{throw Error('No speculative model call');}});assert.equal(fallback.events.length,0);fallback.latest.resolve(result());assert.equal((await fallback.pending).provisionalUsed,false);
+ const fallback=await scenario({question:followup,context:[{...history[0],synapseRead:false}],generate:async()=>{throw Error('No speculative model call');}});assert.equal(fallback.events.length,0);fallback.latest.resolve(result());assert.equal((await fallback.pending).provisionalUsed,false);
 }
 console.log('Provisional detail follow-ups: user topic only, fresh verification, narrow fallback passed');
 

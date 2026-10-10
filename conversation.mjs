@@ -160,17 +160,20 @@ export function directCompanyOverviewSubject(question){
   if(!subject||/(?:REI|レイ|あなた)/iu.test(subject)||!needsCompanyRead(value,[]))return null;
   return subject;
 }
-// Resolve only an unchanged detail request from same-scope user history.
+export function isCompanyDetailFollowup(question){
+  const value=String(question).trim();
+  return /^(?:(?:それ|その(?:件|内容|情報))について)?(?:もっと|もう少し)?詳しく(?:教えて(?:ください)?)?[。！!？?]*$/u.test(value)||/^その注意点で[、,\s]*(?:連携範囲|取り込み範囲|対象データ)(?:は|を)どう決め(?:る|ますか|ればよい)[。？?]*$/u.test(value);
+}
+// Resolve narrow details/facets from same-scope user history.
 // This supplies a search term, never evidence or permission to answer.
 export function directCompanyDetailSubject(question,context=[]){
-  const detail=/^(?:(?:それ|その(?:件|内容|情報))について)?(?:もっと|もう少し)?詳しく(?:教えて(?:ください)?)?[。！!？?]*$/u;
-  if(!detail.test(String(question).trim()))return null;
+  if(!isCompanyDetailFollowup(question))return null;
   for(const turn of context.slice(-6).reverse()){
     if(turn?.synapseRead!==true)return null;
     const previous=String(turn.question||'').trim();
     const subject=directCompanyOverviewSubject(previous);
     if(subject)return /^(?:それ|その|この|あの|同社|弊社|当社|うち|私たち|私の|自社|我が社)/u.test(subject)||/^(?:会社|グループ)$/u.test(subject)?null:subject;
-    if(!detail.test(previous))return null;
+    if(!isCompanyDetailFollowup(previous))return null;
   }
   return null;
 }

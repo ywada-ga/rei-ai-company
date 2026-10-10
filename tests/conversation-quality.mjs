@@ -6,6 +6,9 @@ assert.equal(needsRecentEvidence('その人は？',[{question:'杉山さんの�
 const groups=[{id:'fixture',name:'共有'}];
 assert.equal(directCompanyOverviewSubject('Synapse Connectについて教えて'),'Synapse Connect');
 assert.equal(directCompanyOverviewSubject('シナプスコネクトについて教えてください！'),'シナプスコネクト');
+assert.equal(directCompanyOverviewSubject('Synapse Connectの注意点を教えて'),'Synapse Connect');
+assert.equal(directCompanyOverviewSubject('シナプスコネクトの注意点を教えてください。'),'シナプスコネクト');
+for(const q of ['量子力学の注意点を教えて','その会社の注意点を教えて','会社の注意点を教えて','REIの注意点を教えて','Synapse Connectと社内制度の注意点を教えて','Synapse Connectの注意点を教えて。それと実行して','Synapse Connectの注意点は？'])assert.equal(directCompanyOverviewSubject(q),null);
 for(const q of ['量子力学について教えて','それについて教えて','REIの会社情報検索機能について教えて','Synapse Connectについて教えて。それと実行して','Synapse Connectとは？'])assert.equal(directCompanyOverviewSubject(q),null);
 const assess=(status,sourceIds,reason='',query='',text='')=>({action:'respond',status,sourceIds,reason,query,text});
 const fixture=()=>{
@@ -132,7 +135,7 @@ try{
 await assert.rejects(canceledConversation,/会話を中断しました/);
 assert.equal(canceledOutlineCalls,0);
 console.log('PASS interruption stops waiting for shared outline preparation without canceling it or starting late reads');
-for(const question of ['Synapse Connectについて教えて','社内制度について教えてください']){
+for(const [question,subject] of [['Synapse Connectについて教えて','Synapse Connect'],['社内制度について教えてください','社内制度'],['Synapse Connectの注意点を教えて','Synapse Connect']]){
  const calls=[];let generations=0;
  const answer=await converse({question,groups,call:async(tool,args)=>{
   calls.push({tool,args});assert.deepEqual(args.group_ids,['fixture']);
@@ -142,14 +145,15 @@ for(const question of ['Synapse Connectについて教えて','社内制度に�
   throw Error('unexpected direct lookup');
  },generate:async(messages,o)=>{
   assert.equal(o.phase,'evidence_answer','No query-planning model before fresh body');generations++;
+  assert.ok(messages.some(m=>m.role==='user'&&m.content===question),'Original request remains available for evidence assessment');
   assert.ok(calls.some(c=>c.tool==='get_fact_source'));
   return {text:JSON.stringify(assess('supported',['direct-fact'],'','','取得本文の概要です。'))};
  }});
  assert.equal(generations,1);assert.equal(calls.filter(c=>c.tool==='search_memory_facts').length,1);
- assert.equal(calls.find(c=>c.tool==='search_memory_facts').args.query,question.split('について')[0]);
+ assert.equal(calls.find(c=>c.tool==='search_memory_facts').args.query,subject);
  assert.equal(answer.synapseRead,true);assert.equal(answer.evidenceStatus,'supported');
 }
-console.log('PASS explicit company overview skips only query planning, preserving scoped search and fresh source review');
+console.log('PASS explicit company overview/caution skips only query planning, preserving full question, scoped search and fresh source review');
 const detailHistory=[{question:'Synapse Connectについて教えて',answer:'OLD-CLAIM',synapseRead:true},{question:'もっと詳しく教えて',answer:'OLD-CLAIM',synapseRead:true}];
 assert.equal(directCompanyDetailSubject('もう少し詳しく教えてください。',detailHistory),'Synapse Connect');
 for(const history of [[],[{question:'会社について教えて',synapseRead:true}],[{question:'その会社について教えて',synapseRead:true}],[...detailHistory,{question:'こんにちは',synapseRead:false}],[{question:'Synapse Connectについて教えて',synapseRead:false}],Array.from({length:6},()=>detailHistory[1])])assert.equal(directCompanyDetailSubject('もっと詳しく教えて',history),null);

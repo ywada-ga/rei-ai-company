@@ -149,11 +149,14 @@ function needsCompanyRead(question,context){
   if(companyFollowUp&&/(?:それ|その|今|最新|続き|続け|誰|いつ|どうな|担当|期限|もっと|詳し|具体|ほか|他に|理由|なぜ|要約|簡単|読み上げ|短く|確認)/u.test(question))return true;
   return companyQuestion.test(question);
 }
-// Only explicit, self-contained company overview questions supply a search
+// Only explicit, self-contained company overview or caution questions supply a search
 // subject. General knowledge, follow-ups and REI runtime questions keep planning.
 export function directCompanyOverviewSubject(question){
   const value=String(question).trim();
-  const subject=value.match(/^([^\n。！？!?]{2,60})について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u)?.[1];
+  const overview=value.match(/^([^\n。！？!?]{2,60})について(?:教えて(?:ください)?|知りたい|聞きたい)[。！!？?]*$/u)?.[1];
+  const caution=value.match(/^([^\n。！？!?]{2,60})の注意点を教えて(?:ください)?[。！!？?]*$/u)?.[1];
+  if(caution&&(/^(?:それ|その|この|あの|同社|弊社|当社|うち|私たち|私の|自社|我が社)/u.test(caution)||/^(?:会社|グループ)$/u.test(caution)||/[、,]|(?:と|や|及び|および|実行|して)/u.test(caution)))return null;
+  const subject=overview||caution;
   if(!subject||/(?:REI|レイ|あなた)/iu.test(subject)||!needsCompanyRead(value,[]))return null;
   return subject;
 }

@@ -327,3 +327,20 @@ console.log('PASS excerpt object character count, absent first delta and source-
  s.latest.resolve(result());await s.pending;
 }
 console.log('PASS first spoken sentence carries Japan retrieval time, partial scope and pending status');
+
+// The request suffix must not hide subject-bearing paragraphs in long bodies.
+for(const followup of [false,true]){
+ const long=structuredClone(snapshot);
+ const middle='架空会社の担当は青山。';
+ long.records[0].episode.content='別の説明。'.repeat(1000)+middle+'関係のない末尾。'.repeat(1000);
+ let sent;const question=followup?'もっと詳しく教えて':'架空会社について教えて';
+ const s=await scenario({question,context:followup?[{question:'架空会社について教えて',synapseRead:true}]:[],getSnapshot:async()=>long,generate:async messages=>{sent=JSON.parse(messages[1].content);return {text:JSON.stringify(decision)};}});
+ assert.equal(sent.question,question);
+ const body=sent.records[0].episode.content;
+ assert.equal(body.representation,'selected_excerpts');
+ assert.ok(body.excerpts.some(e=>e.text.includes(middle)),'Locate the subject paragraph beyond the beginning and tail');
+ for(const e of body.excerpts)assert.equal(e.text,long.records[0].episode.content.slice(e.start,e.end),'Keep original characters and offsets');
+ assert.equal(body.omitted,true);
+ s.latest.resolve(result(long.records[0].episode.content));await s.pending;
+}
+console.log('PASS explicit and detail topics locate original middle paragraphs without request suffix');

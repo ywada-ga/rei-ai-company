@@ -81,3 +81,18 @@ stoppedNotice.push('資料の本文を確認しています。');await tick();st
 const unsolicited=createLocalSpeechStream(new AbortController().signal,()=>{}, {context,streamRequest:async()=>new Response(JSON.stringify({type:'cancelled'})+'\n')});
 unsolicited.push('本回答です。');await assert.rejects(unsolicited.finish('本回答です。'));
 console.log('PASS HTTP notice cancellation waits for acknowledgement, skips stopped queued notices and rejects unsolicited cancellation');
+
+// Numeric phrase tracing separates serial synthesis and the shared playback timeline.
+sources=[];controller=new AbortController();let traceClock=0,finishFirst;const trace=[];
+const traced=createConversationSpeech(controller.signal,options=>createLocalSpeechStream(controller.signal,()=>{}, {...options,context,measureWait:true,now:()=>traceClock,streamRequest:async()=>new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode(JSON.stringify({type:'chunk',index:0,wav})+'\n'));if(!finishFirst)finishFirst=()=>{c.enqueue(new TextEncoder().encode(JSON.stringify({type:'done',chunkCount:1})+'\n'));c.close();};else {c.enqueue(new TextEncoder().encode(JSON.stringify({type:'done',chunkCount:1})+'\n'));c.close();}}}))}),{onSpeechTiming:t=>trace.push(t)});
+traced.push('秘密の最初の文。');await tick();await tick();
+traceClock=10;traced.push('秘密の補足。');await tick();
+assert.equal(trace.filter(t=>t.stage==='synthesis_started').length,1);
+traceClock=50;finishFirst();await tick();await tick();
+const secondStart=trace.find(t=>t.phraseIndex===1&&t.stage==='synthesis_started');assert.equal(secondStart.speechQueueWaitMs,40);
+assert.equal(trace.filter(t=>t.stage==='scheduled').length,2,'once per phrase, not every audio chunk');
+assert.equal(trace.find(t=>t.phraseIndex===1&&t.stage==='scheduled').playbackWaitMs,540);
+await new Promise(r=>setTimeout(r,60));assert.ok(trace.some(t=>t.phraseIndex===0&&t.stage==='playing_estimated'));
+assert.ok(!JSON.stringify(trace).includes('秘密'));assert.ok(trace.every(t=>t.generation===0));
+const traceBeforeCancel=trace.length;traced.cancel();await new Promise(r=>setTimeout(r,550));assert.equal(trace.length,traceBeforeCancel,'cancel removes pending onset timers');
+console.log('PASS source-free per-phrase queue/schedule/onset trace and canceled timer suppression');

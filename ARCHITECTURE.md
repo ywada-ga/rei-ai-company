@@ -1,5 +1,9 @@
 # REI ローカル版の設計図
 
+## 文ごとの音声待ち診断（2026-10-11 03:14）
+
+speechPhasesは回答音声のみのstage/phraseIndex/generation/atMsと数値待ちを128件まで保持。文の投入→直列生成→先頭音片予約→開始推定→生成完了を分離。訂正世代/取消で旧通知とタイマーを抑止。本文/WAV/出所IDなし、進捗音声/firstAudio/物理出音は別。scheduledの待ちは既存AudioContext列の予約差、playing_estimatedはrunning時タイマーで聴感を保証しない。最新取得/権限/再生順序は維持。
+
 ## 画面の確認状態診断（2026-10-11 02:44）
 
 入力会話のresponseLatency.answerPhasesはrenderConversation後のphase/verification/atMsだけ、128件上限。質問ごとに独立し取消後は追加しない。回答/音声/出所IDは含まない。描画処理を通った状態の順序を調べるためのもので、ピクセル表示や補足音声開始の実測とは別。既存のfirstText/firstAudio/進捗時刻を混同しない。

@@ -53,10 +53,14 @@ export function createLocalSpeechStream(signal,request,options={}){
   const playbackController=new AbortController(),noticeController=new AbortController();let noticeStopped=false;
   const abort=()=>{controller.abort();playbackController.abort();};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
   const chunkPlayer=options.streamRequest?createChunkPlayer(playbackController.signal,options):null;options={...options,chunkPlayer,playbackSignal:playbackController.signal,cancelSignal:noticeController.signal};
+  let phraseIndex=0;
   const enqueue=phrase=>{
     if(!phrase.trim()||controller.signal.aborted)return;
-    const clock=options.now||(()=>performance.now()),queuedAt=clock();let waits;
-    const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');if(noticeStopped)return {cancelled:true};return options.streamRequest?playChunkedVoice(phrase,controller.signal,options):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{options.onPrepared?.({... (result.noticeGenerationCancelled?{noticeGenerationCancelled:true}:{}),characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
+    const clock=options.now||(()=>performance.now()),queuedAt=clock(),index=phraseIndex++;let waits;
+    const trace=(stage,extra={})=>{if(!controller.signal.aborted&&!playbackController.signal.aborted)options.onSpeechTiming?.({stage,phraseIndex:index,...extra});};
+    trace('queued');
+    const phraseOptions={...options,onPhraseScheduled:waitMs=>trace('scheduled',{playbackWaitMs:waitMs}),onPhrasePlaying:()=>trace('playing_estimated')};
+    const audio=synthesis.then(async()=>{const gateStarted=clock();await options.synthesisReady;if(options.measureWait)waits={speechQueueWaitMs:Math.max(0,Math.round(gateStarted-queuedAt)),noticeDrainWaitMs:Math.max(0,Math.round(clock()-gateStarted))};if(controller.signal.aborted)throw new Error('音声を中断しました');if(noticeStopped)return {cancelled:true};trace('synthesis_started',waits);return options.streamRequest?playChunkedVoice(phrase,controller.signal,phraseOptions):request('/api/voice/local/speak',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase}),signal:controller.signal});}).then(result=>{trace('prepared');options.onPrepared?.({... (result.noticeGenerationCancelled?{noticeGenerationCancelled:true}:{}),characters:Array.from(phrase).length,...waits,preparationMs:result.preparationMs,...(Number.isInteger(result.workerGeneration)?{workerGeneration:result.workerGeneration,workerStartReason:result.workerStartReason}:{}),firstGeneratedSeconds:result.firstGeneratedSeconds,totalSeconds:result.totalSeconds});return result;});
     synthesis=audio.then(()=>{});synthesis.catch(()=>{});
     playback=playback.then(async()=>{const result=await audio;if(!options.streamRequest&&!playbackController.signal.aborted){await options.playbackReady;if(!playbackController.signal.aborted)try{await playVoiceAudio(result,playbackController.signal,options);}catch(error){if(!playbackController.signal.aborted)throw error;}}});
     audio.catch(error=>{failure=error;controller.abort();});playback.catch(error=>{failure=error;controller.abort();});
@@ -80,7 +84,7 @@ export function createConversationSpeech(signal,create,options={}){
   const main=()=>{
     if(answer)return answer;
     const generation=answerGeneration,current=()=>!canceled&&generation===answerGeneration;
-    return answer=create({onPlaying:()=>{if(!current())return;progressSpeech?.cancel();options.onPlaying?.();},onPrepared:timing=>{if(current())options.onPrepared?.({...timing,...(noticeCancellationCount?{noticeCancellationCount}: {})});},synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone});
+    return answer=create({onSpeechTiming:timing=>{if(current())options.onSpeechTiming?.({...timing,generation});},onPlaying:()=>{if(!current())return;progressSpeech?.cancel();options.onPlaying?.();},onPrepared:timing=>{if(current())options.onPrepared?.({...timing,...(noticeCancellationCount?{noticeCancellationCount}: {})});},synthesisReady:Promise.all([receiptGenerated,progressGenerated]),playbackReady:receiptDone});
   };
   const cancel=()=>{canceled=true;answerGeneration++;receipt?.cancel();progressSpeech?.cancel();answer?.cancel();signal.removeEventListener('abort',cancel);};
   signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
@@ -116,11 +120,12 @@ export async function unlockLocalVoice(){
 // Keep one audio timeline across sentence requests. Each WAV is independently decoded.
 export function createChunkPlayer(signal,{context=voiceContext,onPlaying=()=>{},playbackReady}={}){
   if(!context)throw new Error('音声応答を有効にしてください');
-  let end=0,started=false,closed=false,timer=null;const sources=new Set(),waits=[];
-  const abort=()=>{closed=true;clearTimeout(timer);for(const source of sources)source.stop();};
+  let end=0,started=false,closed=false,timer=null;const sources=new Set(),waits=[],phraseTimers=new Set();
+  const clearPhraseTimers=()=>{for(const timer of phraseTimers)clearTimeout(timer);phraseTimers.clear();};
+  const abort=()=>{closed=true;clearTimeout(timer);clearPhraseTimers();for(const source of sources)source.stop();};
   signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
   return {
-    async push(wav){await playbackReady;
+    async push(wav,phrase={}){await playbackReady;
       if(closed)throw new Error('音声を中断しました');
       const bytes=Uint8Array.from(atob(wav),c=>c.charCodeAt(0));
       const buffer=await context.decodeAudioData(bytes.buffer);
@@ -130,9 +135,10 @@ export function createChunkPlayer(signal,{context=voiceContext,onPlaying=()=>{},
       const at=Math.max(context.currentTime+0.04,end);end=at+buffer.duration;sources.add(source);
       waits.push(new Promise(resolve=>{source.onended=()=>{sources.delete(source);source.disconnect();resolve();};}));
       source.start(at);
+      if(phrase.onPhraseScheduled){const waitMs=Math.max(0,(at-context.currentTime)*1000);phrase.onPhraseScheduled(Math.round(waitMs));const phraseTimer=setTimeout(()=>{phraseTimers.delete(phraseTimer);if(!closed&&context.state==='running')phrase.onPhrasePlaying?.();},waitMs);phraseTimers.add(phraseTimer);}
       if(!started){started=true;timer=setTimeout(()=>{if(!closed&&context.state==='running')onPlaying();},Math.max(0,(at-context.currentTime)*1000));}
     },
-    async finish(){try{await Promise.all(waits);if(closed)throw new Error('音声を中断しました');}finally{clearTimeout(timer);signal.removeEventListener('abort',abort);}},
+    async finish(){try{await Promise.all(waits);if(closed)throw new Error('音声を中断しました');}finally{clearTimeout(timer);clearPhraseTimers();signal.removeEventListener('abort',abort);}},
     cancel(){abort();signal.removeEventListener('abort',abort);}
   };
 }
@@ -148,7 +154,7 @@ async function playChunkedVoice(text,signal,options){
     if(done)throw new Error('音声配信の順序が不正です');
     if(item.type==='chunk'){
       if(item.index!==index++||typeof item.wav!=='string'||item.wav.length>2000000)throw new Error('音声片が不正です');
-      try{await player.push(item.wav);}catch(error){if(!options.playbackSignal?.aborted)throw error;}
+      try{await player.push(item.wav,index===1?options:{});}catch(error){if(!options.playbackSignal?.aborted)throw error;}
     }else if(item.type==='cancelled'&&options.cancelSignal?.aborted){
       done={cancelled:true,noticeGenerationCancelled:true};
     }else if(item.type==='done'){

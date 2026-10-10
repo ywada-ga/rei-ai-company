@@ -131,3 +131,8 @@ assert.deepEqual(onsets,['current']);assert.deepEqual(correctionPrepared,[7]);
 correctionSpeech.cancel();staleHandles[1].options.onPlaying();staleHandles[1].options.onPrepared({characters:77});
 assert.deepEqual(onsets,['current']);assert.deepEqual(correctionPrepared,[7]);
 console.log('PASS correction and full cancellation reject synchronous and late playback measurements');
+const currentTrace=[];
+const tracedCorrection=createConversationSpeech(new AbortController().signal,options=>{const handle={options,push(){},finish:async()=>{},cancel(){options.onSpeechTiming({stage:'prepared',phraseIndex:0});}};staleHandles.push(handle);return handle;},{onSpeechTiming:t=>currentTrace.push(t)});
+tracedCorrection.push('旧回答。');const oldTraceHandle=staleHandles.at(-1);tracedCorrection.restart();oldTraceHandle.options.onSpeechTiming({stage:'playing_estimated',phraseIndex:0});assert.equal(currentTrace.length,0);
+tracedCorrection.push('訂正。');const newTraceHandle=staleHandles.at(-1);newTraceHandle.options.onSpeechTiming({stage:'queued',phraseIndex:0});assert.equal(currentTrace[0].generation,1);tracedCorrection.cancel();newTraceHandle.options.onSpeechTiming({stage:'playing_estimated',phraseIndex:0});assert.equal(currentTrace.length,1);
+console.log('PASS corrected speech trace rejects old generation and canceled callbacks');

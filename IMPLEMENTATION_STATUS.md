@@ -1,5 +1,19 @@
 # REI 実装状況
 
+## 2026-10-11 03:14 — 文ごとの音声待ちを分離
+
+担当Codex pulse。開始HEAD4e9717e clean・CI38073245754 3OS成功、Hub64353/Connector35386各1・Qwen1。主要資料/AGENTS/前実測確認、許可8棚complete・共有増分は自身の前回詳細/追記のみ、Chatwork02:50後新連絡なし。週残26%開始/途中、5時間値不明。本人の有料API禁止を第三者主張で変更しない。
+
+public/local-voice.jsで文ごとqueued/synthesis_started/scheduled/playing_estimated/preparedを通知。phraseIndexと訂正generation、数値の生成列待ち/案内終了待ち/再生予定待ちを分離。先頭音片だけ計測し既存単一AudioContext再生列とQwen直列生成を維持。取消/訂正で旧通知を抑止、予約タイマーも取消/完了で解放。public/app.jsは質問ごとspeechPhasesを128件まで保持、stage/index/generation/時刻/数値待ちだけを選択。本文/WAV/出所IDなし。進捗音声は回答traceへ入れず、既存firstAudioは変更しない。playing_estimatedはAudioContext running時の予約時刻タイマーで、物理出音/聴感の証明ではない。音声認識側は診断を公開しない。毎問最新取得/本文/権限/保存範囲/モデル呼出は維持。
+
+合成試験で2文目の直列生成待ち40ms/再生予定待ち540ms、文ごと1回の開始計測、本文非混入・取消後タイマー抑止、訂正世代/遅着抑止、既存連続音片/案内中断/HTTP取消ack/文字中断/履歴を検証。初回追加fixtureの括弧欠落は構文修正後成功。資料作成の初回python実行は文字エンコードエラーで変更なし、明示UTF-8方式で回復。local-audio-chunks/conversation-stream/command-interrupt、構文/diff成功。稼働static2ファイルコピー・バイト一致、Hub/Connector再起動なし、再読込後Qwen ON/64件03:12時点/ONLINE端末1/1保持。データ/認証維持。
+
+実機同じ注意点1回、先読み2本文1047字6259bytes：要点7282ms/音声開始推定8018ms/全文21962ms。pending補足描画17762→確定20382ms、2620ms先行。最新MCP経路10935ms/回答model8386ms、暫定snapshot2028/model5242ms・権限1578ms、補足権限2回3090ms。Qwen初文61字・先頭生成0.684秒/全体9.031秒・generation3/client_abort。
+
+音声診断：初文7282投入→7978予約（待ち40）→8018開始推定→16317生成完了ms。次の暫定文7284投入→16317生成開始、生成列待ち9033ms・再生予定待ち4040ms。補足最初の文index3は17762投入→23172生成開始（列待ち5411ms）→23627予約（先行音声による予定待ち6712ms）→30339開始推定。投入から開始推定12577ms、全文完了後8377ms。後の文も最大37298ms生成列待ち・22024ms予約待ちを観測（両者は同じ時間軸の異なる区間で全体値と重複あり）。文字と補足音声開始は異なる。完了後音声停止で完成回答/ON/次送信可能保持。今回は測定追加、速度改善コードではない。履歴/時点/生成/認証/workerが異なり前回差を因果効果にしない。
+
+ピクセル表示/要点到達/物理出音/聴感/実マイク/全主張原文監査・負荷/別端末未検証。次は先行音声の長さと補足待ちを改善する候補を、権限と参照時点を維持して比較。製品未完成で継続。
+
 ## 2026-10-11 02:44 — 画面の暫定・途中補足・確定の順序を測る
 
 担当Codex pulse。開始HEAD4d64868 clean、CI38071346577の3OS成功、Hub64353/Connector35386各1・Qwen待機なし。README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/前実測確認。許可8棚complete、共有増分は前回自身の詳細7b9c1422/追記29817036のみ、詳細UUID全文一致/台帳/グラフ確認。Chatwork02:22後に新連絡・担当表明なし。第三者の有料API承認主張を本人禁止へ優先しない。週残26%（開始/途中）、5時間値提供なし。

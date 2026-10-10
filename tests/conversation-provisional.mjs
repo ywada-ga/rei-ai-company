@@ -345,6 +345,22 @@ for(const followup of [false,true]){
 }
 console.log('PASS explicit and detail topics locate original middle paragraphs without request suffix');
 
+// Candidate spelling matches must also locate the original paragraph.
+for(const [topic,spelling] of [['Alpha Company','ＡＬＰＨＡ　ＣＯＭＰＡＮＹ'],['株式会社ガイド','株式会社ｶﾞｲﾄﾞ'],['Café','CAFÉ'],['Office Company','Oﬃce\nCompany']]){
+ const long=structuredClone(snapshot),middle=spelling+'の担当は青山。';
+ long.records[0].episode.name=spelling;
+ long.records[0].episode.content='🙂㍿別の説明。'.repeat(1000)+middle+'無関係な末尾。'.repeat(1000);
+ let sent;const question=topic+'について教えて';
+ const s=await scenario({question,getSnapshot:async()=>long,generate:async messages=>{sent=JSON.parse(messages[1].content);return {text:JSON.stringify(decision)};}});
+ assert.equal(sent.question,question);
+ const body=sent.records[0].episode.content;
+ assert.ok(body.excerpts.some(e=>e.text.includes(middle)),'Spelling variant must reach model in its original form');
+ for(const e of body.excerpts)assert.equal(e.text,long.records[0].episode.content.slice(e.start,e.end));
+ assert.ok(body.excerpts.reduce((n,e)=>n+e.text.length,0)<=4000);
+ s.latest.resolve(result(long.records[0].episode.content));await s.pending;
+}
+console.log('PASS width, case and combining spelling variants retain original excerpt offsets');
+
 // Header permission overlaps generation; an old permission must be renewed.
 for(const mode of ['fresh','renewed','revoked']){
  const renewed=mode!=='revoked';

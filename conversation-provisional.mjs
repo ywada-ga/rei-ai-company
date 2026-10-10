@@ -31,7 +31,9 @@ export function selectPrefetchedRecords(snapshot,question,{limit=8,at=Date.now()
   const topic=prefetchTopicQuestion(question,context)?.match(topicRequest)?.[1];
   if(!topic)return [];
   const spelling=topicSpelling(topic);if(spelling.length<2)return [];
-  return snapshot.records.filter(r=>[r.episode.name,r.episode.doc_name,r.episode.content].some(value=>typeof value==='string'&&topicSpelling(value).includes(spelling))).slice(0,limit);
+  const preferredIds=Array.isArray(snapshot.preferredIds)?snapshot.preferredIds.slice(0,8):[];
+  const ordered=[...preferredIds.map(id=>snapshot.records.find(r=>r.episode.uuid===id)).filter(Boolean),...snapshot.records.filter(r=>!preferredIds.includes(r.episode.uuid))];
+  return ordered.filter(r=>[r.episode.name,r.episode.doc_name,r.episode.content].some(value=>typeof value==='string'&&topicSpelling(value).includes(spelling))).slice(0,limit);
 }
 const fingerprint=body=>createHash('sha256').update(body).digest('hex');
 function sourceFingerprints(result){

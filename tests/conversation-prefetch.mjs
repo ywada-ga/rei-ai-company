@@ -128,3 +128,33 @@ busy=true;const cancelPending=yieldingCache.sync(scope);await new Promise(setImm
 yieldingCache.invalidate(scope);await cancelPending;assert.equal(yieldingCache.status(scope).usable,false);
 assert.equal(yieldReads,7);yieldingCache.close();yieldingDb.close();
 console.log('PASS busy turn suspends background refill, resumes full reads and aborts idle wait');
+
+// Freshly verified older sources survive a flood of recent incidental mentions.
+const retainedDb=new DatabaseSync(':memory:');retainedDb.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+let retainedNow=current,removed=false,badRevision=false;
+const older={uuid:'older-topic',group_id:'fixture-private',created_at:new Date(current-3*86400000).toISOString()};
+const recent=Array.from({length:80},(_,i)=>({uuid:'recent-'+i,group_id:'fixture-private',created_at:new Date(current-i*1000).toISOString()}));
+const sourceBody=row=>({uuid:row.uuid,group_id:row.group_id,created_at:row.created_at,name:row.uuid,content:'架空会社の確認済み本文。',origin:'manual',source_ref:'fixture',recorded_at:row.created_at});
+const retainedIo={currentScope:()=>scope,catalog:async()=>catalog(),call:async(tool,args)=>{
+ if(tool==='get_updates')return reply({episodes:(removed?recent:[...recent,older]).map(r=>({...r,episode_uuid:r.uuid})),next_cursor:'retained-fixture',coverage:{complete:true},truncated:false});
+ const row=[...recent,older].find(r=>r.uuid===args.uuid);return reply({episode:{...sourceBody(row),...(badRevision&&row.uuid===older.uuid?{is_latest_revision:false}:{})},coverage:{complete:true}});
+}};
+const retained=new ConversationPrefetch(retainedDb,{now:()=>retainedNow,intervalMs:1});await retained.activate(scope,retainedIo);
+assert.equal(retained.snapshot(scope,catalog()).records.some(r=>r.episode.uuid===older.uuid),false);
+const freshResult={synapseRead:true,evidenceStatus:'supported',sources:[{uuid:older.uuid}],evidence:[{tool:'get_episode',uuid:older.uuid,result:reply({episode:sourceBody(older),coverage:{complete:true}})}]};
+const checkedAt=retained.status(scope).checkedAt;
+assert.equal(retained.rememberVerified(other,freshResult,catalog()),false,'No other-user snapshot or scope');
+assert.equal(retained.rememberVerified(scope,{...freshResult,evidenceStatus:'insufficient'},catalog()),false);
+assert.equal(retained.rememberVerified(scope,{...freshResult,evidence:[{...freshResult.evidence[0],result:reply({episode:sourceBody(older),coverage:{complete:false}})}]},catalog()),false);
+const retainedEntry=retained.active.get(retained.storageKey(scope));retainedEntry.pending=Promise.resolve();
+assert.equal(retained.rememberVerified(scope,freshResult,catalog()),false,'Do not overwrite an in-flight sync');retainedEntry.pending=null;
+assert.equal(retained.rememberVerified(scope,freshResult,catalog()),true);
+assert.equal(retained.status(scope).checkedAt,checkedAt,'Retaining a source never refreshes other bodies');
+assert.equal(retained.status(scope).recordCount,64);assert.equal(retained.status(scope).bodyCoverage,'limited');
+assert.deepEqual(retained.snapshot(scope,catalog()).preferredIds,[older.uuid]);
+assert.equal(retained.snapshot(scope,catalog()).records[0].episode.uuid,older.uuid);
+retainedNow+=2;await retained.activate(scope,retainedIo);assert.ok(retained.snapshot(scope,catalog()).records.some(r=>r.episode.uuid===older.uuid),'Next sync rereads ledger-matched preferred source');
+removed=true;retained.active.get(retained.storageKey(scope)).cursors.clear();retainedNow+=2;await retained.activate(scope,retainedIo);assert.deepEqual(retained.snapshot(scope,catalog()).preferredIds,[],'A full ledger rescan without the source drops the pin');
+removed=false;retained.rememberVerified(scope,freshResult,catalog());badRevision=true;retainedNow+=2;await retained.activate(scope,retainedIo);assert.equal(retained.status(scope).usable,false,'A failed preferred revision invalidates the cache');
+retained.close();retainedDb.close();
+console.log('PASS full verified sources retained within cap, unchanged clock, scope, refresh and deletion guards');

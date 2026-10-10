@@ -309,8 +309,8 @@ async function api(req,res,route) {
         const prefetched=prefetchContext(user.id);
         const eligible=streaming&&chatProvider(user)==='chatgpt'&&prefetched&&conversationPrefetch.status(prefetched.scope).usable&&!/(実行|送って|送信|作成|変更して|削除|登録して)/u.test(question)&&(additionWindow(question)||prefetchTopicQuestion(question,context));
         const currentScope=()=>{const current=prefetchContext(user.id);return current&&prefetchScopeKey(current.scope)===prefetchScopeKey(prefetched.scope);};
-        const catalogChecks=[];
-        const timedCatalog=async phase=>{const catalog=await conversationMcp.catalog(prefetched.integration);catalogChecks.push({phase,...catalog.reiMcpTiming});return catalog;};
+        const catalogChecks=[];let lastCatalog;
+        const timedCatalog=async phase=>{const catalog=await conversationMcp.catalog(prefetched.integration);lastCatalog=catalog;catalogChecks.push({phase,...catalog.reiMcpTiming});return catalog;};
         const authorize=async()=>{if(!currentScope())return false;const catalog=await timedCatalog('permission');return currentScope()&&prefetchAuthorized(catalog,prefetched.scope);};
         const result=eligible?await runProvisionalConversation({question,context,scope:prefetched.scope,signal:controller.signal,
           getSnapshot:async()=>{if(!currentScope())return null;const catalog=await timedCatalog('snapshot');return currentScope()?conversationPrefetch.snapshot(prefetched.scope,catalog):null;},authorize,
@@ -321,6 +321,7 @@ async function api(req,res,route) {
         if(evidenceModelChecks.length)result.timing={...result.timing,evidenceModelChecks};
         if(!controller.signal.aborted){
           if(JSON.stringify(conversationSettings(user).groups)!==scope)throw new Error('検索範囲が変更されました。もう一度質問してください');
+          if(eligible&&currentScope())conversationPrefetch.rememberVerified(prefetched.scope,result,lastCatalog);
           const turns=[...context,{question,answer:result.answer.slice(0,2000),synapseRead:result.synapseRead===true,verification:result.synapseRead?'verified':'not_required',provisionalUsed:result.provisionalUsed===true,provisionalCheckedAt:result.provisionalCheckedAt||null}].slice(-6);
           run(db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`conversation:${user.id}`,JSON.stringify({scope,turns}));
           if(streaming){const {evidence,...publicResult}=result;emit({type:'done',result:publicResult});res.end();return;}

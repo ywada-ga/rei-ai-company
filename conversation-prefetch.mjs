@@ -29,11 +29,13 @@ function checkedRecord(result,row,scope,at){
 }
 // Reserve bounded yesterday coverage even when today's activity fills the cache.
 // Selection is storage policy, not a relevance ranking or complete daily read.
-export function prefetchCandidates(rows,at,maxRecords){
+export function prefetchCandidates(rows,at,maxRecords,preferredIds=[]){
   const end=Math.floor((at+9*3600000)/86400000)*86400000-9*3600000,start=end-86400000;
   const reserved=rows.filter(row=>{const t=Date.parse(row.created_at);return t>=start&&t<end;}).slice(0,Math.floor(maxRecords/4));
-  const ids=new Set(reserved.map(row=>row.uuid));
-  return [...reserved,...rows.filter(row=>!ids.has(row.uuid)).slice(0,maxRecords-reserved.length)].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at));
+  const preferred=preferredIds.slice(0,8).map(id=>rows.find(row=>row.uuid===id)).filter(Boolean);
+  const first=[...preferred,...reserved.filter(row=>!preferred.some(p=>p.uuid===row.uuid))].slice(0,maxRecords);
+  const ids=new Set(first.map(row=>row.uuid));
+  return [...first,...rows.filter(row=>!ids.has(row.uuid)).slice(0,maxRecords-first.length)].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at));
 }
 export class ConversationPrefetch {
   constructor(db,{now=Date.now,maxAgeMs=600000,intervalMs=300000,maxRecords=64,maxBytes=4*1024*1024,maxScopes=16}={}){
@@ -62,6 +64,25 @@ export class ConversationPrefetch {
     const value=JSON.parse(one(this.db,'SELECT value FROM settings WHERE key=?',this.storageKey(scope)).value);
     if(value.records.some(record=>!record?.episode?.uuid||!scope.groups.some(g=>g.id===record.episode.group_id)||typeof record.episode.content!=='string'||!Number.isFinite(record.fetchedAt))){this.invalidate(scope);return null;}
     return structuredClone(value);
+  }
+  rememberVerified(scope,result,catalog){
+    // Reuse only freshly assessed full bodies, within a still-usable same scope.
+    // Never renew the snapshot clock or trust previous assistant text as evidence.
+    const key=this.storageKey(scope),entry=this.active.get(key);
+    if(entry?.pending||!prefetchAuthorized(catalog,scope)||!this.status(scope).usable||result?.synapseRead!==true||!['supported','partial'].includes(result.evidenceStatus)||!Array.isArray(result.sources))return false;
+    const value=JSON.parse(one(this.db,'SELECT value FROM settings WHERE key=?',key).value),fresh=[];
+    for(const source of result.sources.slice(0,8)){
+      const evidence=(result.evidence||[]).find(item=>item.tool==='get_episode'&&item.uuid===source.uuid);
+      const episode=mcpData(evidence?.result)?.episode;
+      if(!episode||!Number.isFinite(Date.parse(episode.created_at)))return false;
+      try{fresh.push(checkedRecord(evidence.result,{uuid:source.uuid,group_id:episode.group_id,created_at:episode.created_at},scope,this.now()));}catch{return false;}
+    }
+    if(!fresh.length||new Set(fresh.map(r=>r.episode.uuid)).size!==fresh.length)return false;
+    const preferredIds=[...new Set([...fresh.map(r=>r.episode.uuid),...(value.preferredIds||[])])].slice(0,8);
+    const records=[...fresh,...value.records.filter(r=>!fresh.some(f=>f.episode.uuid===r.episode.uuid))].slice(0,this.maxRecords);
+    const next={...value,records,preferredIds,bodyCoverage:'limited'};
+    const encoded=JSON.stringify(next);if(Buffer.byteLength(encoded)>this.maxBytes)return false;
+    run(this.db,'UPDATE settings SET value=? WHERE key=?',encoded,key);return true;
   }
   invalidate(scope){
     const key=this.storageKey(scope),entry=this.active.get(key);
@@ -104,7 +125,8 @@ export class ConversationPrefetch {
         if(!current()||!update.complete)throw new Error('Incomplete ledger');
         // Too much cursor metadata disables prefetch instead of growing indefinitely.
         if(update.rows.length>10000)throw new Error('Ledger too large');
-        const at=this.now(),candidates=prefetchCandidates(update.rows,at,this.maxRecords);
+        let preferredIds=[];try{preferredIds=JSON.parse(one(this.db,'SELECT value FROM settings WHERE key=?',key)?.value||'null')?.preferredIds||[];}catch{}
+        const at=this.now(),candidates=prefetchCandidates(update.rows,at,this.maxRecords,preferredIds);
         // Counts observe caller overlap, not server execution. Summed durations overlap.
         let activeReads=0;
         Object.assign(entry.timing,{bodyReadCount:0,bodyReadPeak:0,bodyReadTotalMs:0,bodyReadMaxMs:0,bodyTransportCount:0,bodyConnectMs:0,bodyRequestMs:0});
@@ -127,7 +149,7 @@ export class ConversationPrefetch {
         await idle();
         // Recheck remote permission after the reads, before persisting any source.
         if(!current()||!prefetchAuthorized(await timed('permission',()=>entry.io.catalog(signal)),scope)||!current())throw new Error('Scope changed');
-        const value={version:1,scopeKey:key,checkedAt:at,records,ledgerCount:update.rows.length,bodyCoverage:records.length===update.rows.length?'complete':'limited'};
+        const value={version:1,scopeKey:key,checkedAt:at,records,preferredIds:preferredIds.filter(id=>records.some(r=>r.episode.uuid===id)).slice(0,8),ledgerCount:update.rows.length,bodyCoverage:records.length===update.rows.length?'complete':'limited'};
         const encoded=JSON.stringify(value);if(Buffer.byteLength(encoded)>this.maxBytes)throw new Error('Index too large');
         transaction(this.db,()=>{
           run(this.db,'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',key,encoded);

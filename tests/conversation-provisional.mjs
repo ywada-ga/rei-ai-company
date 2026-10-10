@@ -368,3 +368,12 @@ for(const mode of ['fresh','renewed','revoked']){
  assert.equal(out.provisionalTiming.supplementPermissionChecks,mode==='fresh'?1:2);
 }
 console.log('PASS supplemental header overlap and expired permission renewal');
+{
+ const mentions=Array.from({length:12},(_,i)=>({...snapshot.records[0],episode:{...episode,uuid:'incidental-'+i,name:'開発メモ',content:'架空会社の調査を続ける。'}}));
+ const preferred={...snapshot.records[0],episode:{...episode,uuid:'verified-older'}};
+ const candidates={...snapshot,records:[...mentions,preferred],preferredIds:[preferred.episode.uuid]};
+ assert.equal(selectPrefetchedRecords(candidates,'架空会社について教えて')[0].episode.uuid,'verified-older');
+ assert.equal(selectPrefetchedRecords(candidates,'別会社について教えて').length,0,'Preferred source still must match the topic');
+ assert.equal(selectPrefetchedRecords(candidates,'架空会社について教えて').length,8);
+}
+console.log('PASS preferred full source wins candidate slots without bypassing topic matching');

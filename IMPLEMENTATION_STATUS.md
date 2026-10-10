@@ -1,5 +1,17 @@
 # REI 実装状況
 
+## 2026-10-10 18:43 — 狭い詳細追加質問の検索判断待ち
+
+担当Codex。開始HEAD ebe87f7 clean、CI38040878278の3OS成功、Hub40833/Connector35386各1。資料/AGENTS/実測、前Synapse c0e09b9a全文/台帳/グラフを確認。許可8棚complete、共有追加台帳は前cursorからreadonlyで前回自身1件のみ、Chatwork18:21後新投稿なし。本人の有料API禁止維持。開始/途中週残量31%、5時間枠取得不可。
+
+狭い詳細追加質問は同一scope直近6件の連続synapseReadユーザー履歴から明示会社話題を検索語へ。初回検索語生成だけ省く。代名詞/他話題/混在依頼/履歴不足は通常判断。最新検索・権限・完全本文・回答評価・不足時再検索/取消/訂正は維持。連続詳細/6件上限/中断話題/未知履歴/混在指示と最新検索後のみ評価の試験、既存quality/conversation/provisional/実Hub配信fixture、構文/差分が成功。稼働conversation.mjsのみ反映・既存Hub再起動、runtime一致。更新直後一時network error表示、ONLINE/端末1/1復帰後送信成功。資料追記の初回patchは見出し未一致、次のPythonはUTF-8宣言なしで未適用、patchで復旧。
+
+実機同文「もっと詳しく教えて」、Synapse Connect同一利用者履歴、ON/request_start起点、各1回：前は表示9373ms/音声開始推定9976ms/全文32980ms、暫定used。2本文1047chars/入力6244bytes、暫定model7851ms（token1569ms）/snapshot2029ms/許可1571ms。最新MCP/model31381ms、survey5250/検索判断4114/search7335/source約2095/body2105/回答model10479ms、回答入力33710bytes。Qwen65文字/先頭0.555秒/全体7.851秒、準備/queue/notice0ms。
+
+後は表示7824ms/音声開始推定8381ms/全文26174ms、暫定used、最新確認24581ms。2本文1047chars/6244bytes同量、暫定model6247ms/snapshot2076ms/許可1571ms。最新MCP/model23006ms、検索判断modelなし、survey再利用、search5176/source約2095/body約2095/回答model13628ms・入力35480bytes。Qwen70文字/先頭0.510秒/全体9.716秒、準備/queue/notice0ms。双方で最新検索/本文取得/正式回答の完了確認。初回検索判断1生成が省けたことを確認したが、全文6.806秒差はsurvey再利用・検索・token・生成変動を含み修正単独の速度保証ではない。最新回答生成は遅くなった。
+
+物理出音/聴感/要点到達/実マイク/全主張原文監査/負荷/複数利用者/同期競合実機は未検証。会社原文/認証を公開しない。製品未完成。次は回答生成入力の膨張と原文品質、同期中の体験。
+
 更新: 2026-10-08
 
 ## 最新の追加

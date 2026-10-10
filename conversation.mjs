@@ -157,6 +157,20 @@ export function directCompanyOverviewSubject(question){
   if(!subject||/(?:REI|レイ|あなた)/iu.test(subject)||!needsCompanyRead(value,[]))return null;
   return subject;
 }
+// Resolve only an unchanged detail request from same-scope user history.
+// This supplies a search term, never evidence or permission to answer.
+export function directCompanyDetailSubject(question,context=[]){
+  const detail=/^(?:(?:それ|その(?:件|内容|情報))について)?(?:もっと|もう少し)?詳しく(?:教えて(?:ください)?)?[。！!？?]*$/u;
+  if(!detail.test(String(question).trim()))return null;
+  for(const turn of context.slice(-6).reverse()){
+    if(turn?.synapseRead!==true)return null;
+    const previous=String(turn.question||'').trim();
+    const subject=directCompanyOverviewSubject(previous);
+    if(subject)return /^(?:それ|その|この|あの|同社|弊社|当社|うち|私たち|私の|自社|我が社)/u.test(subject)||/^(?:会社|グループ)$/u.test(subject)?null:subject;
+    if(!detail.test(previous))return null;
+  }
+  return null;
+}
 async function converseInternal({question,context=[],groups=[],generate,call,submit,signal,runtimeContext=null,onDelta=null,readingSkill=true,reviewEvidence=null,outlineCache=null,onProgress=null,additionCache=null,getProvisionalAnswer=null}){
   const started=Date.now(),evidence=[],allowedIds=new Set(),excludedIds=new Set();let searched=false,sourceRead=false,additionsRead=false,additions=null;const recordedNotes=[],recordCache=new Map();
   const verifiedIds=new Set();let reviewedAt=-1,review=null,pendingSearch=null;
@@ -292,7 +306,7 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
     let emitted='';
     const canStream=(sourceRead&&(!readingSkill||reviewedAt===evidence.length)&&!pendingSearch)||(!searched&&!needsCompanyRead(question,context)&&(!groups.length||/(?:こんにちは|こんばんは|おはよう|物語|桃太郎|読み上げ|言い換え|書き換え|短く|REI|レイ)/iu.test(question)));
     // The user supplied an exact overview subject; search it without a planning round.
-    const directSubject=pendingSearch||(round===0&&readingSkill&&surveyed&&groups.length?(directCompanyOverviewSubject(question)||overviewSubject(question)||personWorkSubject(question)):null);pendingSearch=null;
+    const directSubject=pendingSearch||(round===0&&readingSkill&&surveyed&&groups.length?(directCompanyOverviewSubject(question)||directCompanyDetailSubject(question,context)||overviewSubject(question)||personWorkSubject(question)):null);pendingSearch=null;
     const generated=directSubject?{text:JSON.stringify({action:'search',query:directSubject})}:await generate(messages,{signal,effort:/(比較|判断|検討|リスク|設計|原因|計画)/u.test(question)?'low':undefined,onDelta:canStream&&onDelta?raw=>{
       if(signal?.aborted)return;const prefix=streamedAnswerPrefix(raw);
       if(prefix.length>emitted.length&&prefix.startsWith(emitted)){onDelta(prefix.slice(emitted.length));emitted=prefix;}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {converse,reviewedAnswerPrefix,directCompanyOverviewSubject,measureEvidenceModel} from '../conversation.mjs';
+import {converse,reviewedAnswerPrefix,directCompanyOverviewSubject,directCompanyDetailSubject,measureEvidenceModel} from '../conversation.mjs';
 import {needsRecentEvidence,evidenceBodyContext} from '../load-synapse.mjs';
 assert.equal(needsRecentEvidence('杉山さんの作業内容教えて'),true);
 assert.equal(needsRecentEvidence('その人は？',[{question:'杉山さんの作業内容教えて'}]),true);
@@ -150,6 +150,27 @@ for(const question of ['Synapse Connectについて教えて','社内制度に�
  assert.equal(answer.synapseRead,true);assert.equal(answer.evidenceStatus,'supported');
 }
 console.log('PASS explicit company overview skips only query planning, preserving scoped search and fresh source review');
+const detailHistory=[{question:'Synapse Connectについて教えて',answer:'OLD-CLAIM',synapseRead:true},{question:'もっと詳しく教えて',answer:'OLD-CLAIM',synapseRead:true}];
+assert.equal(directCompanyDetailSubject('もう少し詳しく教えてください。',detailHistory),'Synapse Connect');
+for(const history of [[],[{question:'会社について教えて',synapseRead:true}],[{question:'その会社について教えて',synapseRead:true}],[...detailHistory,{question:'こんにちは',synapseRead:false}],[{question:'Synapse Connectについて教えて',synapseRead:false}],Array.from({length:6},()=>detailHistory[1])])assert.equal(directCompanyDetailSubject('もっと詳しく教えて',history),null);
+for(const question of ['ほかの会社についても教えて','もっと詳しく教えて。実行して','最新の売上を詳しく教えて','なぜ？'])assert.equal(directCompanyDetailSubject(question,detailHistory),null);
+{
+ const calls=[];
+ const result=await converse({question:'もっと詳しく教えて',context:detailHistory,groups,call:async(tool,args)=>{
+  calls.push({tool,args});assert.deepEqual(args.group_ids,['fixture']);
+  if(tool==='survey_space')return {structuredContent:{coverage:{complete:true}}};
+  if(tool==='search_memory_facts'){assert.equal(args.query,'Synapse Connect');return {structuredContent:{facts:[{uuid:'fresh-detail',group_id:'fixture'}]}};}
+  if(tool==='get_fact_source')return {structuredContent:{sources:[{traceable:true,group_id:'fixture',body:'今回新しく読んだ詳細本文'}]}};
+  throw Error('unexpected detail lookup');
+ },generate:async(messages,o)=>{
+  assert.equal(o.phase,'evidence_answer');assert.ok(calls.some(c=>c.tool==='get_fact_source'));
+  assert.ok(messages.some(m=>m.content==='もっと詳しく教えて'));
+  return {text:JSON.stringify(assess('supported',['fresh-detail'],'','','最新取得した本文による詳細です。'))};
+ }});
+ assert.equal(result.synapseRead,true);assert.equal(result.evidenceStatus,'supported');
+ assert.equal(calls.filter(c=>c.tool==='search_memory_facts').length,1);
+}
+console.log('PASS narrow same-scope detail skips query planning but still freshly searches and reviews evidence');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','未確定の部分回答')),ids),'');
 assert.equal(reviewedAnswerPrefix(JSON.stringify(assess('partial',['work'],'','','確認できた部分回答')),ids,{canRetry:false}),'確認できた部分回答');
 console.log('PASS a partial draft cannot leak before a possible retry');

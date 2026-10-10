@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
-const code=source.slice(source.indexOf('let enabledVoicePreparation=null;'),source.indexOf('async function refresh() {'));
+const code=source.slice(source.indexOf('let enabledVoicePreparation=null;'),source.indexOf('let enabledConversationPreparation=null;'));
 let resolveStatus,calls=[];const state={voiceOn:true,authEpoch:1};
 const context=vm.createContext({state,request:async(route)=>{calls.push(route);if(route.endsWith('/status'))return await new Promise(resolve=>resolveStatus=resolve);return {ready:true};}});
 vm.runInContext(code,context);const start=()=>vm.runInContext('prepareEnabledLocalVoice()',context);

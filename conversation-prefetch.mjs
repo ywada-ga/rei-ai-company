@@ -53,7 +53,7 @@ export class ConversationPrefetch {
     try{value=JSON.parse(one(this.db,'SELECT value FROM settings WHERE key=?',key)?.value||'null');}catch{}
     const age=value?this.now()-value.checkedAt:null;
     const usable=!!value&&value.version===1&&value.scopeKey===key&&Number.isSafeInteger(value.checkedAt)&&Number.isSafeInteger(value.ledgerCount)&&value.ledgerCount>=0&&['complete','limited'].includes(value.bodyCoverage)&&Array.isArray(value.records)&&value.records.length<=this.maxRecords&&age>=0&&age<=this.maxAgeMs&&entry?.failed!==true;
-    return {state:entry?.pending?'syncing':entry?.failed?'unavailable':usable?'ready':value?'expired':'empty',usable,checkedAt:usable?value.checkedAt:null,ageMs:usable?age:null,recordCount:usable?value.records.length:0,ledgerCount:usable?value.ledgerCount:0,bodyCoverage:usable?value.bodyCoverage:null,syncDiagnostics:entry?.timing?{...entry.timing}:null};
+    return {active:!!entry,state:entry?.pending?'syncing':entry?.failed?'unavailable':usable?'ready':value?'expired':'empty',usable,checkedAt:usable?value.checkedAt:null,ageMs:usable?age:null,recordCount:usable?value.records.length:0,ledgerCount:usable?value.ledgerCount:0,bodyCoverage:usable?value.bodyCoverage:null,syncDiagnostics:entry?.timing?{...entry.timing}:null};
   }
   snapshot(scope,catalog){
     // Callers must supply a new authenticated catalog on each question.

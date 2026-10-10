@@ -112,13 +112,25 @@ function prepareEnabledLocalVoice(){
     await request('/api/voice/local/prepare',{method:'POST'});
   })().catch(()=>{}).finally(()=>{enabledVoicePreparation=null;});
 }
+let enabledConversationPreparation=null;
+let enabledConversationPreparationCheckedAt=0;
+function prepareEnabledConversation(){
+  if(!state.voiceOn||enabledConversationPreparation||Date.now()-enabledConversationPreparationCheckedAt<30000)return;
+  const epoch=state.authEpoch;
+  enabledConversationPreparationCheckedAt=Date.now();
+  enabledConversationPreparation=(async()=>{
+    const status=await request('/api/conversation/prefetch');
+    if(epoch!==state.authEpoch||!state.voiceOn||status.active!==false||status.state==='unconfigured')return;
+    await trackConversationPreparation();
+  })().catch(()=>{}).finally(()=>{enabledConversationPreparation=null;});
+}
 async function refresh() {
   const epoch=state.authEpoch;
   if(!conversationHistoryLoaded&&['owner','admin'].includes(state.data?.user.role)){
     conversationHistoryLoaded=true;
     void request('/api/conversation/history').then(data=>{if(epoch===state.authEpoch&&!conversationTurns.length){conversationTurns=data.turns;renderConversation();}}).catch(()=>{});
   }
-  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; prepareEnabledLocalVoice(); if(state.view==='knowledge')void loadKnowledge(); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='projects')void loadProjectWork(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
+  try { const data=await request('/api/bootstrap'); if(epoch!==state.authEpoch)return; state.data=data; prepareEnabledLocalVoice(); prepareEnabledConversation(); if(state.view==='knowledge')void loadKnowledge(); if(!state.olderTasks.length)state.hasMoreTasks=state.data.hasOlderTasks; render(); if(state.view==='missions')void loadTaskDetail(); if(state.view==='projects')void loadProjectWork(); if(state.view==='briefing'&&Date.now()-state.reportLoadedAt>30000)void loadReport(true); }
   catch (error) { if(epoch!==state.authEpoch||error.message==='ログインしてください')return;feedback(error.message, true); $('system-status').textContent = 'OFFLINE'; }
 }
 function render() {

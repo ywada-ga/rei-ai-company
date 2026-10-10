@@ -865,3 +865,13 @@ MCP_LATENCY_FINDINGS.mdへ実装確認・数値・一括本文契約/要求内�
 public/app.jsでbootstrap更新後、音声ONの場合だけQwen状態を非同期確認し、configuredかつ未ready/未busyなら既存prepareを呼ぶ。重複更新は同じ準備を重ねず、状態照会後にOFF/認証epoch変更なら発行しない。質問の送信を準備完了でロックしない。既存女性Qwen、相槌キャッシュ・中断/直列生成、安全設定・会社最新取得を維持する。tests/voice-refresh-preparation.mjsとpackage.jsonのCI対象を追加。重複、途中OFF/認証変更、busy/readyスキップ、再起動回復の試験と既存Qwen配信/キャンセル試験、構文/diff成功。
 
 稼働app.jsのみ更新・ブラウザ再読み込みで新コード取得。音声ON、既存Hubのみ再起動、更新後に裏の準備が終わってから同じ「こんにちは。短く返事して。」を送信。表示26ms/音声開始推定590ms/全文26ms、backend3ms、Qwen準備0ms・先頭生成0.516秒/全体1.635秒、6文字、キュー/案内終了待ち0ms。各1回、request_start基準（実マイクの話し終わりではない）。準備時間を質問前へ移した結果で、準備時間が消滅したという意味ではなく、更新から準備完了までの時間はこの質問後計測に含まない。準備中に即質問した際の速度改善量、初回起動の全条件、会社回答の速度・負荷・実マイク/物理出音/聴感/全主張監査は未検証。ONLINE/端末1件/回答待ち2件を維持。次は会社質問の回答生成待ち・最新本文取得と品質、準備中の送信競合。製品未完成。
+
+## 2026-10-10 14:43 — 再起動後の先読み復帰
+
+担当Codex。開始時HEAD92c448c・差分なし、CI38026964974成功、Hub29029/Connector35386。README/ARCHITECTURE/AGENTS/引継ぎ/最新実測とSynapse前回e0c8b5cfの本文・台帳/グラフ確認。Chatwork14:19以降新着なし。許可8棚complete、週残量開始/途中33%、5時間枠取得不能。
+
+変更前の会社質問「Synapse Connectについて教えて」は表示26166ms/音声開始推定26750ms/全文28262ms、backend28259ms。survey8858/検索6290/source並列約2093/body並列約2102/model8908ms。暫定なし、画面は先読み利用不可。Hub再起動後に音声ON画面のQwenだけ復帰し、先読みscopeの周期同期が再開されない経路があった。モデル待ちも残るが、今回の全待ちをモデルが原因と扱わない。
+
+変更conversation-prefetch.mjs/public/app.js/package.json/tests/voice-refresh-preparation.mjs/tests/prefetch-refresh-preparation.mjs。statusのactiveで現在Hubの周期同期登録を判定、音声ON+bootstrap成功時に30秒間隔上限で確認し、未登録なら既存prepare/追跡開始。保存済みreadyも再登録、未設定/稼働済み/OFF/認証変更は抑制、重複なし。最新MCP/権限/本文/鮮度確認を維持。復帰・保存済み/空状態・抑制/レース試験、prefetch/provisional/実Hubストリームfixture、構文/diff成功。稼働2ファイルだけ反映・既存Hubのみ再起動、ONを保った更新で「利用不可」から背景本文取得へ自動復帰を確認。
+
+実機復帰後64件/14:48時点・部分範囲表示。同期全体51145ms、catalog6046/ledger12137/bodies31399/permission1544ms、最大6並列・本文64件。準備完了後に同じ会社質問を送信：表示6791ms/音声開始推定7551ms/全文20398ms、暫定used6754ms/最新確定20384ms。暫定snapshot1514/model5260/permission1573ms、6本文11284chars/入力28130bytes。最新backend18390ms、検索6224/source約2093/body約2098/model7967ms。surveyは準備済み再利用、token0ms。Qwen42文字・先頭生成0.440秒/全体4.195秒、準備0、案内終了待ち274ms。変更前は準備なし・token1571ms/survey8858msで、単発異条件のため純粋な速度改善率を主張しない。準備51秒は質問前で今回の応答遅延に含まない。先読み復帰で暫定回答が再開したことを検証した。質問直前のHub再起動では復帰確認最大30秒+同期待ちが残り、先読みなし質問は最新取得へフォールバック。実マイク/物理出音/聴感/全主張原文監査/負荷未検証。製品未完成、次は暫定生成約5秒と最新MCP取得、準備中の体験を改善する。

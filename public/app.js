@@ -11,7 +11,7 @@ function commandInterruptAvailable(available){
 function interruptCommandConversation(){
   if($('command-interrupt').disabled)return;
   commandSpeechController?.abort();commandSpeech?.cancel();commandInterruptAvailable(false);
-  feedback('回答を中断しました。質問を編集して送信できます。');$('command-input').focus();
+  feedback(streamingTurn?'回答を中断しました。質問を編集して送信できます。':'音声を止めました。続けて質問できます。');$('command-input').focus();
 }
 function renderConversation(){
   const feed=$('mission-feed');feed.querySelector('[data-conversation-channel]')?.remove();
@@ -471,9 +471,9 @@ $('command-form').onsubmit = async event => {
       const publishLatency=()=>{$('command-feedback').dataset.responseLatency=JSON.stringify({...latency.snapshot(),firstSynthesis,backendTiming});};publishLatency();
       const audio=commandSpeech=state.voiceOn?createConversationSpeech(controller.signal,options=>createLocalSpeechStream(controller.signal,request,{streamRequest:streamVoiceRequest,...options,measureWait:true}),{onReceiptPlaying:()=>{if(commandSpeech===audio){progressTrace.push({stage:'notice_audio',atMs:Math.round(performance.now()-progressStartedAt)});publishProgress();}},onPrepared:timing=>{if(commandSpeech===audio&&!firstSynthesis){firstSynthesis=timing;publishLatency();}},onPlaying:()=>{if(commandSpeech===audio){latency.audio();publishLatency();}}}):null;
       streamingTurn={question:text,answer:''};renderConversation();
-      let response;
-      try{response=await streamConversation(text,[],controller.signal,(delta,phase)=>{if(controller.signal.aborted)return;streamingTurn.answer=phase?.replacementAnswer??(streamingTurn.answer+delta);if(phase)streamingTurn.verification=phase.verification;renderConversation();if(phase?.meaningful!==false)latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio){if(phase?.phase==='correction')audio?.restart();const spoken=phase?.speechText??delta;if(spoken)audio?.push(spoken);}},(receipt,notice)=>{if(controller.signal.aborted)return;feedback(receipt);if(notice?.type==='progress'){progressTrace.push({stage:notice.stage,atMs:Math.round(performance.now()-progressStartedAt)});publishProgress();}if(state.voiceOn&&commandSpeech===audio){if(notice?.type==='progress')audio?.progress(receipt);else audio?.receipt(receipt);}});if(controller.signal.aborted)throw new DOMException("回答を中断しました","AbortError");backendTiming=response.timing?{...response.timing,provisional:response.provisionalTiming||null,provisionalOutcome:response.provisionalOutcome||null}:null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio)void audio.finish(response.streamedSpokenAnswer??response.spokenAnswer??response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio)feedback(error.message,true);});}
-      catch(error){audio?.cancel();if(streamingTurn?.verification==='failed'){conversationTurns.push({...streamingTurn});conversationTurns=conversationTurns.slice(-6);}if(error.conversationDiagnostics){backendTiming=error.conversationDiagnostics;publishLatency();}throw error;}finally{commandInterruptAvailable(false);streamingTurn=null;renderConversation();}
+      let response,speechPending=false;
+      try{response=await streamConversation(text,[],controller.signal,(delta,phase)=>{if(controller.signal.aborted)return;streamingTurn.answer=phase?.replacementAnswer??(streamingTurn.answer+delta);if(phase)streamingTurn.verification=phase.verification;renderConversation();if(phase?.meaningful!==false)latency.text(delta);publishLatency();if(state.voiceOn&&commandSpeech===audio){if(phase?.phase==='correction')audio?.restart();const spoken=phase?.speechText??delta;if(spoken)audio?.push(spoken);}},(receipt,notice)=>{if(controller.signal.aborted)return;feedback(receipt);if(notice?.type==='progress'){progressTrace.push({stage:notice.stage,atMs:Math.round(performance.now()-progressStartedAt)});publishProgress();}if(state.voiceOn&&commandSpeech===audio){if(notice?.type==='progress')audio?.progress(receipt);else audio?.receipt(receipt);}});if(controller.signal.aborted)throw new DOMException("回答を中断しました","AbortError");backendTiming=response.timing?{...response.timing,provisional:response.provisionalTiming||null,provisionalOutcome:response.provisionalOutcome||null}:null;latency.text(response.answer);latency.complete();publishLatency();if(audio&&state.voiceOn&&commandSpeech===audio){speechPending=true;void audio.finish(response.streamedSpokenAnswer??response.spokenAnswer??response.answer).catch(error=>{audio.cancel();if(commandSpeech===audio&&!controller.signal.aborted&&state.voiceOn)feedback(error.message,true);}).finally(()=>{if(commandSpeechController===controller)commandInterruptAvailable(false);});}}
+      catch(error){audio?.cancel();if(streamingTurn?.verification==='failed'){conversationTurns.push({...streamingTurn});conversationTurns=conversationTurns.slice(-6);}if(error.conversationDiagnostics){backendTiming=error.conversationDiagnostics;publishLatency();}throw error;}finally{if(!speechPending)commandInterruptAvailable(false);streamingTurn=null;renderConversation();}
       conversationTurns.push({question:text,answer:response.answer});conversationTurns=conversationTurns.slice(-6);
       input.value='';await refresh();renderConversation();
       if(response.task){state.selectedTask=response.task.id;state.taskDetail=null;setView('missions');feedback('依頼内容を確認して承認してください');}else feedback('REIから返答が届きました');
@@ -700,7 +700,7 @@ $('voice-output').onclick = () => {
   state.voiceOn = !state.voiceOn;
   $('voice-output').textContent = `音声応答 ${state.voiceOn ? 'ON' : 'OFF'}`;
   $('voice-output').setAttribute('aria-pressed', String(state.voiceOn));
-  if (!state.voiceOn) {stopConversationPreparation();replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;}
+  if (!state.voiceOn) {stopConversationPreparation();replyVoiceController?.abort();commandSpeech?.cancel();commandSpeech=null;if(!streamingTurn)commandInterruptAvailable(false);}
   feedback(state.voiceOn ? 'REIの音声応答を有効にしました' : '音声応答を停止しました');
   if(state.voiceOn)void unlockLocalVoice().catch(error=>feedback(error.message,true));
   if(state.voiceOn)void request('/api/voice/local/prepare',{method:'POST'}).catch(error=>{if(state.voiceOn)feedback(`Qwenの準備: ${error.message}`,true);});
@@ -710,7 +710,7 @@ $('voice-button').onclick = () => $('voice-conversation-open').click();
 $('voice-preview').onclick=()=>{void speak('こんにちは、レイです。この画面のまま、続けて話せます。');};
 function showAuth() {
   const setupToken = new URLSearchParams(location.search).get('setup');
-  commandSpeechController?.abort();commandSpeech?.cancel();streamingTurn=null;state.authEpoch++;
+  commandSpeechController?.abort();commandSpeech?.cancel();commandInterruptAvailable(false);streamingTurn=null;state.authEpoch++;
   const epoch=state.authEpoch;
   state.data=null;
   state.taskDetail=null;

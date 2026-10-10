@@ -1,5 +1,9 @@
 # REI ローカル版の設計図
 
+## 2026-10-10 21:44 入力会話の音声終了まで取消を保持
+
+通常会話のaudio.finishを非同期のまま追跡し、speechPending中は文字配信finallyで中断ボタンを消さない。音声finishのfinallyは同じAbortController世代の場合だけボタンを消し、古い音声終了が新しい会話の操作を隠さない。意図したabort/OFF時の音声エラーは停止案内を上書きしない。調査中と文字完了後で案内を分け、完成済み履歴は保持する。OFF時は文字配信中以外で操作を消し、auth変更時は即座に無効化。既存Qwen/stream取消を利用。
+
 ## 2026-10-10 21:14 入力会話の取消境界
 
 public/app.js の通常会話経路で command-interrupt を配信中だけ有効化。既存 AbortController と commandSpeech.cancel に接続し、入力・focusを維持する。中断後の delta/notice と abortを無視して解決した最終結果を適用せず、finallyでstreamingTurn・操作状態を戻す。送信disable中の再submitを抑止。既存サーバの切断取消を利用し、新しいMCP/モデル経路を追加しない。文字完了後の音声だけの再生は既存OFF操作、project/skillは対象外。

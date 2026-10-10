@@ -22,3 +22,20 @@ assert.equal(input.value,'架空会社について教えて');assert.equal(butto
 input.value='質問を変更';const next=start();resolve({answer:'新しい確認済み回答'});await next;
 assert.equal(calls,2);assert.equal(context.conversationTurns.length,1);assert.equal(input.value,'');assert.equal(interrupt.disabled,true);
 console.log('PASS typed interruption aborts stream and speech, keeps editable question, rejects late callbacks/result and allows next question');
+
+// Text completion must leave the stop control available until audio drains.
+const speeches=[];context.state.voiceOn=true;
+context.createConversationSpeech=()=>{let done,fail;const draining=new Promise((r,j)=>{done=r;fail=j;});const speech={cancel(){fail(new Error('cancelled audio'));},finish(){return draining;},push(){},progress(){},receipt(){},done};speeches.push(speech);return speech;};
+input.value='音声が長く続く質問';const spoken=start();resolve({answer:'完成した回答'});await spoken;
+assert.equal(button.disabled,false);assert.equal(interrupt.disabled,false,'Audio drain keeps interruption available after text completes');
+const confirmed=context.conversationTurns.length;elements['command-interrupt'].onclick();
+await new Promise(r=>setImmediate(r));assert.equal(interrupt.disabled,true);assert.equal(context.state.voiceOn,true,'Stopping one answer preserves voice ON');
+assert.equal(context.conversationTurns.length,confirmed,'Stopping completed answer audio preserves confirmed history');
+assert.match(notices.at(-1).text,/音声を止めました/);assert.ok(!notices.at(-1).error,'Cancellation rejection must not overwrite stop feedback');
+input.value='次の回答';const second=start();resolve({answer:'二番目'});await second;
+assert.equal(interrupt.disabled,false);
+input.value='さらに次の回答';const third=start();await new Promise(r=>setImmediate(r));
+assert.equal(interrupt.disabled,false,'Previous audio settlement cannot hide the newer conversation stop control');
+resolve({answer:'三番目'});await third;assert.equal(interrupt.disabled,false);
+speeches.at(-1).done();await new Promise(r=>setImmediate(r));assert.equal(interrupt.disabled,true,'Natural audio completion hides stop control');
+console.log('PASS audio after completed text stays stoppable, keeps voice setting/history, rejects stale completion and hides on natural drain');

@@ -116,13 +116,17 @@ let enabledConversationPreparation=null;
 let enabledConversationPreparationCheckedAt=0;
 function prepareEnabledConversation(){
   if(!state.voiceOn||enabledConversationPreparation||Date.now()-enabledConversationPreparationCheckedAt<30000)return;
-  const epoch=state.authEpoch;
+  const epoch=state.authEpoch,generation=conversationPreparationGeneration;
   enabledConversationPreparationCheckedAt=Date.now();
   enabledConversationPreparation=(async()=>{
     const status=await request('/api/conversation/prefetch');
-    if(epoch!==state.authEpoch||!state.voiceOn||status.active!==false||status.state==='unconfigured')return;
+    if(epoch!==state.authEpoch||generation!==conversationPreparationGeneration||!state.voiceOn)return;
+    renderConversationPreparationStatus(status);
+    if(status.active!==false||status.state==='unconfigured')return;
     await trackConversationPreparation();
-  })().catch(()=>{}).finally(()=>{enabledConversationPreparation=null;});
+  })().catch(()=>{
+    if(epoch===state.authEpoch&&generation===conversationPreparationGeneration&&state.voiceOn)conversationPreparation.textContent='先読みの準備状態を確認できません。回答時に最新情報の取得結果を確認します。';
+  }).finally(()=>{enabledConversationPreparation=null;});
 }
 async function refresh() {
   const epoch=state.authEpoch;
@@ -606,6 +610,13 @@ const conversationPreparation=document.createElement('p');
 conversationPreparation.id='conversation-preparation';conversationPreparation.className='setting-guide';conversationPreparation.setAttribute('role','status');
 $('command-form').after(conversationPreparation);
 function stopConversationPreparation(){conversationPreparationGeneration++;conversationPreparation.textContent='';}
+function renderConversationPreparationStatus(status){
+ conversationPreparation.dataset.syncDiagnostics=JSON.stringify(status.syncDiagnostics||null);
+ if(status.usable)conversationPreparation.textContent=`会社の情報を${status.recordCount}件先読みしました（${formatTime(status.checkedAt)}時点${status.bodyCoverage==='limited'?'・一部の記録':''}）。質問ごとに最新情報を確認します。`;
+ else if(status.state==='syncing')conversationPreparation.textContent='会社の情報を先読みしています。準備中でも質問でき、最新情報を確認して回答します。';
+ else conversationPreparation.textContent='先読みは利用できません。質問ごとに最新情報を取得して回答します。';
+ return status.usable||status.state!=='syncing';
+}
 async function trackConversationPreparation({prepare=true}={}){
  const generation=++conversationPreparationGeneration;
  conversationPreparation.textContent='会社の情報を先読みしています。準備中でも質問でき、最新情報を確認して回答します。';
@@ -615,9 +626,7 @@ async function trackConversationPreparation({prepare=true}={}){
    if(generation!==conversationPreparationGeneration)return;
    const status=await request('/api/conversation/prefetch');
    if(generation!==conversationPreparationGeneration)return;
-   conversationPreparation.dataset.syncDiagnostics=JSON.stringify(status.syncDiagnostics||null);
-   if(status.usable){conversationPreparation.textContent=`会社の情報を${status.recordCount}件先読みしました（${formatTime(status.checkedAt)}時点${status.bodyCoverage==='limited'?'・一部の記録':''}）。質問ごとに最新情報を確認します。`;return;}
-   if(status.state!=='syncing'){conversationPreparation.textContent='先読みは利用できません。質問ごとに最新情報を取得して回答します。';return;}
+   if(renderConversationPreparationStatus(status))return;
    await new Promise(resolve=>setTimeout(resolve,2000));
   }
   if(generation===conversationPreparationGeneration)conversationPreparation.textContent='先読みの準備に時間がかかっています。質問ごとに最新情報を確認して回答します。';

@@ -1,5 +1,19 @@
 # REI 実装状況
 
+## 2026-10-10 19:43 — 先読み表示が初回時点に止まる不具合
+
+担当Codex。開始HEAD8866695 clean、CI38044324079の3OS成功、Hub/Connector各1。README/ARCHITECTURE/実装/引継ぎ/AGENTS/最新実測とSynapse ec8187d6全文一致/台帳/グラフ確認。許可8棚complete、共有追加履歴はserver cursorからreadonlyで前回自身1件のみcomplete、Chatwork19:19後新投稿なし。本人有料API禁止維持。週残量開始30%、5時間枠取得不可。
+
+前の入力削減でも最新生成13.106秒が残る。調査中、画面の先読み表示が17:14から更新されず、syncDiagnosticsもnullのままだと確認。bootstrapの既存30秒状態取得はactive=trueで即returnし、初回成功後の表示を更新していなかった。古い画面時点だけからbackend snapshot期限切れとは判定できない。
+
+public/app.jsで状態表示を共通化し、既存状態確認からactive=trueでも件数/成功snapshot取得時点/一部範囲/診断/利用可否を更新。時計を現在時刻に偽らず、同期中/失効/失敗/通信未確認を区別。追加MCP/prepare増加なし。非active時だけ従来の再開、auth/音声OFF/準備世代（scope変更）の遅い応答を排除。保存データ/権限/毎問最新確認は維持。
+
+試験：ready時点/診断更新、expired/failedで旧ready解除、syncing案内、通信失敗の確認不可、OFF/auth/scope世代の応答抑止、重複/30秒抑制/既存復帰と音声配信/先読み失効回帰・構文/差分成功。新試験失敗なし。稼働public/app.jsだけ反映、Hub再起動なし。実機は送信可/音声再生未稼働を確認しページreload（音声OFFに戻るためONへ復帰）、ON準備中表示を確認。変更前は64件/17:14時点/診断null。反映後の更新追跡をこの記録へ追記する。
+
+実機追跡：64件/19:42時点/一部の記録・毎問最新確認の表示と送信可を確認。同期診断はcomplete、全体37562ms/catalog1893/ledger4201/bodies29875/permission1578ms、64本文/最大6並列、transport本文要求合計174464ms（重複を含みwall timeではない）・connect合計3ms。リロード後初回表示の実機確認であり、次の5分周期完了の時点変更・実権限失効/通信失敗はこの回実機未再現。active=trueの時点更新/失効/失敗は模擬で検証済み。
+
+回答速度の改善は測定しておらず主張しない。最新回答品質/全主張原文監査/物理出音/実マイク/聴感/負荷/多利用者/同期競合実機未検証。製品未完成、次は回答生成待ちと根拠品質。会社原文・認証は公開しない。
+
 ## 2026-10-10 19:13 — 詳細追加質問の古いAI回答の重複入力
 
 担当Codex。開始HEAD bca493c clean、CI38042747774の3OS成功、Hub42333/Connector35386各1。README/設計/実装/引継ぎ/AGENTS/最新実測/前Synapse c663c462全文一致/台帳/グラフを確認。許可8棚complete、共有追加台帳はreadonly cursorで前回自身1件のみcomplete、Chatwork18:52後新投稿なし。本人の有料API禁止維持、週残量開始31%/途中30%、5時間枠取得不可。

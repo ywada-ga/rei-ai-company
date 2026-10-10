@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+const code=source.slice(source.indexOf('let enabledVoicePreparation=null;'),source.indexOf('async function refresh() {'));
+let resolveStatus,calls=[];const state={voiceOn:true,authEpoch:1};
+const context=vm.createContext({state,request:async(route)=>{calls.push(route);if(route.endsWith('/status'))return await new Promise(resolve=>resolveStatus=resolve);return {ready:true};}});
+vm.runInContext(code,context);const start=()=>vm.runInContext('prepareEnabledLocalVoice()',context);
+const settle=()=>new Promise(setImmediate);
+start();start();assert.deepEqual(calls,['/api/voice/local/status']);state.voiceOn=false;resolveStatus({configured:true,ready:false});await settle();assert.equal(calls.length,1);
+state.voiceOn=true;start();state.authEpoch++;resolveStatus({configured:true,ready:false});await settle();assert.equal(calls.length,2);
+start();resolveStatus({configured:true,ready:false,busy:true});await settle();assert.equal(calls.length,3);
+start();resolveStatus({configured:true,ready:true});await settle();assert.equal(calls.length,4);
+start();resolveStatus({configured:true,ready:false,busy:false});await settle();assert.equal(calls.at(-1),'/api/voice/local/prepare');assert.equal(calls.length,6);
+console.log('PASS refresh preparation deduplication, OFF/auth race isolation, busy/ready skip and restart recovery');

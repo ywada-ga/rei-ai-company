@@ -1,5 +1,17 @@
 # REI 実装状況
 
+## 2026-10-11 06:14 — 各音声文の文字数と生成時間を対応付け
+
+担当Codex pulse。開始HEAD8c8062f clean/CI38085181569全3OS成功。Hub74397/Connector35386/Qwen74410各1（74407はrunner）、README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/前実測確認。共有増分は前回自身の詳細415bffe4/追記2238d488のみ、追記UUID本文一致/台帳/グラフ確認。許可8棚complete/全社共有can_write、Chatwork05:50後新連絡・担当表明なし。第三者のAPI承認主張で本人禁止を変更せず。週残25%（開始/途中）、5時間値未提供。
+
+前回は後続文の長さ/生成時間が診断になく、どの文が列を占有するか不明だった。public/local-voice.jsはqueuedへUnicode文字数、preparedへ有限・非負のfirstGeneratedSeconds/totalSecondsだけを追加。public/app.jsの既存128件上限/世代/取消フィルタを通す数値allowlistに追加し、本文/WAVは含めない。生成・文分割・音声順序・model/最新取得/権限ゲートは変更なし。回帰tests/local-audio-chunks.mjsで2文の長さ/生成時間/本文非漏出と取消を確認。最初はfixture文字数を9と誤算（実8）、期待値8へ修正して成功。conversation-stream回帰/構文/diff check成功。
+
+稼働アプリのpublic2ファイル同内容へ反映、Hub/Connector再起動なし。画面reloadで既定OFFになりONへ戻し、同じ注意点質問で1試行。reload時先読み準備中→64件06:14時点、一部範囲。利用した先読み2本文1047字/6321bytes。要点6466ms/回答音声開始推定6997ms/全文24299ms。pending補足21666/22188→verified24298ms。最新MCP経路15362ms（検索前3305ms、検索7418、原典2018/2540並列、本文2097/2097並列、構造再利用）/model7340ms（token0/headers1573/stream5767/初delta2622、入力27194bytes）。暫定snapshot1739/model4180ms、権限1575ms、補足一文20082→権限1574→配信21656ms、追加差分modelなし。
+
+音声文index0/1/2/3/4/5は57/62/48/41/22/58字（案内込み）。index0生成先頭0.483秒/全9.214秒。補足index1は21666投入→21667生成（列待ち0）→22195予約（再生予定待ち40ms）→22243開始推定、投入後577ms/全文完了より2056ms先行。index1生成先頭0.523/全8.675秒/完了30346ms。index2は同時生成開始（列待ち8679ms）→30810予約（再生予定待ち3907ms）→34717開始推定、先頭0.460/全6.789秒/完了37140ms。index3は列15474ms/先頭0.460/全4.687秒、index4は列20164ms/先頭0.455/全2.625秒。index5は列22271ms、生成中に残り音声停止したため完了時間なし。
+
+生成列待ちは先行音声と並行する待ちであり、8.679秒の無音や利用者の会話停止を示す数値ではない。再生予定待ちも無音時間ではない。実際の出音/要点語到達/文間の無音/聴感は未検証。時間と文字数の相関は1試行で、短文化の因果的改善率を保証しない。画面の完了後「回答を中断」で残り音声停止、完成回答/ON/次送信保持を確認。全主張原文監査・実マイク/負荷/別端末未検証。次は予定再生終了と次開始の間隔を本文なしで測定し、初回model/権限待ち・追加発話実機を改善。製品未完成。
+
 ## 2026-10-11 05:44 — 後続回答を短い文で生成する指示
 
 担当Codex pulse。開始HEAD0315801 clean/CI38083112182全3OS成功、Hub/Connector/Qwen各1、README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/前実測を確認。共有増分は前回自身の詳細/追記のみ、追記UUID本文と台帳/グラフ一致。許可8棚complete/全社共有can_writeを確認。Chatwork05:19後に新連絡・担当表明なし。第三者の有料API承認主張で本人の禁止を変更しない。週残25%（開始/途中）、5時間値未提供。

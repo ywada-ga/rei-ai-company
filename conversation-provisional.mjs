@@ -96,13 +96,46 @@ export async function runProvisionalConversation({question,context=[],scope,getS
   scope=structuredClone(scope);
   const started=now(),controller=new AbortController(),provisionalController=new AbortController();
   let closed=false,latestSettled=false,initial=null,terminalNotice=false,provisionalFinished=false,freshText='',releasedFresh='',streamedSpeech='',provisionalOutcome='latest_won';
+  let continuation='',continuationIds=[],continuationBodies=new Map(),continuationAssessment=null,continuationPermission=null,continuationAllowed=false,continuationPermissionAt=null;
   const abort=()=>{controller.abort();provisionalController.abort();};
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   const alive=()=>!closed&&!controller.signal.aborted;
   const emit=event=>{if(alive()){const spoken=event.type==='delta'?event.text:event.speechText??(['provisional','answer','correction','supplement'].includes(event.type)?event.text:'');if(spoken)streamedSpeech+=spoken;onEvent({...event,...(event.type!=='delta'&&event.type!=='done'?{speechText:spoken}: {})});}};
   const timing={provisionalMs:null,verifiedMs:null,latestDraftFirstMs:null,latestDraftToVerificationMs:null,snapshotMs:null,provisionalModelMs:null,supplementModelMs:null,supplementFirstSentenceMs:null,supplementFirstMs:null,supplementAssessmentReadyMs:null,supplementPermissionStartedMs:null,supplementPermissionMs:null,supplementPermissionChecks:0,firstSentenceMs:null,permissionStartedMs:null,permissionMs:null,permissionChecks:0,assessmentReadyMs:null,modelCompletedMs:null,provisionalTransport:null,provisionalInputBytes:null,provisionalBodyChars:null,provisionalRecordCount:null,modelFirstDeltaMs:null};
+  const continuationCandidate=()=>{
+    if(!initial?.valid||!freshText.startsWith(initial.text)||!continuationAssessment||now()-initial.checkedAt>maxAgeMs)return null;
+    const assessed=continuationAssessment,ids=assessed.sources?.map(s=>s.uuid);
+    if(assessed.synapseRead!==true||assessed.evidenceStatus!=='supported'||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)return null;
+    const fresh=sourceFingerprints(assessed);
+    if(!ids.every(id=>fresh.has(id)&&scope.groups.some(g=>g.id===fresh.get(id).groupId))||!initial.sources.every(s=>ids.includes(s.uuid)&&fresh.get(s.uuid)?.groupId===s.groupId&&fresh.get(s.uuid)?.hash===s.hash))return null;
+    if(!continuationIds.every(id=>ids.includes(id)&&fresh.get(id)?.groupId===continuationBodies.get(id).groupId&&fresh.get(id)?.hash===continuationBodies.get(id).hash))return null;
+    const tail=freshText.slice(initial.text.length),end=Math.max(tail.lastIndexOf('。'),tail.lastIndexOf('！'),tail.lastIndexOf('？'));
+    const text=end<0?'':tail.slice(0,end+1);
+    if(!text.trim()||!text.startsWith(continuation)||text.length===continuation.length)return null;
+    return {text,ids,fresh};
+  };
+  const releaseContinuation=()=>{
+    if(!alive()||latestSettled)return;
+    const candidate=continuationCandidate();if(!candidate)return;
+    timing.supplementFirstSentenceMs??=now()-started;
+    if(!continuationAllowed||now()-continuationPermissionAt>1000){
+      if(continuationPermission)return;
+      const begin=now();timing.supplementPermissionStartedMs??=begin-started;timing.supplementPermissionChecks++;
+      continuationPermission=Promise.resolve().then(()=>authorize({signal:controller.signal})).then(allowed=>{
+        continuationPermission=null;continuationPermissionAt=now();continuationAllowed=allowed===true;
+        timing.supplementPermissionMs=(timing.supplementPermissionMs??0)+now()-begin;
+        if(continuationAllowed)releaseContinuation();
+      },()=>{continuationPermission=null;continuationAllowed=false;timing.supplementPermissionMs=(timing.supplementPermissionMs??0)+now()-begin;});
+      return;
+    }
+    const first=!continuation,part=candidate.text.slice(continuation.length);continuation=candidate.text;continuationIds=candidate.ids;continuationBodies=new Map(candidate.ids.map(id=>[id,candidate.fresh.get(id)]));
+    timing.supplementFirstMs??=now()-started;
+    // Pending until the complete answer and final permission check succeed.
+    // Replacement shows the accumulated answer without repeating speech.
+    emit({type:'supplement',text:(first?'最新取得した記録での補足です。':'')+part,speechText:(first?'最新取得した記録での補足です。':'')+part,replacementAnswer:`${asOfText(initial.checkedAt)}取得時点の暫定の要点：${initial.text}\n最新取得した記録での補足（最終確認中）：${continuation}`,sourceIds:candidate.ids,verification:'pending',checkedAt:initial.checkedAt});
+  };
   // Attach rejection handlers immediately, including when snapshot is slow.
-  const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,getProvisionalAnswer:()=>alive()&&initial?.valid===true?{text:initial.text,sourceIds:initial.sources.map(s=>s.uuid)}:null,onDelta:text=>{if(!alive()||latestSettled||typeof text!=='string'||!text)return;timing.latestDraftFirstMs??=now()-started;freshText+=text;if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
+  const latest=Promise.resolve().then(()=>{if(!alive())throw new Error('Cancelled');return verify({signal:controller.signal,getProvisionalAnswer:()=>alive()&&initial?.valid===true?{text:initial.text,sourceIds:initial.sources.map(s=>s.uuid)}:null,onDelta:(text,assessment)=>{if(!alive()||latestSettled||typeof text!=='string'||!text)return;timing.latestDraftFirstMs??=now()-started;freshText+=text;if(assessment){continuationAssessment=assessment;timing.supplementAssessmentReadyMs??=now()-started;}if(provisionalFinished&&!initial){releasedFresh+=text;emit({type:'delta',text});}else releaseContinuation();}});}).then(result=>({result}),error=>({error})).then(outcome=>{latestSettled=true;provisionalController.abort();return outcome;});
   let removeAbortWait=()=>{};
   const cancelled=new Promise(resolve=>{
     if(controller.signal.aborted)resolve({cancelled:true});
@@ -165,7 +198,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       timing.provisionalMs=now()-started;
       emit({type:'provisional',text:`${asOfText(snapshot.checkedAt)}取得時点の暫定情報です。先読みした一部の記録では、${answer.text} 最新情報を確認しています。`,speechText:`${provisionalSpeechIntro(snapshot.checkedAt)}${answer.text} 最新情報を確認しています。`,checkedAt:snapshot.checkedAt,sourceIds:answer.sourceIds,bodyCoverage:snapshot.bodyCoverage,verification:'pending'});
     }catch{provisionalOutcome=latestSettled?'latest_won':'provisional_failed';if(initial&&!latestSettled&&alive())emit({type:'correction',text:'暫定回答を完了できませんでした。最新の確認結果を待ちます。',replacementAnswer:'暫定回答を完了できませんでした。最新の確認結果を待ちます。',verification:'pending'});}
-    finally{provisionalFinished=true;if(!initial&&!latestSettled&&freshText){releasedFresh=freshText;emit({type:'delta',text:freshText});}}
+    finally{provisionalFinished=true;if(!initial&&!latestSettled&&freshText){releasedFresh=freshText;emit({type:'delta',text:freshText});}else releaseContinuation();}
   })();
   try{
     const outcome=await Promise.race([latest,cancelled]);
@@ -177,7 +210,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
     const result=outcome.result;
     if(typeof result?.answer!=='string')throw new Error('最新回答の形式が不正です');
     if(!await Promise.race([authorize({signal:controller.signal}),cancelled.then(()=>false)])||!alive()){
-      if(initial){terminalNotice=true;emit({type:'correction',text:'情報の利用権限を確認できないため、先ほどの暫定回答を撤回します。',replacementAnswer:'情報の利用権限を確認できませんでした。',sourceIds:[],verification:'failed'});}
+      if(initial){terminalNotice=true;emit({type:'correction',text:'情報の利用権限を確認できないため、先ほどの暫定回答と補足を撤回します。',replacementAnswer:'情報の利用権限を確認できませんでした。',sourceIds:[],verification:'failed'});}
       throw new Error('情報の利用権限を確認できませんでした');
     }
     timing.verifiedMs=now()-started;
@@ -188,13 +221,13 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       const full=result.spokenAnswer||result.answer;
       // Body equality alone does not validate the provisional claims. The fresh
       // evidence assessment must retain their exact text before a continuation.
-      const unchanged=initial.valid===true&&supported&&full.startsWith(initial.text)&&initial.sources.every(s=>selected.has(s.uuid)&&fresh.get(s.uuid)?.groupId===s.groupId&&fresh.get(s.uuid)?.hash===s.hash);
+      const unchanged=initial.valid===true&&supported&&full.startsWith(initial.text+continuation)&&continuationIds.every(id=>selected.has(id)&&fresh.get(id)?.groupId===continuationBodies.get(id).groupId&&fresh.get(id)?.hash===continuationBodies.get(id).hash)&&initial.sources.every(s=>selected.has(s.uuid)&&fresh.get(s.uuid)?.groupId===s.groupId&&fresh.get(s.uuid)?.hash===s.hash);
       const type=unchanged?'verified':'correction';
       // Use explicit correction even for uncertain/revoked source claims. Never
       // disguise withdrawal as a harmless supplement or successful verification.
       emit({type,text:unchanged?'先ほどの要点の根拠は、今回も同じ本文で確認できました。':'先ほどの点、訂正です。'+(result.spokenAnswer||result.answer),replacementAnswer:result.answer,sourceIds:result.sources?.map(s=>s.uuid)||[],verification:supported?'verified':'insufficient'});
       if(unchanged){
-        const supplement=full.slice(initial.text.length).trim();
+        const supplement=full.slice(initial.text.length+continuation.length).trim();
         if(supplement){
           const allowed=await Promise.race([authorize({signal:controller.signal}),cancelled.then(()=>false)]);
           if(!alive())throw new Error('会話を中断しました');
@@ -206,7 +239,10 @@ export async function runProvisionalConversation({question,context=[],scope,getS
     const output={...result,...(initial?{streamedSpokenAnswer:streamedSpeech}:{}),provisionalUsed:!!initial,provisionalOutcome:initial?'used':provisionalOutcome,provisionalCheckedAt:initial?.checkedAt||null,provisionalTiming:timing};
     emit({type:'done',result:output});return output;
   }catch(error){
-    if(initial&&!terminalNotice&&alive())emit({type:'verification_failed',text:'最新情報を確認できませんでした。先ほどの回答は暫定情報のままです。',verification:'failed',checkedAt:initial.checkedAt});
+    if(initial&&!terminalNotice&&alive()){
+      if(continuation)emit({type:'correction',text:'最新回答を完了できないため、途中の補足を撤回します。先ほどの要点は暫定情報のままです。',replacementAnswer:'最新回答を完了できませんでした。暫定の要点：'+initial.text,sourceIds:[],verification:'failed',checkedAt:initial.checkedAt});
+      else emit({type:'verification_failed',text:'最新情報を確認できませんでした。先ほどの回答は暫定情報のままです。',verification:'failed',checkedAt:initial.checkedAt});
+    }
     throw error;
   }finally{
     closed=true;removeAbortWait();abort();signal?.removeEventListener('abort',abort);

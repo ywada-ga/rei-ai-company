@@ -99,8 +99,9 @@ console.log('PASS source lists remain visible in history but are not added to an
 
 const phaseEvents=[
  {type:'provisional',text:'19時の暫定情報です。担当は青山です。',speechText:'19時の暫定情報です。担当は青山です。',checkedAt:Date.now(),bodyCoverage:'limited',sourceIds:['fixture'],verification:'pending'},
+ {type:'supplement',text:'最新取得した記録での補足です。窓口は開発室です。',speechText:'最新取得した記録での補足です。窓口は開発室です。',replacementAnswer:'19時の暫定の要点：担当は青山です。\n補足（最終確認中）：窓口は開発室です。',sourceIds:['fixture'],verification:'pending'},
  {type:'correction',text:'先ほどの点、訂正です。担当は赤井です。',speechText:'先ほどの点、訂正です。担当は赤井です。',replacementAnswer:'担当は赤井です。',sourceIds:['fixture'],verification:'verified'},
- {type:'done',result:{answer:'担当は赤井です。',spokenAnswer:'担当は赤井です。',streamedSpokenAnswer:'19時の暫定情報です。担当は青山です。先ほどの点、訂正です。担当は赤井です。'}}
+ {type:'done',result:{answer:'担当は赤井です。',spokenAnswer:'担当は赤井です。',streamedSpokenAnswer:'19時の暫定情報です。担当は青山です。最新取得した記録での補足です。窓口は開発室です。先ほどの点、訂正です。担当は赤井です。'}}
 ];
 const phasePlayback=[],phaseHandles=[];let phaseChanges=[];
 const phaseVoice=new VoiceConversation({Recognition:class{},ask:async(q,c,signal,onDelta,onReceipt)=>readConversationStream(new Response(phaseEvents.map(e=>JSON.stringify(e)+'\n').join('')),{signal,onDelta,onReceipt}),onChange:value=>phaseChanges.push(value)});
@@ -109,6 +110,7 @@ phaseVoice.active=true;phaseVoice.epoch=1;phaseVoice.listen=()=>{phaseVoice.phas
 await phaseVoice.respond('会社の担当は？',1);
 assert.equal(phaseVoice.history[0].answer,'担当は赤井です。','History contains only the authoritative answer');
 assert.ok(phaseChanges.some(v=>v.verification==='pending'));assert.ok(phasePlayback.includes('cancel-old'));
+assert.ok(phaseChanges.some(v=>v.verification==='pending'&&v.answer.includes('最終確認中')));assert.ok(phasePlayback.some(v=>v.includes('最新取得した記録での補足')));
 assert.equal(phaseHandles[1].text,'先ほどの点、訂正です。担当は赤井です。','Canceled initial speech is not replayed at completion');
 phaseVoice.stop();
 await assert.rejects(readConversationStream(new Response(JSON.stringify({...phaseEvents[0],checkedAt:'unknown'})+'\n')),/確認状態/);

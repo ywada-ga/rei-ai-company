@@ -22,8 +22,8 @@ const fixture=()=>{
   throw Error('unexpected tool');
  }};
 };
-let f=fixture(),reviews=0,answers=0,deltas=[];
-const result=await converse({question:'杉山さんの作業内容教えて',groups,call:f.call,onDelta:text=>deltas.push(text),generate:async(messages,options)=>{
+let f=fixture(),reviews=0,answers=0,deltas=[],contracts=[];
+const result=await converse({question:'杉山さんの作業内容教えて',groups,call:f.call,onDelta:(text,contract)=>{deltas.push(text);contracts.push(contract);},generate:async(messages,options)=>{
  if(options.phase==='evidence_answer'){
   reviews++;
   const decision=reviews===1?assess('insufficient',[],'指示書だけでは実際の作業を確認できません。','杉山'):assess('supported',['work'],'','','10月8日の記録では、申込フォームを修正し公開確認を完了しています。');
@@ -42,6 +42,10 @@ assert.equal(reviews,2);assert.equal(insufficient.evidenceStatus,'insufficient')
 // A fabricated citation must fail closed even when the reviewer calls it supported.
 f=fixture();await assert.rejects(converse({question:'杉山さんの作業内容教えて',groups,call:f.call,generate:async(messages,options)=>({text:JSON.stringify(options.phase==='evidence_answer'?assess('supported',['invented'],'','','捏造した回答'):{action:'search',query:'杉山'})})}),/根拠の評価/);
 console.log('PASS implicit current-work retrieval, relevance review, retry before streaming, insufficient evidence and fabricated citation rejection');
+assert.ok(contracts.length&&contracts.every(c=>c?.synapseRead===true&&c.evidenceStatus==='supported'));
+assert.ok(contracts.every(c=>c.sources.some(s=>s.uuid==='work')&&c.evidence.some(e=>e.tool==='get_episode'&&e.uuid==='work'&&e.result.structuredContent.coverage.complete===true)));
+assert.ok(!JSON.stringify(deltas).includes('structuredContent'),'Internal bodies never enter public text deltas');
+console.log('PASS fresh answer deltas carry an internal full-evidence assessment after retry, separate from public text');
 
 f=fixture();const abort=new AbortController();let emittedAfterAbort=false;
 await assert.rejects(converse({question:'杉山さんの作業内容教えて',groups,signal:abort.signal,call:f.call,onDelta:()=>{emittedAfterAbort=true;},generate:async(messages,options)=>{

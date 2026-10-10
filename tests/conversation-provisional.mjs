@@ -286,6 +286,67 @@ console.log('PASS sentence, permission and model completion clocks are distinct 
 }
 console.log('PASS latest draft timing excludes empty/late chunks and keeps provisional verification gate');
 
+// Latest continuation is pending, uses fresh full bodies and current permission,
+// and cannot enter final history or be spoken twice before complete validation.
+for(const mode of ['complete','text_changed','body_changed','source_removed','permission_revoked','error','cancelled']){
+ let stream,tick=0;const fresh=defer(),gate=defer(),controller=new AbortController();let checks=0;
+ const s=await scenario({now:()=>at+tick,signal:controller.signal,authorize:()=>++checks===2?gate.promise:Promise.resolve(mode!=='permission_revoked'||checks<3),verify:({onDelta})=>{stream=onDelta;return fresh.promise;}});
+ const assessed=result(),full=decision.text+'窓口は開発室です。';
+ tick=200;stream(decision.text+'窓口は',assessed);await settle();assert.equal(checks,1,'Incomplete sentence cannot start continuation permission');
+ tick=300;stream('開発室です。',assessed);await settle();assert.equal(s.events.length,1,'Permission holds the latest continuation');
+ gate.resolve(true);await settle();
+ assert.equal(s.events[1].type,'supplement');assert.equal(s.events[1].verification,'pending');assert.match(s.events[1].replacementAnswer,/取得時点の暫定の要点/);assert.match(s.events[1].replacementAnswer,/補足（最終確認中）：窓口は開発室です。/);
+ assert.equal(s.events[1].speechText,'最新取得した記録での補足です。窓口は開発室です。');
+ if(mode==='cancelled'){
+  controller.abort();await assert.rejects(s.pending,/中断/);const count=s.events.length;stream('遅着です。',assessed);fresh.resolve({...result(),answer:full});await settle();assert.equal(s.events.length,count);continue;
+ }
+ let final={...result(),answer:full,spokenAnswer:full};
+ if(mode==='text_changed')final.answer=final.spokenAnswer=decision.text+'窓口は未確認です。';
+ if(mode==='body_changed')final.evidence=result('変更された本文').evidence;
+ if(mode==='source_removed')final.sources=[];
+ tick=900;fresh.resolve(mode==='error'?{}:final);
+ if(mode==='permission_revoked'||mode==='error'){
+  await assert.rejects(s.pending);const last=s.events.at(-1);assert.equal(last.type,'correction');assert.equal(last.verification,'failed');assert.ok(!last.replacementAnswer.includes('窓口は開発室'));
+ }else{
+  const out=await s.pending;assert.equal(out.provisionalTiming.supplementFirstMs,300);assert.equal(out.provisionalTiming.verifiedMs,900);
+  assert.equal(s.events.at(-2).type,mode==='complete'?'verified':'correction');
+  assert.equal(s.events.filter(e=>e.type==='supplement').length,1,'No duplicate complete-answer continuation');
+  assert.equal(out.answer,final.answer);
+ }
+}
+for(const mode of ['no_contract','partial','changed','deleted','incomplete','wrong_scope','unknown','expired']){
+ let stream,tick=0;const fresh=defer();
+ const s=await scenario({now:()=>at+tick,verify:({onDelta})=>{stream=onDelta;return fresh.promise;}}),assessed=result();
+ if(mode==='partial')assessed.evidenceStatus='partial';
+ if(mode==='changed')assessed.evidence=result('変更本文').evidence;
+ if(mode==='deleted')assessed.evidence[0].result.structuredContent.deleted=true;
+ if(mode==='incomplete')assessed.evidence[0].result.structuredContent.coverage.complete=false;
+ if(mode==='wrong_scope')assessed.evidence[0].result.structuredContent.episode.group_id='other';
+ if(mode==='unknown')assessed.sources.push({uuid:'unknown'});
+ if(mode==='expired')tick=700000;
+ stream(decision.text+'窓口は開発室です。',mode==='no_contract'?undefined:assessed);await settle();
+ assert.equal(s.events.length,1,mode+': no early latest supplement');fresh.resolve({...result(),answer:decision.text+'窓口は開発室です。'});await s.pending;
+}
+{
+ let stream,tick=0,checks=0;const fresh=defer(),gate=defer();
+ const s=await scenario({now:()=>at+tick,authorize:()=>++checks===3?gate.promise:Promise.resolve(true),verify:({onDelta})=>{stream=onDelta;return fresh.promise;}}),assessed=result();
+ stream(decision.text+'窓口は開発室です。',assessed);await settle();assert.equal(s.events.length,2);
+ tick=1501;stream('受付は平日です。',assessed);await settle();assert.equal(s.events.length,2,'Permission older than one second renewed before next sentence');
+ gate.resolve(true);await settle();assert.equal(s.events[2].speechText,'受付は平日です。');
+ fresh.resolve({...result(),answer:decision.text+'窓口は開発室です。受付は平日です。'});await s.pending;
+ assert.equal(s.events.filter(e=>e.type==='supplement').length,2);
+}
+console.log('PASS pending fresh continuations, full evidence/current permission, renewal, withdrawal, correction and no repeated speech');
+{
+ let stream;const fresh=defer();
+ const s=await scenario({verify:({onDelta})=>{stream=onDelta;return fresh.promise;}}),assessed=result();
+ const second=structuredClone(assessed.evidence[0]);second.uuid=second.result.structuredContent.episode.uuid='continuation-source';second.result.structuredContent.episode.content='窓口は開発室。';
+ assessed.evidence.push(second);assessed.sources.push({uuid:'continuation-source'});
+ stream(decision.text+'窓口は開発室です。',assessed);await settle();assert.equal(s.events.at(-1).type,'supplement');
+ const final=structuredClone(assessed);final.answer=final.spokenAnswer=decision.text+'窓口は開発室です。';final.evidence[1].result.structuredContent.episode.content='窓口は変更。';
+ fresh.resolve(final);await s.pending;assert.equal(s.events.at(-2).type,'correction','Final comparison covers the continuation-only source as well as initial sources');
+}
+
 // Exact continuation still rechecks permission and remains cancellable.
 for(const mode of ['allowed','revoked','cancelled']){
  const gate=defer(),controller=new AbortController();let calls=0;

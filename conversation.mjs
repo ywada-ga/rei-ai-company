@@ -293,9 +293,18 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
         {role:'user',content:JSON.stringify({provisionalComparison:{text:initial.text,sourceIds:initial.sourceIds}})}
       ]:[];
       let reviewedEmitted='';
+      let streamAssessment;
       review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,...comparison,{role:'system',content:instructions}],{signal,effort:'low',phase:'evidence_answer',onDelta:onDelta?raw=>{
         if(signal?.aborted)return;const prefix=reviewedAnswerPrefix(raw,verifiedIds,{canRetry:!additionsRead&&evidence.filter(e=>e.tool==='search_memory_facts').length<2});
-        if(prefix.length>reviewedEmitted.length&&prefix.startsWith(reviewedEmitted)){onDelta(prefix.slice(reviewedEmitted.length));reviewedEmitted=prefix;}
+        if(prefix.length>reviewedEmitted.length&&prefix.startsWith(reviewedEmitted)){
+          // Internal evidence contract for pending continuation. Never publish
+          // bodies through the event stream; final JSON is still validated below.
+          if(!streamAssessment){
+            const head=String(raw).match(/^\s*\{\s*(?:"decision"\s*:\s*\{\s*)?("action"\s*:\s*"respond"[\s\S]*?),\s*"text"\s*:\s*"/)?.[1];
+            try{const assessed=parseDecision('{'+head+',"text":""}');streamAssessment={synapseRead:true,evidenceStatus:assessed.status,sources:assessed.sourceIds.map(uuid=>({uuid})),evidence:structuredClone(evidence)};}catch{}
+          }
+          onDelta(prefix.slice(reviewedEmitted.length),streamAssessment);reviewedEmitted=prefix;
+        }
       }:undefined})).text);
       if(!reviewEvidence&&review.action!=='respond')throw new Error('根拠と回答の形式を確認できませんでした');
       if(review.action==='respond'&&['supported','partial'].includes(review.status)&&!review.text.trim()&&(!review.query.trim()||additionsRead||evidence.filter(e=>e.tool==='search_memory_facts').length>=2))throw new Error('根拠に基づく回答が空でした');

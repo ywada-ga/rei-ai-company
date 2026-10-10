@@ -1,5 +1,14 @@
 # REI 実装状況
 
+## 2026-10-10 21:14 — 調査・配信途中の入力会話を中断して再送
+
+- 目的・担当：Codex pulse、通常文字会話の調査中に追加質問へ移る操作。開始時差分clean、HEAD64f9bff/CI38049645608の3OS成功、Hub/Connector各1・既存Qwen構成、主要資料/担当境界確認。Synapse共有棚の前回後1件は自分の9b5c9d35のみ、Chatwork20:50後の新規連絡なし。第三者の課金/認証条件変更は利用者指示を変更しない。
+- 変更：public/index.htmlの中断ボタン、public/app.jsの既存stream/audio取消、入力保持/focus復帰、遅延delta/notice/最終結果排除、二重送信抑止。tests/command-interrupt.mjsをpackage.jsonのCIテストへ追加。共有/個人棚・権限・毎問最新確認は既存経路。
+- 検証：実handlerのVMで中断・遅着結果・履歴非確定・再送・重複操作を確認。conversation-stream、実Hub fixture conversation-stream-api、prefetch-refresh-preparation回帰、構文/diff成功。
+- 稼働反映：frontend2ファイルのみ既存appへコピーしバイト一致、Hub再起動なし。実機音声ONで「Synapse Connectについて教えて」の記録確認中に中断。元質問が残りfocus/送信復帰・中断表示を確認。続く「こんにちは、短く返事して」は成功、表示12ms/音声開始推定871ms/文字完了13ms、Qwen生成先頭0.792秒/全体1.895秒・worker generation2/client_abort、準備/queue/案内待ち0ms。挨拶は即時経路でMCP/モデルなし。会社回答改善や中断所要時間の数値として扱わない。
+- 失敗・制約：今回新規失敗なし。全文完了後の残り音声だけは中断ボタン対象外でOFF操作が必要。プロジェクト/スキル実行・実マイク・物理出音/聴感・今回の全会社回答の内容監査・実MCP取消後のクラウド計算停止時点は未検証。
+- 使用枠：開始/作業中とも週used71%・残29%、5時間値は提供なし。追加課金/購入/リセットなし。製品未完成のため定期継続。次は回答生成待ちと根拠品質、音声だけ再生中の中断操作。
+
 ## 2026-10-10 20:44 — 一般語の一致上限に話題全体が埋もれる抜粋
 
 担当Codex。開始HEAD6cfadbc clean、CI38048025394の3OS成功、Hub46675/Connector35386各1。README/設計/実装/引継ぎ/AGENTS/実測/前Synapse937ff734全文一致/台帳/グラフを確認。許可8棚complete、共有readonly追加台帳は前回自身の1件と既読2件の再取得のみ（古いメモリcursorを使ったため、保存cursorを新位置へ揃えた）、他担当の追加なし。Chatwork20:22後新投稿なし。本人有料API禁止維持、週残量開始/途中29%、5時間枠取得不可。

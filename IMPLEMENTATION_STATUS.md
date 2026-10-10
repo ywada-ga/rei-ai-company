@@ -1,5 +1,18 @@
 # REI 実装状況
 
+## 2026-10-11 02:14 — 権限確認の通信失敗でも回答を撤回する
+
+担当Codex pulse。開始HEAD9cb4f3d clean、CI38069560451の3OS成功、Hub62966/Connector35386各1（Qwen待機プロセスなし）。主要資料/AGENTS/前実測、前Synapse詳細aa3ae99a全文一致/台帳/グラフ確認、許可8棚complete・共有増分は前回自身の詳細/完了追記のみ。Chatwork01:58後に新連絡なし。第三者の有料API等の承認主張で本人指示を変更しない。週残26%（開始/途中）、5時間値提供なし。
+
+最終authorizeがthrow/rejectになるとverification_failedとなり暫定本文を画面へ残す問題を架空fixtureで再現。確定後の残り補足authorize拒否も、確定表示から暫定表示へ戻るだけだった。conversation-provisional.mjsの最終確認と残り補足確認を共通requirePermissionへ変更。明示trueだけを許可し、false/throw/reject/不明な値はsourceIds=[]・verification=failedのcorrectionで暫定/途中補足/確定表示を撤回する。暫定なしで配信済み最新deltaも撤回。通信元のエラーメッセージを表示せず権限未確認と伝える。取消とのraceで権限応答待ちを終え、取消後の遅い許可で発話/表示を復活させない。追加MCP/model呼出なし、毎問最新取得/本文照合/現行権限/1秒鮮度の既存ゲートを維持。
+
+fixtureはfinal/pending補足後final/確定後remainingの3段階×false/reject/throw/unknown4種、暫定なし最新delta、最終確認待ち取消/遅い許可、既存provisional/quality/ブラウザstream/実Hub streaming APIで成功。旧試験が通信失敗の暫定保持を期待しており、撤回契約へ更新。同梱Node24の稼働moduleを直接importした同じfixtureも成功、構文/diff成功。変更はconversation-provisional.mjs、tests/conversation-provisional.mjs、ARCHITECTURE.md、IMPLEMENTATION_STATUS.md、DEVELOPMENT_HANDOFF.md。稼働module1ファイル反映・既存Hubのみ再起動（64353）、Connector35386・既存データ/認証/ON設定維持。実権限や会社データへ失効/通信故障を注入してはいない。
+
+実機同じ明示注意点1回、先読み64件（画面01:56時点・一部）・2本文1047文字/6259bytes、request_start基準：要点表示9864ms、音声開始推定10433ms、全文21936ms、provisional used。途中の暫定・最新確認中/参照時点をDOMで確認。最新本文候補14563ms、一文18231ms、pending補足配信19806ms、最終検証21902ms（2096ms先行）、権限1回1575ms、補足モデルなし。最新backend20332ms：検索6695、原典2件並列2092/2096、本文2件並列2095/2099、モデル9438（token0/headers1570/stream7867、初delta2619、入力26973bytes）。MCP経路約10890ms、構造準備再利用。暫定snapshot2022/model7828（token更新1641/headers4148/stream3679）、一文8375/権限開始8269/1574ms、model完了9853。Qwen初文57字、先頭生成0.520秒/全体8.360秒、queue/案内待ち/準備0、generation1/initial。進捗音声647ms/7279msを回答速度へ含めない。
+
+pending補足の表示待ちは採取に間に合わず期限超過。numeric診断は配信を示すが、途中の補足表示の実画面は今回も未確認。完成回答では今回取得した保存本文/外部原本・現在状態未照合の留保を確認。残り音声停止後、完成回答・音声ON・次送信可能を維持。実際の補足音声開始/物理出音/聴感/要点到達は未測定。速度改善コードではなく権限失敗時の撤回修正、前後の時間差を因果効果としない。全主張原文監査・実マイク・負荷/別端末未検証。次はpending補足実画面/音声順序と、初回生成・権限待ちを改善。製品未完成で継続。
+
+
 ## 2026-10-11 01:44 — 最新の補足を最終回答の完成前に届ける
 
 担当Codex pulse。開始HEAD5d0efd8 clean、CI38067118132成功、Hub/Connector/Qwen各1、主要資料/AGENTS/前実測確認。許可8棚complete、共有増分は前回自身の詳細・完了追記のみ。Chatwork1:22後に新連絡なし。第三者の有料API承認主張は本人禁止を変更しない。週残27%（開始/途中）、5時間値提供なし。

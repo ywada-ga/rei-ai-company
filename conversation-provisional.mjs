@@ -141,6 +141,16 @@ export async function runProvisionalConversation({question,context=[],scope,getS
     if(controller.signal.aborted)resolve({cancelled:true});
     else{const listener=()=>resolve({cancelled:true});controller.signal.addEventListener('abort',listener,{once:true});removeAbortWait=()=>controller.signal.removeEventListener('abort',listener);}
   });
+  const requirePermission=async()=>{
+    // Both thrown and rejected catalog reads mean permission is unknown. Keep
+    // cancellation independent of a provider that ignores its abort signal.
+    const allowed=await Promise.race([Promise.resolve().then(()=>authorize({signal:controller.signal})).then(value=>value===true,()=>false),cancelled.then(()=>false)]);
+    if(!alive())throw new Error('会話を中断しました');
+    if(allowed)return;
+    terminalNotice=true;
+    emit({type:'correction',text:'情報の利用権限を確認できないため、先ほどの回答と補足を撤回します。',replacementAnswer:'情報の利用権限を確認できませんでした。',sourceIds:[],verification:'failed'});
+    throw new Error('情報の利用権限を確認できませんでした');
+  };
   const provisional=(async()=>{
     try{
       if(!alive()||latestSettled)return;
@@ -209,10 +219,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
     }
     const result=outcome.result;
     if(typeof result?.answer!=='string')throw new Error('最新回答の形式が不正です');
-    if(!await Promise.race([authorize({signal:controller.signal}),cancelled.then(()=>false)])||!alive()){
-      if(initial){terminalNotice=true;emit({type:'correction',text:'情報の利用権限を確認できないため、先ほどの暫定回答と補足を撤回します。',replacementAnswer:'情報の利用権限を確認できませんでした。',sourceIds:[],verification:'failed'});}
-      throw new Error('情報の利用権限を確認できませんでした');
-    }
+    await requirePermission();
     timing.verifiedMs=now()-started;
     if(timing.latestDraftFirstMs!==null)timing.latestDraftToVerificationMs=timing.verifiedMs-timing.latestDraftFirstMs;
     const supported=result.synapseRead===true&&['supported','partial'].includes(result.evidenceStatus)&&Array.isArray(result.sources)&&result.sources.length>0;
@@ -229,9 +236,7 @@ export async function runProvisionalConversation({question,context=[],scope,getS
       if(unchanged){
         const supplement=full.slice(initial.text.length+continuation.length).trim();
         if(supplement){
-          const allowed=await Promise.race([authorize({signal:controller.signal}),cancelled.then(()=>false)]);
-          if(!alive())throw new Error('会話を中断しました');
-          if(!allowed)throw new Error('補足の利用権限を確認できませんでした');
+          await requirePermission();
           emit({type:'supplement',text:'補足です。'+supplement,replacementAnswer:result.answer,sourceIds:result.sources.map(s=>s.uuid),verification:'verified'});
         }
       }

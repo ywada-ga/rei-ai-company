@@ -132,8 +132,8 @@ console.log('PASS conflicting duplicate reads cannot restore provisional verific
  assert.deepEqual(s.events.map(e=>e.type),['provisional','correction']);assert.equal(s.events[1].verification,'failed');assert.deepEqual(s.events[1].sourceIds,[]);
 }
 {
- let calls=0;const s=await scenario({authorize:async()=>{if(++calls===2)throw new Error('Permission transport failed');return true;}});s.latest.resolve(result());await assert.rejects(s.pending,/transport/);
- assert.deepEqual(s.events.map(e=>e.type),['provisional','verification_failed']);
+ let calls=0;const s=await scenario({authorize:async()=>{if(++calls===2)throw new Error('Permission transport failed');return true;}});s.latest.resolve(result());await assert.rejects(s.pending,/権限/);
+ assert.deepEqual(s.events.map(e=>e.type),['provisional','correction']);assert.ok(!s.events[1].replacementAnswer.includes('青山'));
 }
 {
  const s=await scenario({verify:async()=>{await settle();await settle();throw new Error('Fixture retrieval failed');}});await assert.rejects(s.pending,/retrieval failed/);assert.deepEqual(s.events.map(e=>e.type),['provisional','verification_failed']);assert.equal(s.events[1].verification,'failed');
@@ -365,6 +365,32 @@ for(const mode of ['allowed','revoked','cancelled']){
  }
 }
 console.log('PASS exact continuation permission, revocation, cancellation and late completion isolation');
+// Permission transport failures must withdraw displayed claims, including after
+// a pending supplement or a verified event waiting on remaining speech.
+for(const stage of ['final','pending_final','remaining']){
+ for(const failure of ['denied','reject','throw','unknown']){
+  let calls=0,stream;const latest=defer(),failAt=stage==='final'?2:3;
+  const s=await scenario({authorize:()=>{if(++calls!==failAt)return Promise.resolve(true);if(failure==='throw')throw new Error('catalog unavailable');if(failure==='reject')return Promise.reject(new Error('catalog unavailable'));return Promise.resolve(failure==='unknown'?{}:false);},verify:({onDelta})=>{stream=onDelta;return latest.promise;}});
+  const full=decision.text+'窓口は開発室です。';
+  if(stage==='pending_final'){stream(full,result());await settle();assert.equal(s.events.at(-1).type,'supplement');}
+  latest.resolve({...result(),answer:full,spokenAnswer:full});
+  await assert.rejects(s.pending,/権限/);
+  const last=s.events.at(-1);assert.equal(last.type,'correction',stage+'/'+failure);assert.equal(last.verification,'failed');assert.deepEqual(last.sourceIds,[]);
+  assert.ok(!last.replacementAnswer.includes('青山'));assert.ok(!last.replacementAnswer.includes('開発室'));assert.equal(s.events.filter(e=>e.type==='done').length,0);
+ }
+}
+console.log('PASS final and remaining permission rejection, transport failure and unknown values withdraw all claims');
+{
+ let stream;const fresh=defer();const s=await scenario({getSnapshot:async()=>null,authorize:async()=>{throw new Error('catalog unavailable');},verify:({onDelta})=>{stream=onDelta;return fresh.promise;}});
+ stream('担当は青山です。');await settle();assert.equal(s.events.at(-1).type,'delta');
+ fresh.resolve(result());await assert.rejects(s.pending,/権限/);assert.equal(s.events.at(-1).type,'correction');assert.deepEqual(s.events.at(-1).sourceIds,[]);
+}
+{
+ const gate=defer(),controller=new AbortController();let calls=0;
+ const s=await scenario({signal:controller.signal,authorize:()=>++calls===2?gate.promise:Promise.resolve(true)});
+ s.latest.resolve(result());await settle();controller.abort();await assert.rejects(s.pending,/中断/);const count=s.events.length;
+ gate.resolve(true);await settle();assert.equal(s.events.length,count,'Late final catalog permission cannot revive a cancelled answer');
+}
 {
  let readInitial,calls=0;const sLatest=defer();
  const s=await scenario({verify:({getProvisionalAnswer})=>{readInitial=getProvisionalAnswer;assert.equal(readInitial(),null);return sLatest.promise;},generate:async()=>{calls++;return {text:JSON.stringify(decision)};}});

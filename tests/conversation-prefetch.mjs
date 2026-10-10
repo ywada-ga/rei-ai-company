@@ -95,3 +95,16 @@ assert.equal(diagnostic.bodyTransportCount,7);assert.equal(diagnostic.bodyConnec
 assert.ok(diagnostic.bodyReadTotalMs>=diagnostic.bodyReadMaxMs);
 assert.ok(!JSON.stringify(diagnostic).includes('PRIVATE'));assert.ok(!JSON.stringify(diagnostic).includes('overlap-'));
 overlapCache.close();overlapDb.close();console.log('PASS six overlapping reads, slot refill and source-free transport aggregates');
+
+// A ledger row already identifies its shelf; body reads must stay inside that shelf.
+const narrowDb=new DatabaseSync(':memory:');narrowDb.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+const narrowScope={...scope,groups:[...scope.groups,{id:'fixture-shared',personal:false}]};
+const narrowCatalog=()=>reply({groups:[{group_id:'fixture-private',classification:'personal',status:'published'},{group_id:'fixture-shared',classification:'organizational',status:'published'}],coverage:{complete:true},truncated:false});
+const narrowCache=new ConversationPrefetch(narrowDb);let narrowCalls=0;
+await narrowCache.activate(narrowScope,{currentScope:()=>narrowScope,catalog:async()=>narrowCatalog(),call:async(tool,args)=>{
+  if(tool==='get_updates')return reply({episodes:[{episode_uuid:args.group_id+'-record',group_id:args.group_id,created_at:new Date().toISOString()}],coverage:{complete:true},truncated:false});
+  narrowCalls++;assert.deepEqual(args.group_ids,[args.uuid.replace(/-record$/,'')]);
+  return reply({episode:{uuid:args.uuid,group_id:args.group_ids[0],content:'SYNTHETIC',origin:'manual',source_ref:'fixture',recorded_at:new Date().toISOString()},coverage:{complete:true},truncated:false});
+}});
+assert.equal(narrowCalls,2);assert.equal(narrowCache.snapshot(narrowScope,narrowCatalog()).records.length,2);
+narrowCache.close();narrowDb.close();console.log('PASS each body lookup targets its ledger shelf, retaining full-scope permission checks');

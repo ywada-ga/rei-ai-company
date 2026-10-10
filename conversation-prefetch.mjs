@@ -104,7 +104,7 @@ export class ConversationPrefetch {
           const readStarted=this.now();entry.timing.bodyReadCount++;activeReads++;
           entry.timing.bodyReadPeak=Math.max(entry.timing.bodyReadPeak,activeReads);
           try{
-            const result=await entry.io.call('get_episode',{uuid:row.uuid,group_ids:scope.groups.map(g=>g.id)},signal);
+            const result=await entry.io.call('get_episode',{uuid:row.uuid,group_ids:[row.group_id]},signal);
             const timing=result?.reiMcpTiming;
             if(Number.isSafeInteger(timing?.connectMs)&&timing.connectMs>=0&&Number.isSafeInteger(timing?.requestMs)&&timing.requestMs>=0){
               entry.timing.bodyTransportCount++;entry.timing.bodyConnectMs+=timing.connectMs;entry.timing.bodyRequestMs+=timing.requestMs;

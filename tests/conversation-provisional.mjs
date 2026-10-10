@@ -58,6 +58,13 @@ for(const state of [{deleted:true},{invalid_at:'2026-10-10T00:00:00Z'},{is_lates
  }
 }
 console.log('PASS root and episode deletion, expiry and old revision cannot confirm provisional body equality');
+{
+ const s=await scenario(),fresh=result();
+ fresh.answer=fresh.spokenAnswer='担当は未確認です。青山への依頼記録だけでは担当確定を示しません。';
+ s.latest.resolve(fresh);await s.pending;
+ assert.equal(s.events[1].type,'correction','Same source body cannot confirm a claim rejected by the fresh answer');
+ assert.equal(s.events.filter(e=>e.type==='verified'||e.type==='supplement').length,0);
+}
 // A retry can read the same ID twice. Neither order may hide a changed body
 // or a failed/deleted read when confirming the cached provisional source.
 for(const kind of ['changed','group','deleted','incomplete','error']){
@@ -139,13 +146,18 @@ console.log('Provisional conversation: scoped evidence, expiry, correction, fall
  await started.promise;assert.equal(events[0].type,'delta','Unavailable prefetch preserves fresh streaming before completion');fresh.resolve();await pending;
  assert.equal(events[1].speechText,'','Already streamed final speech is not repeated');
 }
-{
- const s=await scenario({generate:async(messages,options)=>({text:JSON.stringify(options.phase==='verification_supplement'?{...decision,text:'開発室で対応します。'}:decision)})});
- s.latest.resolve({...result(),answer:'開発室で対応しており、担当は青山です。',spokenAnswer:'開発室で対応しており、担当は青山です。'});await s.pending;
- assert.equal(s.events.find(e=>e.type==='supplement').speechText,'補足です。開発室で対応します。');
- assert.ok(s.events.at(-1).result.streamedSpokenAnswer.includes('補足です。'));
+// Rephrasing is not sufficient proof that all provisional claims survived.
+for(const full of ['開発室で対応しており、担当は青山です。','担当は赤井です。','担当は未確認です。']){
+ let generated=0;
+ const s=await scenario({generate:async()=>{generated++;return {text:JSON.stringify(decision)};}});
+ s.latest.resolve({...result(),answer:full,spokenAnswer:full});const out=await s.pending;
+ assert.deepEqual(s.events.map(e=>e.type),['provisional','correction','done']);
+ assert.equal(s.events[1].speechText,'先ほどの点、訂正です。'+full);
+ assert.equal(s.events[1].replacementAnswer,full);assert.equal(out.answer,full);
+ assert.equal(generated,1,'Changed or rephrased claims require no extra difference model');
+ assert.equal(out.provisionalTiming.supplementModelMs,null);
 }
-console.log('PASS fresh stream fallback and source-checked rephrased supplement');
+console.log('PASS fresh stream fallback and changed claims use explicit correction without another model');
 {
  const s=await scenario({question:'今日追加された新情報を教えて',generate:async messages=>{const payload=JSON.parse(messages[1].content);assert.equal(payload.timeZone,'Asia/Tokyo');assert.match(payload.now,/T/);assert.match(payload.checkedAt,/T/);assert.match(payload.additionDate,/^\d{4}-\d{2}-\d{2}$/);assert.equal(payload.records.length,1);return {text:JSON.stringify({...decision,status:'partial'})};}});
  assert.equal(s.events[0].type,'provisional');assert.match(s.events[0].text,/一部の記録/);s.latest.resolve(result());await s.pending;
@@ -274,50 +286,24 @@ console.log('PASS sentence, permission and model completion clocks are distinct 
 }
 console.log('PASS latest draft timing excludes empty/late chunks and keeps provisional verification gate');
 
-// Supplemental speech may start before its model completes, but only after a
-// new permission check. Invalid completions must correct the early fragment.
-for(const invalid of [false,true]){
- const model=defer(),gate=defer();let stream,calls=0;
- const s=await scenario({authorize:()=>++calls===3?gate.promise:Promise.resolve(true),generate:async(_messages,opts)=>{
-   if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};
-   stream=opts.onDelta;return model.promise;
- }});
- const full='開発室で対応しており、担当は青山です。窓口は佐藤です。';
+// Exact continuation still rechecks permission and remains cancellable.
+for(const mode of ['allowed','revoked','cancelled']){
+ const gate=defer(),controller=new AbortController();let calls=0;
+ const s=await scenario({signal:controller.signal,authorize:()=>++calls===3?gate.promise:Promise.resolve(true)});
+ const full=decision.text+'窓口は開発室です。';
  s.latest.resolve({...result(),answer:full,spokenAnswer:full});await settle();
- const supplement={...decision,text:'開発室で対応します。窓口は佐藤です。'};
- stream(JSON.stringify(supplement).slice(0,JSON.stringify(supplement).indexOf('窓口')));await settle();
- assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Permission blocks supplemental first sentence');
- gate.resolve(true);await settle();
- assert.equal(s.events.at(-1).speechText,'補足です。開発室で対応します。');
- model.resolve({text:invalid?'broken completion':JSON.stringify(supplement)});
- const out=await s.pending;
- if(invalid){assert.equal(s.events.at(-2).type,'correction');assert.equal(s.events.at(-2).replacementAnswer,full);assert.match(s.events.at(-2).speechText,/最新の確認結果/);}
- else {assert.equal(s.events.at(-2).speechText,'窓口は佐藤です。');assert.equal(out.streamedSpokenAnswer.split('開発室で対応します。').length,2);}
- assert.equal(out.answer,full,'Authoritative history remains the fresh full answer');
- assert.ok(out.provisionalTiming.supplementFirstMs>=out.provisionalTiming.supplementFirstSentenceMs);
+ assert.equal(s.events.at(-1).type,'verified');
+ assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Fresh permission gates the continuation');
+ if(mode==='cancelled'){
+  controller.abort();await assert.rejects(s.pending,/中断/);const count=s.events.length;
+  gate.resolve(true);await settle();assert.equal(s.events.length,count,'Late permission cannot revive a cancelled continuation');
+ }else{
+  gate.resolve(mode==='allowed');
+  if(mode==='revoked'){await assert.rejects(s.pending,/権限/);assert.equal(s.events.filter(e=>e.type==='supplement').length,0);}
+  else{await s.pending;assert.equal(s.events.at(-2).speechText,'補足です。窓口は開発室です。');}
+ }
 }
-{
- const model=defer(),gate=defer();let stream,calls=0;
- const s=await scenario({authorize:()=>++calls===3?gate.promise:Promise.resolve(true),generate:async(_messages,opts)=>{
-  if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};stream=opts.onDelta;return model.promise;
- }});
- s.latest.resolve({...result(),spokenAnswer:'開発室が窓口です。'});await settle();
- stream(JSON.stringify({...decision,text:'開発室が窓口です。'}));await settle();
- model.resolve({text:'broken completion'});await s.pending;gate.resolve(true);await settle();
- assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Late permission cannot revive invalid or finished supplement');
-}
-console.log('PASS supplemental sentence before completion, permission gate, correction and late callback isolation');
-{
- const model=defer(),controller=new AbortController();let stream;
- const s=await scenario({signal:controller.signal,generate:async(_messages,opts)=>{
-  if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};stream=opts.onDelta;return model.promise;
- }});
- s.latest.resolve({...result(),spokenAnswer:'開発室が窓口です。'});await settle();
- controller.abort();await assert.rejects(s.pending,/中断/);const count=s.events.length;
- stream(JSON.stringify({...decision,text:'開発室が窓口です。'}));model.resolve({text:JSON.stringify(decision)});await settle();
- assert.equal(s.events.length,count,'Abort-ignoring supplement cannot delay cancellation or emit later');
-}
-console.log('PASS supplement cancellation does not await an abort-ignoring model');
+console.log('PASS exact continuation permission, revocation, cancellation and late completion isolation');
 {
  let readInitial,calls=0;const sLatest=defer();
  const s=await scenario({verify:({getProvisionalAnswer})=>{readInitial=getProvisionalAnswer;assert.equal(readInitial(),null);return sLatest.promise;},generate:async()=>{calls++;return {text:JSON.stringify(decision)};}});
@@ -447,29 +433,6 @@ for(const spelling of ['Alpha Company','ＡＬＰＨＡ　ＣＯＭＰＡＮＹ'
 }
 console.log('PASS exact and spelling-variant subjects survive generic-term saturation');
 
-// Header permission overlaps generation; an old permission must be renewed.
-for(const mode of ['fresh','renewed','revoked']){
- const renewed=mode!=='revoked';
- const model=defer(),gate=defer();let stream,calls=0,tick=at;
- const s=await scenario({now:()=>tick,authorize:()=>++calls===4?gate.promise:Promise.resolve(true),generate:async(_messages,opts)=>{
-  if(opts.phase!=='verification_supplement')return {text:JSON.stringify(decision)};stream=opts.onDelta;return model.promise;
- }});
- s.latest.resolve({...result(),spokenAnswer:'開発室が窓口です。'});await settle();
- const supplement={...decision,text:'開発室が窓口です。'};
- const raw=JSON.stringify(supplement),header=raw.slice(0,raw.indexOf(supplement.text));
- stream(header);await settle();
- assert.equal(calls,3,'Valid empty header starts supplemental authorization');
- assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Empty text cannot speak');
- tick+=mode==='fresh'?800:1001;stream(raw);await settle();
- assert.equal(calls,mode==='fresh'?3:4,'Only expired permission requires renewal');
- if(mode!=='fresh')assert.equal(s.events.filter(e=>e.type==='supplement').length,0,'Renewal blocks release');
- gate.resolve(renewed);await settle();
- assert.equal(s.events.filter(e=>e.type==='supplement').length,renewed?1:0,'Revoked permission cannot release sentence');
- model.resolve({text:raw});const out=await s.pending;
- assert.ok(out.provisionalTiming.supplementPermissionStartedMs<out.provisionalTiming.supplementFirstSentenceMs);
- assert.equal(out.provisionalTiming.supplementPermissionChecks,mode==='fresh'?1:2);
-}
-console.log('PASS supplemental header overlap and expired permission renewal');
 {
  const mentions=Array.from({length:12},(_,i)=>({...snapshot.records[0],episode:{...episode,uuid:'incidental-'+i,name:'開発メモ',content:'架空会社の調査を続ける。'}}));
  const preferred={...snapshot.records[0],episode:{...episode,uuid:'verified-older'}};

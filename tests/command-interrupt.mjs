@@ -11,15 +11,25 @@ vm.runInContext(source.slice(source.indexOf("$('command-form').onsubmit ="),sour
 const event={preventDefault(){},target:{querySelector:()=>button}};
 const start=()=>elements['command-form'].onsubmit(event);
 const pending=start();assert.equal(calls,1);assert.equal(button.disabled,true);assert.equal(interrupt.disabled,false);
+callbacks.onDelta('秘密の架空回答',{phase:'provisional',verification:'pending',replacementAnswer:'暫定の秘密本文',speechText:'秘密本文'});
+callbacks.onDelta('補足',{phase:'supplement',verification:'pending',replacementAnswer:'補足（最終確認中）',speechText:'秘密の補足'});
+let measured=JSON.parse(elements['command-feedback'].dataset.responseLatency);
+assert.deepEqual(measured.answerPhases.map(p=>[p.phase,p.verification]),[['provisional','pending'],['supplement','pending']]);
+assert.ok(measured.answerPhases.every(p=>Number.isFinite(p.atMs)&&p.atMs>=0));
+assert.ok(!JSON.stringify(measured).includes('秘密'),'Rendered phase diagnostics exclude answer and speech text');
+callbacks.onDelta('訂正',{phase:'correction',verification:'verified',replacementAnswer:'訂正後の本文',speechText:'訂正'});
+measured=JSON.parse(elements['command-feedback'].dataset.responseLatency);
+assert.deepEqual(measured.answerPhases.at(-1).phase,'correction');assert.equal(measured.answerPhases.at(-1).verification,'verified');
 await start();assert.equal(calls,1,'Double submit cannot start another conversation');
 const speech={cancel(){cancelled++;}};context.commandSpeech=speech;
 elements['command-interrupt'].onclick();assert.equal(context.commandSpeechController.signal.aborted,true);assert.equal(interrupt.disabled,true);assert.equal(input.focused,true);
-const before=notices.length;callbacks.onDelta('遅い未確認回答');callbacks.onNotice('遅い進捗');assert.equal(notices.length,before);assert.equal(context.streamingTurn.answer,'');
+const before=notices.length,answerBefore=context.streamingTurn.answer,traceBefore=elements['command-feedback'].dataset.responseLatency;callbacks.onDelta('遅い未確認回答',{phase:'supplement',verification:'pending'});callbacks.onNotice('遅い進捗');assert.equal(notices.length,before);assert.equal(context.streamingTurn.answer,answerBefore);assert.equal(elements['command-feedback'].dataset.responseLatency,traceBefore);
 elements['command-interrupt'].onclick();assert.equal(cancelled,2,'Disabled interruption is idempotent');
 resolve({answer:'取消を無視した遅い結果'});await pending;
 assert.equal(context.conversationTurns.length,0,'Late completion cannot become confirmed history');
 assert.equal(input.value,'架空会社について教えて');assert.equal(button.disabled,false);assert.equal(context.streamingTurn,null);assert.match(notices.at(-1).text,/中断しました/);assert.ok(!notices.at(-1).error);
 input.value='質問を変更';const next=start();resolve({answer:'新しい確認済み回答'});await next;
+assert.deepEqual(JSON.parse(elements['command-feedback'].dataset.responseLatency).answerPhases,[],'Next question starts a separate rendered phase trace');
 assert.equal(calls,2);assert.equal(context.conversationTurns.length,1);assert.equal(input.value,'');assert.equal(interrupt.disabled,true);
 console.log('PASS typed interruption aborts stream and speech, keeps editable question, rejects late callbacks/result and allows next question');
 

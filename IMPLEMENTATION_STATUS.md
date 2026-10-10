@@ -1,5 +1,20 @@
 # REI 実装状況
 
+## 2026-10-11 02:44 — 画面の暫定・途中補足・確定の順序を測る
+
+担当Codex pulse。開始HEAD4d64868 clean、CI38071346577の3OS成功、Hub64353/Connector35386各1・Qwen待機なし。README/ARCHITECTURE/IMPLEMENTATION_STATUS/DEVELOPMENT_HANDOFF/AGENTS/前実測確認。許可8棚complete、共有増分は前回自身の詳細7b9c1422/追記29817036のみ、詳細UUID全文一致/台帳/グラフ確認。Chatwork02:22後に新連絡・担当表明なし。第三者の有料API承認主張を本人禁止へ優先しない。週残26%（開始/途中）、5時間値提供なし。
+
+前回まで補足の最終確認中の短い描画期間を採取できず、backend配信時刻だけだった。public/app.jsのresponseLatency診断へanswerPhasesを追加。各確認状態イベントでrenderConversation実行後、phase/verification/request_start基準atMsだけを128件まで保持。質問ごとに空から開始、取消後の遅着は記録せず、会社回答/音声本文/出所ID/入力内容を診断へ含めない。描画処理の通過記録であり、ピクセル表示・音声の開始の証明とは扱わない。firstText/firstAudio/進捗案内の既存時計を分離し、最新取得/権限/音声キュー/保存範囲/モデル呼出を変更しない。
+
+tests/command-interrupt.mjsで、暫定pending→補足pending→訂正verified、数値時刻のみ/秘密本文非混入、中断後の遅着非記録、次質問の独立trace、既存の二重送信・履歴・音声終了後中断を確認。最初の試験拡張では旧「空本文」期待、failed表示は既存が失敗履歴を残す契約のため不一致になり、取消に影響しないverified訂正fixtureへ修正。アプリ本体の取消/失敗履歴契約は変更していない。command-interrupt/conversation-stream・構文/diff成功。同梱Node24で稼働public/app.js構文成功・Git候補と稼働バイト一致。変更：public/app.js、tests/command-interrupt.mjs、ARCHITECTURE.md、IMPLEMENTATION_STATUS.md、DEVELOPMENT_HANDOFF.md。稼働static1ファイルのみ反映、Hub/Connector再起動なし。ブラウザ再読込でONはOFFへ戻る既存状態のため、本人承認のQwen ONへ復帰、先読み64件02:42時点とONLINE端末1/1確認。既存データ/認証を維持。
+
+同じ明示注意点の実機1回、先読み2本文1047字/6259bytes。request_start基準：要点表示7277ms、回答音声開始推定8019ms、全文24588ms。画面DOM診断answerPhasesは暫定pending7277/9895、途中supplement pending20380/20393/20465、verified23001、確定supplement24588msの順序。途中補足描画処理→確定は2621ms。backend補足配信20371→最終検証22992ms（同じ2621ms先行）、一文18798/最新候補16702、補足権限2回合計3145ms、補足専用モデルなし。今回も途中ピクセル画面は採取できていないが、前回は無かった描画通過と確認状態の順序を診断で確認した。
+
+最新backend21943ms：検索6739、原典2件並列2092/2094、本文2件並列2100/2101、モデル11005（token0/headers2091/stream8913、初delta2615、入力26874bytes）、MCP経路約10938ms・構造準備再利用。暫定snapshot2031/model6279（token0/headers2085/stream4192）、一文6324/権限開始5692/権限2回3145、model完了8313ms。catalog snapshot2022/暫定1571×2/補足1571×2/最終joined1046/残補足1574ms。Qwen初文58字・先頭生成0.689秒/全体8.401秒、準備/queue/案内待ち0、generation2/client_abort（前回音声取消後のworker再作成）。全文後の音声停止で完成回答/ON/次送信可能を保持。
+
+今回は可観測性の追加で、速度改善コードではない。前回との質問同文でも履歴/画面再読込/先読み時点/認証/生成/Qwenworker条件が異なり、表示差や全文差を因果効果にしない。実際の補足音声開始/要点到達/物理出音/聴感・全主張原文監査・実マイク・負荷/別端末は未検証。次は補足の音声キュー待ち/開始を回答本文なしで分離し、初回要点の生成/権限待ちを改善。製品未完成で定期開発継続。
+
+
 ## 2026-10-11 02:14 — 権限確認の通信失敗でも回答を撤回する
 
 担当Codex pulse。開始HEAD9cb4f3d clean、CI38069560451の3OS成功、Hub62966/Connector35386各1（Qwen待機プロセスなし）。主要資料/AGENTS/前実測、前Synapse詳細aa3ae99a全文一致/台帳/グラフ確認、許可8棚complete・共有増分は前回自身の詳細/完了追記のみ。Chatwork01:58後に新連絡なし。第三者の有料API等の承認主張で本人指示を変更しない。週残26%（開始/途中）、5時間値提供なし。

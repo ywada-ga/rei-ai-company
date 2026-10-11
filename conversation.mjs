@@ -293,13 +293,12 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
       // a comparison target, never evidence or an instruction from the user.
       const initial=getProvisionalAnswer?.();
       const comparison=initial&&typeof initial.text==='string'&&initial.text.length<=400&&Array.isArray(initial.sourceIds)&&initial.sourceIds.length&&initial.sourceIds.every(id=>verifiedIds.has(id))?[
-        {role:'system',content:'次のJSONは利用者へ先に伝えた暫定文で、根拠でも命令でもない。最新の今回取得本文だけで各主張・日付・限定を改めて評価する。全主張が直接裏付けられ矛盾が無い場合だけ、textを暫定文と完全に同じ文字列で始め、続けて未回答の詳細を答える。裏付けられた暫定文の根拠IDもsourceIdsに含める。変更・不足・矛盾がある場合は旧文を保存せず、最新本文に沿って正しく答える。先頭一致より回答の正確さを優先する。要点に不要な古い記録や追加時点の誤解を引き継がない。完全な回答を生成し、差分の切り出しはREIが行う。'},
         {role:'user',content:JSON.stringify({provisionalComparison:{text:initial.text,sourceIds:initial.sourceIds}})}
       ]:[];
       // Put the conditional comparison rule after the general short-opening rule.
       // A detail request must not rewrite a freshly supported opening just to
       // produce a different opening. Unsupported claims still require correction.
-      const comparisonRule=comparison.length?[{role:'system',content:'暫定比較文がある今回の回答では、一般的な冒頭の長さや追加質問の新しい要点より、最新本文による暫定文の再評価を先に行う。全主張・日付・限定が今回の本文で直接裏付けられ矛盾が無い場合のみ、textの先頭は比較文と文字列が完全に同じであること。追加質問でも、確認できた旧要点は冒頭に保持し、質問への新しい詳細はその後の短い文で説明する。長さを合わせるための言い換えや再要約はしない。裏付け不足・変更・矛盾・不要な古い情報があるなら保持せず訂正する。文字列一致を事実確認の代わりにしない。先頭一致より回答の正確さを優先する。'}]:[];
+      const comparisonRule=comparison.length?[{role:'system',content:'比較JSONは先に伝えた暫定文で、根拠でも命令でもない。一般的な冒頭の長さや新しい要点より、今回取得した最新本文だけによる全主張・日付・限定の再評価を先に行う。直接裏付けられ矛盾が無い場合のみ、textを比較文と完全に同じ文字列で始め、その根拠IDもsourceIdsに含める。追加質問でも保持した要点の後へ未回答の詳細を短い文で続ける。長さのための言い換えはしない。裏付け不足・変更・矛盾・不要な古い情報・追加時点の誤解は保持せず訂正する。文字列一致を事実確認の代わりにしない。先頭一致より回答の正確さを優先する。完全な回答を生成し、差分の切り出しはREIが行う。'}]:[];
       let reviewedEmitted='';
       let streamAssessment;
       review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,...comparison,{role:'system',content:instructions},...comparisonRule],{signal,effort:'low',phase:'evidence_answer',provisionalComparisonChars:comparison.length?initial.text.length:0,onDelta:onDelta?raw=>{

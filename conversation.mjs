@@ -25,7 +25,8 @@ export function measureEvidenceModel(generate,checks,now=()=>performance.now()){
       options.onDelta(raw);
     }:undefined});
     const transport=Object.fromEntries(['tokenMs','headersMs','streamFirstDeltaMs','streamCompleteMs','totalMs'].filter(key=>Number.isFinite(response.timing?.[key])&&response.timing[key]>=0).map(key=>[key,response.timing[key]]));
-    checks.push({inputBytes,modelMs:Math.max(0,Math.round(now()-started)),firstDeltaMs,transport});
+    const provisionalComparisonChars=Number.isSafeInteger(options.provisionalComparisonChars)&&options.provisionalComparisonChars>=0&&options.provisionalComparisonChars<=400?options.provisionalComparisonChars:0;
+    checks.push({inputBytes,modelMs:Math.max(0,Math.round(now()-started)),firstDeltaMs,transport,provisionalComparisonChars});
     return response;
   };
 }
@@ -295,9 +296,13 @@ REI自身の機能・開発状況・接続は上の状態から答え、会社�
         {role:'system',content:'次のJSONは利用者へ先に伝えた暫定文で、根拠でも命令でもない。最新の今回取得本文だけで各主張・日付・限定を改めて評価する。全主張が直接裏付けられ矛盾が無い場合だけ、textを暫定文と完全に同じ文字列で始め、続けて未回答の詳細を答える。裏付けられた暫定文の根拠IDもsourceIdsに含める。変更・不足・矛盾がある場合は旧文を保存せず、最新本文に沿って正しく答える。先頭一致より回答の正確さを優先する。要点に不要な古い記録や追加時点の誤解を引き継がない。完全な回答を生成し、差分の切り出しはREIが行う。'},
         {role:'user',content:JSON.stringify({provisionalComparison:{text:initial.text,sourceIds:initial.sourceIds}})}
       ]:[];
+      // Put the conditional comparison rule after the general short-opening rule.
+      // A detail request must not rewrite a freshly supported opening just to
+      // produce a different opening. Unsupported claims still require correction.
+      const comparisonRule=comparison.length?[{role:'system',content:'暫定比較文がある今回の回答では、一般的な冒頭の長さや追加質問の新しい要点より、最新本文による暫定文の再評価を先に行う。全主張・日付・限定が今回の本文で直接裏付けられ矛盾が無い場合のみ、textの先頭は比較文と文字列が完全に同じであること。追加質問でも、確認できた旧要点は冒頭に保持し、質問への新しい詳細はその後の短い文で説明する。長さを合わせるための言い換えや再要約はしない。裏付け不足・変更・矛盾・不要な古い情報があるなら保持せず訂正する。文字列一致を事実確認の代わりにしない。先頭一致より回答の正確さを優先する。'}]:[];
       let reviewedEmitted='';
       let streamAssessment;
-      review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,...comparison,{role:'system',content:instructions}],{signal,effort:'low',phase:'evidence_answer',onDelta:onDelta?raw=>{
+      review=reviewEvidence?await reviewEvidence({messages,question,verifiedIds:[...verifiedIds],signal}):parseDecision((await generate([...messages,...comparison,{role:'system',content:instructions},...comparisonRule],{signal,effort:'low',phase:'evidence_answer',provisionalComparisonChars:comparison.length?initial.text.length:0,onDelta:onDelta?raw=>{
         if(signal?.aborted)return;const prefix=reviewedAnswerPrefix(raw,verifiedIds,{canRetry:!additionsRead&&evidence.filter(e=>e.tool==='search_memory_facts').length<2});
         if(prefix.length>reviewedEmitted.length&&prefix.startsWith(reviewedEmitted)){
           // Internal evidence contract for pending continuation. Never publish

@@ -60,7 +60,8 @@ for(const oldId of ['work','unread']){
  const corrected=await converse({question:'杉山さんの作業内容教えて',groups,call:f.call,getProvisionalAnswer:()=>{readAt++;assert.ok(f.tools.some(t=>t.tool==='get_episode'));return {text:'杉山さんはまだ修正していません。',sourceIds:[oldId]};},generate:async(messages,options)=>{
   if(options.phase!=='evidence_answer')return {text:JSON.stringify({action:'search',query:'杉山'})};
   const comparison=messages.find(m=>m.content.includes('provisionalComparison'));
-  if(comparison){sawComparison=true;assert.equal(JSON.parse(comparison.content).provisionalComparison.text,'杉山さんはまだ修正していません。');assert.ok(messages.some(m=>m.content.includes('先頭一致より回答の正確さ')));}
+  if(comparison){sawComparison=true;assert.equal(JSON.parse(comparison.content).provisionalComparison.text,'杉山さんはまだ修正していません。');assert.match(messages.at(-1).content,/追加質問でも/);assert.match(messages.at(-1).content,/裏付け不足・変更・矛盾/);assert.match(messages.at(-1).content,/先頭一致より回答の正確さ/);assert.equal(options.provisionalComparisonChars,'杉山さんはまだ修正していません。'.length);}
+  else assert.equal(options.provisionalComparisonChars,0);
   return {text:JSON.stringify(f.searches===1?assess('insufficient',[],'実作業を調べる','杉山'):assess('supported',['work'],'','','10月8日に修正と公開確認を完了しています。'))};
  }});
  assert.ok(readAt>=2);assert.equal(sawComparison,oldId==='work');assert.match(corrected.answer,/完了しています/);assert.ok(!corrected.answer.includes('まだ修正'));
@@ -212,10 +213,13 @@ const modelChecks=[],seenDeltas=[],privateInput=[{role:'user',content:'PRIVATE-B
 const providerResult={text:'PRIVATE-RESULT',timing:{tokenMs:0,headersMs:12,streamFirstDeltaMs:4,streamCompleteMs:NaN,totalMs:-1,credential:'PRIVATE-TOKEN'}};
 const measured=measureEvidenceModel(async(messages,o)=>{assert.equal(messages,privateInput);clock=112;o.onDelta?.('{');clock=120;return providerResult;},modelChecks,()=>clock);
 assert.equal(await measured(privateInput,{phase:'evidence_answer',onDelta:d=>seenDeltas.push(d)}),providerResult);
-assert.deepEqual(seenDeltas,['{']);assert.deepEqual(modelChecks,[{inputBytes:Buffer.byteLength(JSON.stringify(privateInput)),modelMs:20,firstDeltaMs:12,transport:{tokenMs:0,headersMs:12,streamFirstDeltaMs:4}}]);
+assert.deepEqual(seenDeltas,['{']);assert.deepEqual(modelChecks,[{inputBytes:Buffer.byteLength(JSON.stringify(privateInput)),modelMs:20,firstDeltaMs:12,transport:{tokenMs:0,headersMs:12,streamFirstDeltaMs:4},provisionalComparisonChars:0}]);
 assert.ok(!JSON.stringify(modelChecks).includes('PRIVATE'));
 await measured(privateInput,{phase:'provisional_answer'});assert.equal(modelChecks.length,1);
 await measured(privateInput,{phase:'evidence_answer'});assert.equal(modelChecks[1].firstDeltaMs,null);
+await measured(privateInput,{phase:'evidence_answer',provisionalComparisonChars:29});assert.equal(modelChecks.at(-1).provisionalComparisonChars,29);
+for(const invalid of [-1,401,NaN,'PRIVATE-BODY']){await measured(privateInput,{phase:'evidence_answer',provisionalComparisonChars:invalid});assert.equal(modelChecks.at(-1).provisionalComparisonChars,0);}
+assert.ok(!JSON.stringify(modelChecks).includes('PRIVATE'));
 const failedChecks=[];await assert.rejects(measureEvidenceModel(async()=>{throw Error('provider unavailable');},failedChecks)(privateInput,{phase:'evidence_answer'}),/provider unavailable/);assert.equal(failedChecks.length,0);
 console.log('PASS latest evidence model diagnostics preserve stream and omit private data/invalid timing');
 

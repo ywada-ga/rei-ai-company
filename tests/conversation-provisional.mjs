@@ -423,6 +423,25 @@ console.log('PASS final and remaining permission rejection, transport failure an
 }
 console.log('PASS request date remains fixed across Japan midnight while freshness uses the live clock');
 
+{
+ const slow=defer(),fresh=defer();let compare,stream,provisionalSignal,delta;
+ const s=await scenario({generate:(_m,opts)=>{provisionalSignal=opts.signal;delta=opts.onDelta;return slow.promise;},verify:opts=>{compare=opts.getProvisionalAnswer;stream=opts.onDelta;return fresh.promise;}});
+ assert.equal(compare({seal:true}),null);assert.equal(provisionalSignal.aborted,true);
+ // Even an abort-ignoring provider cannot publish its late provisional claim.
+ delta(JSON.stringify(decision));await settle();assert.equal(s.events.length,0);
+ stream('担当は青山です。',result());assert.equal(s.events.at(-1).type,'delta');
+ slow.resolve({text:JSON.stringify(decision)});await settle();assert.equal(compare(),null);
+ fresh.resolve(result());const out=await s.pending;
+ assert.equal(out.provisionalUsed,false);assert.equal(out.provisionalOutcome,'comparison_not_ready');
+ assert.equal(s.events.filter(e=>['provisional','correction'].includes(e.type)).length,0);
+}
+{
+ let compare;const fresh=defer();const s=await scenario({verify:opts=>{compare=opts.getProvisionalAnswer;return fresh.promise;}});
+ assert.deepEqual(compare({seal:true}),{text:decision.text,sourceIds:[episode.uuid]});
+ fresh.resolve(result());assert.equal((await s.pending).provisionalUsed,true);
+}
+console.log('PASS latest model input seals an unused late provisional lane while retaining ready comparisons');
+
 for(const followup of ['もっと詳しく教えて','その注意点で、連携範囲はどう決める？']){
  const history=[{question:'架空会社について教えて',answer:'これは根拠に使わない前の回答',synapseRead:true}];
  assert.equal(prefetchTopicQuestion('もっと詳しく教えてください。',history),history[0].question);

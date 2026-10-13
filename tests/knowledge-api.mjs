@@ -27,6 +27,12 @@ try {
   assert.equal((await api('voice/status')).configured,false);
   assert.equal((await api('voice/local/status')).configured,false);
   assert.equal((await api('conversation/status')).configured,false);
+  assert.equal((await api('fast-answer/status')).enabled,false);
+  await api('fast-answer/configure',{apiKey:'sk-fixture-not-a-real-key-1234567890',model:'gpt-4o-mini',maxRequests:1,enabled:true,paidConsent:false},undefined,400);
+  const trial=await api('fast-answer/configure',{apiKey:'sk-fixture-not-a-real-key-1234567890',model:'gpt-4o-mini',maxRequests:1,enabled:true,paidConsent:true});
+  assert.equal(trial.enabled,true);assert.ok(!JSON.stringify(trial).includes('sk-fixture'));
+  await api('fast-answer/disable',{});assert.equal((await api('fast-answer/status')).enabled,false);
+  await api('fast-answer/remove-key',{});assert.equal((await api('fast-answer/status')).configured,false);
   assert.deepEqual((await api('conversation/history')).turns,[]);
   await api('conversation/ask',{question:'REIについて教えて'},undefined,503);
   const social=await api('conversation/ask',{question:'こんにちは'},undefined,200);assert.equal(social.fastPath,'social');
@@ -68,6 +74,8 @@ try {
   await api('auth/login',{username:'requester',password:'knowledge-test-password'});
   await api('knowledge/status',undefined,undefined,403);
   await api('conversation/status',undefined,undefined,403);
+  await api('fast-answer/status',undefined,undefined,403);
+  await api('fast-answer/configure',{},undefined,403);
   await api('conversation/history',undefined,undefined,403);
   await api('conversation/ask',{question:'会社の予定'},undefined,403);
   await api('voice/status',undefined,undefined,403);

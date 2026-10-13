@@ -790,6 +790,7 @@ async function refreshSettings() {
   const role=state.data.user.role;
   const canManage=['owner','admin'].includes(role);
   if(!canManage)$('chatgpt-connection')?.remove();
+  if(!canManage)$('fast-answer-settings')?.remove();
   $('signed-in-user').textContent = `${state.data.user.username} / ${{owner:'所有者',admin:'管理者',requester:'依頼者',viewer:'閲覧者'}[role]||role}`;
   $('backup-create').classList.toggle('hidden',role!=='owner');
   $('invite-form').classList.toggle('hidden',!canManage);
@@ -821,6 +822,15 @@ async function refreshSettings() {
       if($('chatgpt-account'))$('chatgpt-account').onchange=async()=>{try{await request('/api/chatgpt/select',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({provider:connection.selected,creditsDisabled:$('chatgpt-no-credits').checked,accountId:$('chatgpt-account').value})});await refreshSettings();}catch(error){$('chatgpt-help').textContent=error.message;}};
       for(const [id,provider]of [['chatgpt-use','chatgpt'],['chatgpt-local','local']])if($(id))$(id).onclick=async()=>{try{await request('/api/chatgpt/select',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({provider,creditsDisabled:$('chatgpt-no-credits').checked,accountId:$('chatgpt-account').value,model:$('chatgpt-model').value})});await refreshSettings();feedback(provider==='chatgpt'?'会話をChatGPTに切り替えました':'会話をローカルAIに戻しました');}catch(error){$('chatgpt-help').textContent=error.message;}};
       if($('chatgpt-disconnect'))$('chatgpt-disconnect').onclick=async()=>{try{const result=await request('/api/chatgpt/disconnect',{method:'POST'});await refreshSettings();if(!result.revoked)$('chatgpt-help').textContent='REIから切断しました。サーバー側の解除は確認できなかったため、ChatGPTの設定でも接続を解除してください。';}catch(error){$('chatgpt-help').textContent=error.message;}};
+    }catch(error){panel.textContent=error.message;}
+  }
+  if(canManage){
+    let panel=$('fast-answer-settings');if(!panel){panel=document.createElement('div');panel.id='fast-answer-settings';$('approval-management').before(panel);}
+    try{
+      const trial=await request('/api/fast-answer/status');if(epoch!==state.authEpoch)return;
+      panel.innerHTML=`<h3>最初の要点をAPIで試す</h3><p>${trial.enabled&&trial.remaining>0?'試験を使用中':trial.enabled?'試験回数の上限です':'試験は停止中'} · 使用 ${trial.attempts} / ${trial.maxRequests} 回</p><p>OpenAIの従量課金APIへ質問と先読みした必要な記録を送り、最初の暫定要点だけを生成します。最新確認と後続回答はChatGPTの利用枠、声はこのPCのQwenを使います。速度の効果は試験後に確認します。</p><p>回数制限は金額の上限ではありません。OpenAI側の予算設定も確認してください。失敗・中断した要求も回数に含め、自動再試行しません。</p><form id="fast-answer-form"><label>OpenAI APIキー <input id="fast-answer-key" type="password" autocomplete="off" placeholder="${trial.configured?'設定済み（空欄なら保持）':'sk-…'}"></label><label>モデル名 <input id="fast-answer-model" required value="${escapeHtml(trial.model)}" placeholder="gpt-4o-mini"></label><label>この試験の合計回数（1〜10） <input id="fast-answer-limit" type="number" min="${Math.max(1,trial.attempts)}" max="10" value="${trial.maxRequests}" required></label><label><input id="fast-answer-consent" type="checkbox" required> API料金・予算と、必要な記録の送信を確認しました</label><button class="outline-button" type="submit">設定して試す</button></form><p><button id="fast-answer-stop" class="outline-button">API試験を停止</button> <button id="fast-answer-remove" class="outline-button">APIキーを削除</button></p><p id="fast-answer-help">キーはこのREI利用者専用に暗号化して保存します。試験はChatGPT接続と先読みが使える会社質問で適用されます。</p>`;
+      $('fast-answer-form').onsubmit=async event=>{event.preventDefault();const button=event.submitter;button.disabled=true;try{await request('/api/fast-answer/configure',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({apiKey:$('fast-answer-key').value,model:$('fast-answer-model').value.trim(),maxRequests:Number($('fast-answer-limit').value),enabled:true,paidConsent:$('fast-answer-consent').checked})});$('fast-answer-key').value='';await refreshSettings();feedback('最初の要点のAPI試験を設定しました');}catch(error){$('fast-answer-help').textContent=error.message;}finally{button.disabled=false;}};
+      for(const [id,route]of [['fast-answer-stop','disable'],['fast-answer-remove','remove-key']])$(id).onclick=async()=>{try{await request('/api/fast-answer/'+route,{method:'POST'});await refreshSettings();}catch(error){$('fast-answer-help').textContent=error.message;}};
     }catch(error){panel.textContent=error.message;}
   }
   const pending=state.data.tasks.filter(task=>task.status==='approval_pending');

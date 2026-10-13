@@ -19,6 +19,7 @@ import {liveVoiceStatus,configureLiveVoice,LiveVoiceSessions} from './live-voice
 import {LocalVoice} from './local-voice.mjs';
 import {LocalChat} from './local-chat.mjs';
 import {ChatGPTPlan} from './chatgpt-plan.mjs';
+import {FastAnswerApi,generateFirstAnswer} from './fast-answer-api.mjs';
 import {ConversationMcp} from './conversation-mcp.mjs';
 import {converse,conversationReceipt,measureEvidenceModel} from './conversation.mjs';
 import {ConversationPrefetch} from './conversation-prefetch.mjs';
@@ -95,6 +96,11 @@ function prepareConversationOutline(user){
 }
 let conversationBusy=false;
 const chatgptAccounts=new Map();
+const fastAnswerAccounts=new Map();
+function fastAnswerFor(user){
+  if(!fastAnswerAccounts.has(user.id))fastAnswerAccounts.set(user.id,new FastAnswerApi(path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'fast-answer',crypto.createHash('sha256').update(user.id).digest('hex'))));
+  return fastAnswerAccounts.get(user.id);
+}
 function chatgptFor(user){
   if(!chatgptAccounts.has(user.id))chatgptAccounts.set(user.id,new ChatGPTPlan(path.join(process.env.REI_DATA_DIR||path.join(root,'data'),'chatgpt',crypto.createHash('sha256').update(user.id).digest('hex'))));
   return chatgptAccounts.get(user.id);
@@ -230,6 +236,16 @@ async function api(req,res,route) {
     }
   }
 
+  if(route.startsWith('fast-answer/')){
+    if(!['owner','admin'].includes(user.role))return error(res,403,'API試験は所有者・管理者が設定できます');
+    const api=fastAnswerFor(user);
+    if(route==='fast-answer/status'&&req.method==='GET')return send(res,200,api.status());
+    if(conversationBusy)return error(res,409,'会話が終わってからAPI試験設定を変更してください');
+    if(route==='fast-answer/configure'&&req.method==='POST')return send(res,200,api.configure(await body(req)));
+    if(route==='fast-answer/disable'&&req.method==='POST')return send(res,200,api.disable());
+    if(route==='fast-answer/remove-key'&&req.method==='POST')return send(res,200,api.removeKey());
+  }
+
   if(route.startsWith('chatgpt/')){
     if(!['owner','admin'].includes(user.role))return error(res,403,'ChatGPT接続は所有者・管理者が利用できます');
     const account=chatgptFor(user);
@@ -301,7 +317,7 @@ async function api(req,res,route) {
         if(!conversationAdditionCursors.has(additionKey)){if(conversationAdditionCursors.size>=32)conversationAdditionCursors.delete(conversationAdditionCursors.keys().next().value);conversationAdditionCursors.set(additionKey,new Map());}
         const conversationOptions={question,context,additionCache:conversationAdditionCursors.get(additionKey),outlineCache:outlineFor(user,integration,settings.groups),groups:settings.groups,signal:controller.signal,onProgress:streaming?event=>emit({type:'progress',...event}):null,onDelta:streaming?text=>emit({type:'delta',text}):null,
           runtimeContext:{name:'REI',version:reiVersion,conversation:chatProvider(user)==='chatgpt'?'ChatGPT（接続済み）':'ローカルQwen',voice:'ローカルQwen',synapseConfigured:!!integration,selectedGroupCount:settings.groups.length,execution:'OpenClaw、作業は承認待ちを作成してから実行',capabilities:['継続した文章・音声会話','選択したSynapse Connectの記録検索と原記録確認','承認待ち作業の作成','接続端末の稼働状況'],limitations:['一般質問と継続会話は実機確認済み','音声品質と応答速度は調整中','会社情報は原記録が取れる範囲のみ回答','商用配布の署名・公証、別Macでの検証は未完了','Coworkは接続パッケージ実装済み、実機連携は未確認']},
-          generate:(messages,options)=>{if(streaming&&options.phase==='evidence_answer'&&localVoice.status().configured)void localVoice.start().catch(()=>{});return (chatProvider(user)==='chatgpt'?chatgptFor(user):localChat).generate(messages,options);},
+          generate:(messages,options)=>{if(streaming&&options.phase==='evidence_answer'&&localVoice.status().configured)void localVoice.start().catch(()=>{});return chatProvider(user)==='chatgpt'?generateFirstAnswer(fastAnswerFor(user),chatgptFor(user),messages,options):localChat.generate(messages,options);},
           call:(tool,args,signal)=>conversationMcp.call(integration,tool,args,signal),
           submit:instruction=>{if(controller.signal.aborted)throw new Error('会話を中断しました');return taskJson(createTask(db,settings.groups.some(g=>g.personal)?question:instruction,'operations',user.id,true,null,null,settings.groups.some(g=>g.personal)?[]:context));}};
         const evidenceModelChecks=[];

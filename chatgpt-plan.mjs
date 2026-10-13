@@ -9,7 +9,7 @@ const failure=message=>Object.assign(new Error(message),{status:400});
 const decisionFormat={type:'json_schema',name:'rei_decision',strict:true,schema:{type:'object',properties:{decision:{anyOf:Object.entries({answer:'text',search:'query',source:'uuid',episode:'uuid',work:'instruction'}).map(([action,key])=>({type:'object',properties:{action:{type:'string',enum:[action]},[key]:{type:'string'}},required:['action',key],additionalProperties:false})).concat([{type:'object',properties:{action:{type:'string',enum:['assess']},status:{type:'string',enum:['supported','partial','insufficient','ambiguous']},sourceIds:{type:'array',items:{type:'string'}},reason:{type:'string'},query:{type:'string'}},required:['action','status','sourceIds','reason','query'],additionalProperties:false},{type:'object',properties:{action:{type:'string',enum:['respond']},status:{type:'string',enum:['supported','partial','insufficient','ambiguous']},sourceIds:{type:'array',items:{type:'string'}},reason:{type:'string'},query:{type:'string'},text:{type:'string'}},required:['action','status','sourceIds','reason','query','text'],additionalProperties:false}])}},required:['decision'],additionalProperties:false}};
 // Provisional speech has no tool planning or long pre-text rationale. Preserve
 // the ordinary decision schema for every other phase.
-const provisionalDecisionFormat=structuredClone(decisionFormat);
+export const provisionalDecisionFormat=structuredClone(decisionFormat);
 provisionalDecisionFormat.name='rei_provisional';
 provisionalDecisionFormat.schema.properties.decision=structuredClone(decisionFormat.schema.properties.decision.anyOf.at(-1));
 provisionalDecisionFormat.schema.properties.decision.properties.reason.enum=[''];
